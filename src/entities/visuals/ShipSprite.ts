@@ -1,4 +1,5 @@
 import { Ship } from '../Ship';
+import { drawBlueprint } from '../../ui/ShipBlueprint';
 
 /**
  * Визуальное представление корабля в Phaser
@@ -12,7 +13,7 @@ export class ShipSprite extends Phaser.GameObjects.Container {
   private selectionCircle: Phaser.GameObjects.Graphics;
   private isSelected: boolean = false;
 
-  constructor(scene: Phaser.Scene, ship: Ship) {
+  constructor(scene: Phaser.Scene, ship: Ship, private readonly hullColor?: number) {
     super(scene, ship.position.x, ship.position.y);
     this.ship = ship;
 
@@ -49,6 +50,11 @@ export class ShipSprite extends Phaser.GameObjects.Container {
    */
   private drawShip(): void {
     this.shipBody.clear();
+    const design = this.ship.getDesign();
+    if (design) {
+      drawBlueprint(this.shipBody, design, this.hullColor);
+      return;
+    }
 
     // Определяем цвет корабля на основе типа
     const color = this.getShipColor();
@@ -183,10 +189,8 @@ export class ShipSprite extends Phaser.GameObjects.Container {
   /**
    * Обновление визуализации
    */
-  update(deltaTime: number): void {
-    // Обновляем модель корабля
-    this.ship.update(deltaTime);
-
+  update(_deltaTime: number): void {
+    // Только представление: модель обновляет владелец симуляции, а не спрайт.
     // Обновляем позицию спрайта
     this.setPosition(this.ship.position.x, this.ship.position.y);
 

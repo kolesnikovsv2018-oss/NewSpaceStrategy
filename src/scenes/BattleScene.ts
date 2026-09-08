@@ -1,8 +1,9 @@
 import { CombatShip } from '../entities/CombatShip';
 import { CombatShipFactory } from '../entities/CombatShipFactory';
 import { BattleManager } from '../entities/BattleManager';
-import { IFaction, IBattleConfig } from '../entities/interfaces/CombatSystem';
+import { IFaction, IBattleConfig, IBattlePosition } from '../entities/interfaces/CombatSystem';
 import { ShipSprite } from '../entities/visuals/ShipSprite';
+import { createDesign, designSchema, type ShipDesign } from '../domain/shipDesign';
 
 /**
  * Сцена боя
@@ -14,12 +15,23 @@ export class BattleScene extends Phaser.Scene {
   private statsText?: Phaser.GameObjects.Text;
   private isPaused: boolean = false;
   private projectiles: Phaser.GameObjects.Graphics[] = [];
+  private trialDesign?: ShipDesign;
 
   constructor() {
     super({ key: 'BattleScene' });
   }
 
+  init(data: { design?: ShipDesign } = {}): void {
+    this.trialDesign = data.design ? designSchema.parse(data.design) : undefined;
+    this.sys.settings.data = {};
+  }
+
   create() {
+    this.isPaused = false;
+    this.shipSprites.clear();
+    this.projectiles = [];
+    this.time.paused = false;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanup, this);
     // Создаем звездный фон
     this.createStarfield();
 
@@ -47,7 +59,7 @@ export class BattleScene extends Phaser.Scene {
     const height = this.cameras.main.height;
 
     // Создаем фракцию 1 (Синие)
-    const faction1Ships = CombatShipFactory.createFleet('blue', {
+    const faction1Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(this.trialDesign, 'blue')] : CombatShipFactory.createFleet('blue', {
       fighters: 5,
       frigates: 2,
       cruisers: 1
@@ -63,13 +75,13 @@ export class BattleScene extends Phaser.Scene {
 
     const faction1: IFaction = {
       id: 'blue',
-      name: 'Синяя Армада',
+      name: this.trialDesign?.name ?? 'Синяя Армада',
       color: 0x0000ff,
       ships: faction1Ships
     };
 
     // Создаем фракцию 2 (Красные)
-    const faction2Ships = CombatShipFactory.createFleet('red', {
+    const faction2Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(createDesign('corvette', true), 'red')] : CombatShipFactory.createFleet('red', {
       fighters: 6,
       frigates: 1,
       cruisers: 1
@@ -85,7 +97,7 @@ export class BattleScene extends Phaser.Scene {
 
     const faction2: IFaction = {
       id: 'red',
-      name: 'Красный Легион',
+      name: this.trialDesign ? 'Эталонный корвет' : 'Красный Легион',
       color: 0xff0000,
       ships: faction2Ships
     };
@@ -132,10 +144,10 @@ export class BattleScene extends Phaser.Scene {
     const allShips = this.battleManager?.getAllShips() || [];
     
     allShips.forEach((ship: CombatShip) => {
-      const sprite = new ShipSprite(this, ship);
+      const sprite = new ShipSprite(this, ship, ship.factionId === 'blue' ? 0x4488ff : 0xff6655);
       this.shipSprites.set(ship.id, sprite);
 
-      // Меняем цвет корабля в зависимости от фракции
+      // Информация относится к реальному экземпляру проекта.
       sprite.on('pointerdown', () => {
         console.log(ship.getCombatInfo());
       });
@@ -164,7 +176,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Инструкции
     this.add.text(this.cameras.main.width / 2, 10, 
-      'SPACE - Пауза | ESC - Меню | Клик на корабль - Информация', {
+      `SPACE — Пауза | ESC — ${this.trialDesign ? 'В верфь' : 'Меню'} | Клик на корабль — Информация`, {
       fontSize: '12px',
       color: '#ffff00',
       backgroundColor: '#000000',
@@ -176,14 +188,32 @@ export class BattleScene extends Phaser.Scene {
    * Настроить обработчики клавиш
    */
   private setupKeyHandlers(): void {
-    this.input.keyboard?.on('keydown-SPACE', () => {
-      this.isPaused = !this.isPaused;
-      console.log(this.isPaused ? '⏸️ Пауза' : '▶️ Продолжить');
-    });
+    this.input.keyboard?.on('keydown-SPACE', this.togglePause, this);
+    this.input.keyboard?.on('keydown-ESC', this.returnToMenu, this);
+  }
 
-    this.input.keyboard?.on('keydown-ESC', () => {
-      this.scene.start('MenuScene');
-    });
+  private togglePause(): void {
+    this.isPaused = !this.isPaused;
+    this.time.paused = this.isPaused;
+    if (this.isPaused) this.tweens.pauseAll();
+    else this.tweens.resumeAll();
+  }
+
+  private returnToMenu(): void {
+    if (this.trialDesign) this.scene.start('ShipyardScene', { design: this.trialDesign });
+    else this.scene.start('MenuScene');
+  }
+
+  private cleanup(): void {
+    this.input.keyboard?.off('keydown-SPACE', this.togglePause, this);
+    this.input.keyboard?.off('keydown-ESC', this.returnToMenu, this);
+    this.shipSprites.clear();
+    this.projectiles = [];
+    this.battleManager = undefined;
+    this.infoText = undefined;
+    this.statsText = undefined;
+    this.isPaused = false;
+    this.time.paused = false;
   }
 
   /**
@@ -196,51 +226,46 @@ export class BattleScene extends Phaser.Scene {
 
     // Обновляем менеджер боя
     this.battleManager?.update(deltaSeconds);
+    // Trial can stalemate (armor, shields, exhausted ammo). Always allow a bounded experiment.
+    if (this.trialDesign && (this.battleManager?.getStats().duration ?? 0) >= 120000) this.battleManager?.stop();
+    this.renderBattleEvents();
 
-    // Обновляем визуализацию кораблей
-    this.shipSprites.forEach((sprite, shipId) => {
-      const ship = this.battleManager?.getAllShips().find(s => s.id === shipId);
-      if (ship) {
-        // Уничтожаем спрайт если корабль уничтожен
-        if (ship.isDestroyed && sprite.visible) {
-          this.createExplosion(ship.position.x, ship.position.y);
-          this.tweens.add({
-            targets: sprite,
-            alpha: 0,
-            scale: 0.5,
-            duration: 500,
-            onComplete: () => {
-              sprite.setVisible(false);
-              sprite.destroy();
-              this.shipSprites.delete(shipId);
-            }
-          });
-        } else if (!ship.isDestroyed) {
-          // Обновляем только живые корабли
-          sprite.update(deltaSeconds);
-
-          // Визуализация выстрелов
-          if (ship.target && !ship.target.isDestroyed) {
-            const distance = ship.getDistanceTo(ship.target);
-            if (distance <= ship.weaponStats.range && ship.weaponStats.currentCooldown === 0) {
-              this.createProjectile(ship, ship.target);
-            }
-          }
-        }
-      }
-    });
+    // Представления уже содержат прямую ссылку на модель; поиска по массиву нет.
+    this.shipSprites.forEach(sprite => sprite.update(deltaSeconds));
 
     // Обновляем UI
     this.updateUI();
   }
 
+  private renderBattleEvents(): void {
+    for (const event of this.battleManager?.drainEvents() ?? []) {
+      if (event.type === 'WeaponFired') {
+        this.createProjectile(event.from, event.to);
+        continue;
+      }
+
+      const sprite = this.shipSprites.get(event.shipId);
+      if (!sprite) continue;
+      // Исключаем из обновления сразу: анимация уничтожения запускается один раз.
+      this.shipSprites.delete(event.shipId);
+      this.createExplosion(event.position.x, event.position.y);
+      this.tweens.add({
+        targets: sprite,
+        alpha: 0,
+        scale: 0.5,
+        duration: 500,
+        onComplete: () => sprite.destroy()
+      });
+    }
+  }
+
   /**
    * Создать снаряд
    */
-  private createProjectile(from: CombatShip, to: CombatShip): void {
+  private createProjectile(from: IBattlePosition, to: IBattlePosition): void {
     const projectile = this.add.graphics();
     projectile.lineStyle(2, 0xff0000, 1);
-    projectile.lineBetween(from.position.x, from.position.y, to.position.x, to.position.y);
+    projectile.lineBetween(from.x, from.y, to.x, to.y);
     
     this.projectiles.push(projectile);
 
@@ -317,7 +342,14 @@ export class BattleScene extends Phaser.Scene {
    * Показать результаты боя
    */
   private showBattleResults(): void {
-    const report = this.battleManager?.getBattleReport() || '';
+    const stats = this.battleManager?.getStats();
+    const winner = this.battleManager?.getWinner();
+    const report = `${winner ? `Победитель: ${winner.name}` : 'Испытание завершено без победителя'}\n\n` +
+      `Время: ${((stats?.duration ?? 0) / 1000).toFixed(1)} с\n` +
+      `Потери: ${stats?.shipsDestroyed ?? 0} / ${stats?.totalShips ?? 0}\n\n` +
+      [...(stats?.factionStats ?? [])].map(([id, faction]) =>
+        `${id.toUpperCase()}: осталось ${faction.shipsAlive}, потери ${faction.shipsDestroyed}\n` +
+        `Нанесено ${faction.damageDealt.toFixed(0)}, получено ${faction.damageTaken.toFixed(0)}`).join('\n\n');
     
     // Создаем панель с результатами
     const panel = this.add.graphics();
@@ -353,7 +385,7 @@ export class BattleScene extends Phaser.Scene {
     const button = this.add.text(
       this.cameras.main.width / 2,
       this.cameras.main.height / 2 + 200,
-      'Вернуться в меню',
+      this.trialDesign ? 'Вернуться в верфь' : 'Вернуться в меню',
       {
         fontSize: '24px',
         color: '#ffffff',
@@ -367,6 +399,6 @@ export class BattleScene extends Phaser.Scene {
     button
       .on('pointerover', () => button.setStyle({ backgroundColor: '#666666' }))
       .on('pointerout', () => button.setStyle({ backgroundColor: '#444444' }))
-      .on('pointerdown', () => this.scene.start('MenuScene'));
+      .on('pointerdown', () => this.returnToMenu());
   }
 }

@@ -5,16 +5,32 @@ import {
   IEquipment, 
   ICargoItem 
 } from './interfaces/ShipComponents';
+import type { ShipDesign } from '../domain/shipDesign';
+import { createShipState, snapshotShipState, type ShipPosition, type ShipState } from '../domain/shipState';
+import { cargoTotals, loadCargo, unloadCargo, type CargoLimits, type CargoResult } from '../domain/cargo';
 
 /**
  * Основной класс космического корабля
  */
 export class Ship {
+  protected readonly state = createShipState();
+  getState(): ShipState { return snapshotShipState(this.state); }
+  getDesign(): ShipDesign | undefined { return undefined; }
+  getInstalledModuleNames(): string[] { return this.equipment.map(item => item.name); }
   id: string;
   name: string;
   
   // Компоненты корабля
-  powerSource: IPowerSource;
+  private powerSourceView!: IPowerSource;
+  get powerSource(): IPowerSource { return this.powerSourceView; }
+  set powerSource(source: IPowerSource) {
+    const ship = this;
+    this.state.energy = source.currentEnergy;
+    this.powerSourceView = { ...source,
+      get currentEnergy() { return ship.state.energy; },
+      set currentEnergy(value: number) { ship.state.energy = value; }
+    };
+  }
   engine: IEngine;
   cargoHold: ICargo;
   
@@ -22,12 +38,23 @@ export class Ship {
   equipment: IEquipment[] = [];
   
   // Груз
-  cargo: ICargoItem[] = [];
+  get cargo(): ICargoItem[] {
+    return this.state.cargo.map(({ mass, ...item }) => ({ ...item, weight: mass }));
+  }
+  private cargoMessage = '';
+  getCargoMessage(): string { return this.cargoMessage; }
+  getCargoLimits(): CargoLimits {
+    return { mass: Math.max(0, this.cargoHold.maxWeight - this.equipment.reduce((sum, item) => sum + item.weight, 0)),
+      volume: this.cargoHold.capacity };
+  }
   
   // Позиция и состояние
-  position: { x: number; y: number };
-  velocity: { x: number; y: number };
-  isMoving: boolean = false;
+  get position(): ShipPosition { return this.state.position; }
+  set position(value: ShipPosition) { this.state.position = { ...value }; }
+  get velocity(): ShipPosition { return this.state.velocity; }
+  set velocity(value: ShipPosition) { this.state.velocity = { ...value }; }
+  get isMoving(): boolean { return this.state.isMoving; }
+  set isMoving(value: boolean) { this.state.isMoving = value; }
   
   constructor(
     id: string,
@@ -40,7 +67,11 @@ export class Ship {
     this.name = name;
     this.powerSource = powerSource;
     this.engine = engine;
-    this.cargoHold = cargoHold;
+    const ship = this;
+    this.cargoHold = { ...cargoHold,
+      get usedSpace() { return cargoTotals(ship.state.cargo).volume; },
+      get currentWeight() { return cargoTotals(ship.state.cargo).mass + ship.equipment.reduce((sum, item) => sum + item.weight, 0); }
+    };
     this.position = { x: 0, y: 0 };
     this.velocity = { x: 0, y: 0 };
   }
@@ -119,7 +150,7 @@ export class Ship {
     }
     
     this.equipment.push(equipment);
-    this.cargoHold.currentWeight += equipment.weight;
+    this.refreshVelocityForMass();
     return true;
   }
   
@@ -133,9 +164,8 @@ export class Ship {
       return false;
     }
     
-    const equipment = this.equipment[index];
-    this.cargoHold.currentWeight -= equipment.weight;
     this.equipment.splice(index, 1);
+    this.refreshVelocityForMass();
     return true;
   }
   
@@ -143,55 +173,32 @@ export class Ship {
    * Загрузить груз
    */
   loadCargo(item: ICargoItem): boolean {
-    // Проверяем вес
-    if (this.cargoHold.currentWeight + item.weight > this.cargoHold.maxWeight) {
-      console.log('Превышен максимальный вес груза');
-      return false;
-    }
-    
-    // Проверяем объем
-    if (this.cargoHold.usedSpace + item.volume > this.cargoHold.capacity) {
-      console.log('Недостаточно места в грузовом отсеке');
-      return false;
-    }
-    
-    this.cargo.push(item);
-    this.cargoHold.currentWeight += item.weight;
-    this.cargoHold.usedSpace += item.volume;
-    return true;
+    if (!item || typeof item !== 'object') return this.applyCargoResult({ ok: false, message: 'Недопустимый груз' });
+    return this.applyCargoResult(loadCargo(this.state.cargo, { resourceType: item.resourceType,
+      amount: item.amount, mass: item.weight, volume: item.volume }, this.getCargoLimits()));
   }
   
   /**
    * Выгрузить груз
    */
   unloadCargo(resourceType: string, amount: number): boolean {
-    const cargoIndex = this.cargo.findIndex(c => c.resourceType === resourceType);
-    
-    if (cargoIndex === -1) {
-      return false;
-    }
-    
-    const cargoItem = this.cargo[cargoIndex];
-    
-    if (cargoItem.amount < amount) {
-      return false;
-    }
-    
-    const weightPerUnit = cargoItem.weight / cargoItem.amount;
-    const volumePerUnit = cargoItem.volume / cargoItem.amount;
-    
-    cargoItem.amount -= amount;
-    cargoItem.weight -= weightPerUnit * amount;
-    cargoItem.volume -= volumePerUnit * amount;
-    
-    this.cargoHold.currentWeight -= weightPerUnit * amount;
-    this.cargoHold.usedSpace -= volumePerUnit * amount;
-    
-    if (cargoItem.amount <= 0) {
-      this.cargo.splice(cargoIndex, 1);
-    }
-    
+    return this.applyCargoResult(unloadCargo(this.state.cargo, resourceType, amount));
+  }
+
+  private applyCargoResult(result: CargoResult): boolean {
+    if (!result.ok) { this.cargoMessage = result.message; return false; }
+    this.state.cargo = result.cargo;
+    this.cargoMessage = 'Грузовая операция выполнена';
+    this.refreshVelocityForMass();
     return true;
+  }
+
+  protected refreshVelocityForMass(): void {
+    if (!this.isMoving) return;
+    const length = Math.hypot(this.velocity.x, this.velocity.y);
+    if (length === 0) return;
+    const speed = this.getCurrentMaxSpeed();
+    this.velocity = { x: this.velocity.x / length * speed, y: this.velocity.y / length * speed };
   }
   
   /**

@@ -1,59 +1,50 @@
 # Orion Space Strategy
 
-A space strategy game built with Phaser 3 and TypeScript.
+Браузерный прототип 2D-стратегии в духе Master of Orion: конструктор компонентов и кораблей, демонстрация полёта и автоматический бой флотов.
 
-## Getting Started
+## Стек и запуск
 
-### Prerequisites
+TypeScript strict, Phaser 3, Vite 4, Vitest 3. Используется Yarn Classic 1.22.22 и единственный yarn.lock. Рекомендуется Node 22+; проверено на Node 24.20.0.
 
-- Node.js (v14 or higher)
-- npm or yarn
+| Команда | Назначение |
+| --- | --- |
+| `yarn install --frozen-lockfile` | Установка зависимостей |
+| `yarn dev` | Dev-сервер, порт 3000 |
+| `yarn test` | Регрессионные тесты в Node |
+| `yarn test:watch` | Тесты в режиме наблюдения |
+| `yarn typecheck` | Проверка типов исходников и тестов |
+| `yarn build` | TypeScript и production-сборка в dist |
+| `yarn preview` | Просмотр production-сборки |
 
-### Installation
+## Структура
 
-1. Clone the repository
-2. Install dependencies:
-```bash
-npm install
-# or
-yarn install
-```
+- src/scenes — сцены меню, верфи, демонстрации кораблей и боя.
+- src/entities — модели, фабрики и менеджер боя; visuals — представления Phaser.
+- src/ui — панели редактора и информации о корабле.
+- src/domain — схема проекта, корпуса, чистые формулы и валидация.
+- src/utils — проверяемое версионированное хранение проектов и миграция.
+- tests — модельные регрессии и контрактные тесты визуализации с заглушкой Phaser.
+- .github/skills — контекст и процедуры разработки.
+- reports — планы и отчёты по датам.
 
-### Development
+## Текущее состояние
 
-Run the development server:
-```bash
-npm run dev
-# or
-yarn dev
-```
+S1 и основной цикл S2.1 выполнены по [плану](reports/2026-09-07/plan.md): верфь → сохранение → загрузка → полёт/бой → корректировка. S2.2a выделяет общее тактическое ShipState; S2.2b переносит боевую фабрику и поддерживаемые гражданские проекты, добавляет груз в состояние. 133 регрессионных теста; симуляция отделена от представления. [Модель проекта и ограничения](docs/SHIP_DESIGN.md).
 
-### Building
+В верфи выберите или создайте модуль, настройте его параметры и установите в слот. «Сохранить» записывает проект в localStorage, «Загрузить» выбирает сохранённый, «Экспорт» выгружает сохранённую библиотеку JSON. Каталог хранится отдельно: его изменение не меняет уже установленные копии. «Полёт» и «Бой» испытывают текущий черновик без автоматического сохранения; возврат не переносит повреждения в проект.
 
-Build for production:
-```bash
-npm run build
-# or
-yarn build
-```
+«Готовые проекты» в верфи загружает фабричный истребитель, фрегат, крейсер, дредноут, разведчик или грузовоз для изменения и сохранения. Обычный бой из меню использует те же боевые проекты и механики, стороны различаются цветом корпуса. В полёте проекта можно загрузить/выгрузить тестовую руду: масса и объём ограничиваются независимо, груз снижает скорость и не сохраняется в чертеже.
 
-## Project Structure
+DesignedShip пока адаптируется к старому CombatShip. Служебные модули, добытчик и legacy createCustomShip остаются в S2.2b; полный перенос не объявлен завершённым. Тестовый груз не является экономикой или стратегическим топливом. MainScene — заглушка, стратегическая кампания ещё не реализована.
 
-- `src/` - Source code
-  - `scenes/` - Game scenes (Loading, Menu, Main)
-  - `entities/` - Game objects and entities
-  - `assets/` - Game assets (images, sounds, etc.)
-  - `ui/` - User interface components
-  - `utils/` - Helper functions and utilities
+## Разработка
 
-## Features
+Перед задачей читать [общие инструкции](.github/copilot-instructions.md) и [контекст проекта](.github/skills/orion-project/SKILL.md). После задачи обновлять навыки и создавать новый отчёт в каталоге текущей даты.
 
-- Modern build setup with Vite
-- TypeScript support
-- Scene management
-- Responsive game canvas
-- Hot Module Replacement during development
+Контрактные тесты с заглушкой Phaser не заменяют браузерный smoke test. Тяжёлый JS chunk Phaser остаётся известным предупреждением сборки, не подавляется настройками.
 
-## License
+## Лицензия
 
-This project is licensed under the MIT License.# NewSpaceStrategy
+Проект распространяется под лицензией MIT.
+
+

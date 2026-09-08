@@ -1,3 +1,5 @@
+import type { CombatShip } from '../CombatShip';
+
 /**
  * Боевые характеристики корабля
  */
@@ -29,7 +31,7 @@ export interface IWeaponStats {
  */
 export interface IAttackResult {
   hit: boolean;              // Попадание
-  damage: number;            // Нанесенный урон
+  damage: number;            // Фактически снятые щиты + HP, без брони и overkill
   shieldDamage: number;      // Урон по щиту
   hullDamage: number;        // Урон по корпусу
   critical: boolean;         // Критическое попадание
@@ -43,7 +45,7 @@ export interface IFaction {
   id: string;
   name: string;
   color: number;             // Цвет для визуализации
-  ships: any[];              // Корабли фракции
+  ships: CombatShip[];       // Корабли фракции
 }
 
 /**
@@ -68,8 +70,30 @@ export interface IBattleStats {
   totalDamage: number;
   factionStats: Map<string, {
     shipsAlive: number;
-    shipsDestroyed: number;
+    shipsDestroyed: number; // Собственные потери
+    kills: number;          // Уничтоженные противники
     damageDealt: number;
     damageTaken: number;
   }>;
 }
+
+/** Снимки позиций не меняются после шага симуляции. */
+export interface IBattlePosition {
+  x: number;
+  y: number;
+}
+
+export type BattleEvent =
+  | {
+    type: 'WeaponFired';
+    attackerId: string;
+    targetId: string;
+    from: IBattlePosition;
+    to: IBattlePosition;
+    hit: boolean;
+  }
+  | {
+    type: 'ShipDestroyed';
+    shipId: string;
+    position: IBattlePosition;
+  };

@@ -1,5 +1,5 @@
 import { CombatShip } from './CombatShip';
-import { IFaction, IBattleConfig, IBattleStats, IAttackResult } from './interfaces/CombatSystem';
+import { IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } from './interfaces/CombatSystem';
 
 /**
  * Менеджер боевой системы
@@ -9,6 +9,8 @@ export class BattleManager {
   private stats: IBattleStats;
   private allShips: CombatShip[] = [];
   private isActive: boolean = false;
+  private isFinished: boolean = false;
+  private events: BattleEvent[] = [];
   private battleEndCallback?: (stats: IBattleStats) => void;
 
   constructor(config: IBattleConfig) {
@@ -34,6 +36,7 @@ export class BattleManager {
       this.stats.factionStats.set(faction.id, {
         shipsAlive: faction.ships.length,
         shipsDestroyed: 0,
+        kills: 0,
         damageDealt: 0,
         damageTaken: 0
       });
@@ -44,6 +47,7 @@ export class BattleManager {
    * Начать бой
    */
   start(): void {
+    if (this.isActive || this.isFinished) return;
     this.isActive = true;
     this.stats.startTime = Date.now();
     console.log('⚔️ Бой начался!');
@@ -53,7 +57,9 @@ export class BattleManager {
    * Остановить бой
    */
   stop(): void {
+    if (!this.isActive) return;
     this.isActive = false;
+    this.isFinished = true;
     console.log('🏁 Бой завершен!');
     if (this.battleEndCallback) {
       this.battleEndCallback(this.stats);
@@ -67,13 +73,20 @@ export class BattleManager {
     this.battleEndCallback = callback;
   }
 
+  /** Забрать события ровно один раз, в том числе после завершающего бой удара. */
+  drainEvents(): BattleEvent[] {
+    const events = this.events;
+    this.events = [];
+    return events;
+  }
+
   /**
    * Обновление боевой системы
    */
   update(deltaTime: number): void {
-    if (!this.isActive) return;
+    if (!this.isActive || !Number.isFinite(deltaTime) || deltaTime <= 0) return;
 
-    this.stats.duration = Date.now() - this.stats.startTime;
+    this.stats.duration += deltaTime * 1000;
 
     // Обновляем все корабли
     this.allShips.forEach(ship => {
@@ -106,10 +119,19 @@ export class BattleManager {
       // Двигаемся к цели
       ship.moveToTarget(ship.target);
 
-      // Атакуем если в радиусе
-      const attackResult = ship.attack(ship.target);
-      
-      if (attackResult) {
+      // Каждое готовое орудие может выстрелить в этом шаге. Обрабатываем урон сразу,
+      // чтобы последующие орудия не засчитали уничтожение цели повторно.
+      for (let attempt = 0; attempt < ship.getAttackAttemptsPerStep(); attempt++) {
+        const attackResult = ship.attack(ship.target);
+        if (!attackResult) break;
+        this.events.push({
+          type: 'WeaponFired',
+          attackerId: ship.id,
+          targetId: ship.target.id,
+          from: { ...ship.position },
+          to: { ...ship.target.position },
+          hit: attackResult.hit
+        });
         this.processAttack(ship, ship.target, attackResult);
       }
     }
@@ -140,12 +162,19 @@ export class BattleManager {
       this.stats.shipsDestroyed++;
       
       if (attackerStats) {
-        attackerStats.shipsAlive--;
+        attackerStats.kills++;
       }
       
       if (targetStats) {
+        targetStats.shipsAlive--;
         targetStats.shipsDestroyed++;
       }
+
+      this.events.push({
+        type: 'ShipDestroyed',
+        shipId: target.id,
+        position: { ...target.position }
+      });
 
       console.log(`💥 ${target.name} (${target.factionId}) уничтожен кораблем ${attacker.name} (${attacker.factionId})`);
     }
@@ -250,13 +279,14 @@ export class BattleManager {
       const factionStats = this.stats.factionStats.get(faction.id);
       if (factionStats) {
         const aliveShips = this.getFactionShips(faction.id).filter(s => !s.isDestroyed);
-        const status = aliveShips.length > 0 ? '✓ Победа' : '✗ Поражение';
+        const status = aliveShips.length === 0 ? '✗ Поражение' : this.getWinner()?.id === faction.id ? '✓ Победа' : 'Без победителя';
         
         report += `
 ━━━ ${faction.name} ━━━
 Статус: ${status}
 Живых кораблей: ${aliveShips.length}/${faction.ships.length}
-Уничтожено врагов: ${factionStats.shipsDestroyed}
+Потери: ${factionStats.shipsDestroyed}
+Уничтожено врагов: ${factionStats.kills}
 Нанесено урона: ${factionStats.damageDealt.toFixed(0)}
 Получено урона: ${factionStats.damageTaken.toFixed(0)}
 `;
@@ -268,7 +298,7 @@ export class BattleManager {
       report += `
 \n🏆 Победитель: ${winner.name}`;
     } else {
-      report += `\n⚔️ Ничья - все фракции уничтожены`;
+      report += this.getAliveShips().length === 0 ? `\n⚔️ Ничья - все фракции уничтожены` : `\n⚔️ Бой остановлен без победителя`;
     }
 
     return report;

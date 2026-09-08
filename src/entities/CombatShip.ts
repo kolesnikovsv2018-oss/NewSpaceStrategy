@@ -1,16 +1,44 @@
 import { Ship } from './Ship';
 import { ICombatStats, IWeaponStats, IAttackResult } from './interfaces/CombatSystem';
-import { IPowerSource, IEngine, ICargo } from './interfaces/ShipComponents';
+import { IPowerSource, IEngine, ICargo, IEquipment, EquipmentType } from './interfaces/ShipComponents';
 
 /**
  * Боевой корабль с возможностью сражаться
  */
 export class CombatShip extends Ship {
-  combatStats: ICombatStats;
-  weaponStats: IWeaponStats;
+  private combatStatsView!: ICombatStats;
+  private weaponStatsView!: IWeaponStats;
+
+  // Compatibility views: current values live only in ShipState, maxima/configuration stay here.
+  get combatStats(): ICombatStats { return this.combatStatsView; }
+  set combatStats(stats: ICombatStats) {
+    const ship = this;
+    const { currentHull, currentShield, ...configuration } = stats;
+    this.state.hull = currentHull;
+    this.state.shield = currentShield;
+    this.combatStatsView = { ...configuration,
+      get currentHull() { return ship.state.hull; },
+      set currentHull(value: number) { ship.state.hull = value; },
+      get currentShield() { return ship.state.shield; },
+      set currentShield(value: number) { ship.state.shield = value; }
+    };
+  }
+
+  get weaponStats(): IWeaponStats { return this.weaponStatsView; }
+  set weaponStats(stats: IWeaponStats) {
+    const ship = this;
+    const { currentCooldown, ...configuration } = stats;
+    this.state.weapons.forEach(weapon => { weapon.cooldown = currentCooldown; });
+    this.weaponStatsView = { ...configuration,
+      // Legacy has one entry; designed ships expose the slowest remaining cooldown in this summary.
+      get currentCooldown() { return Math.max(0, ...ship.state.weapons.map(weapon => weapon.cooldown)); },
+      set currentCooldown(value: number) { ship.state.weapons.forEach(weapon => { weapon.cooldown = value; }); }
+    };
+  }
   factionId: string;
   target?: CombatShip;
-  isDestroyed: boolean = false;
+  get isDestroyed(): boolean { return this.state.isDestroyed; }
+  set isDestroyed(value: boolean) { this.state.isDestroyed = value; }
 
   constructor(
     id: string,
@@ -22,10 +50,34 @@ export class CombatShip extends Ship {
   ) {
     super(id, name, powerSource, engine, cargoHold);
     this.factionId = factionId;
+    this.state.weapons = [{ slotId: 'legacy-aggregate', cooldown: 0, ammo: null }];
 
     // Инициализация боевых характеристик на основе компонентов
     this.combatStats = this.initCombatStats();
     this.weaponStats = this.initWeaponStats();
+  }
+
+  override installEquipment(equipment: IEquipment): boolean {
+    if (!super.installEquipment(equipment)) return false;
+    this.recalculateEquipmentStats();
+    return true;
+  }
+
+  override uninstallEquipment(equipmentId: string): boolean {
+    if (!super.uninstallEquipment(equipmentId)) return false;
+    this.recalculateEquipmentStats();
+    return true;
+  }
+
+  /** Пересчёт не лечит корабль и не позволяет обойти перезарядку переустановкой. */
+  private recalculateEquipmentStats(): void {
+    const { currentHull, currentShield } = this.combatStats;
+    const cooldown = this.weaponStats.currentCooldown;
+    this.combatStats = this.initCombatStats();
+    this.combatStats.currentHull = Math.min(currentHull, this.combatStats.maxHull);
+    this.combatStats.currentShield = Math.min(currentShield, this.combatStats.maxShield);
+    this.weaponStats = this.initWeaponStats();
+    this.weaponStats.currentCooldown = cooldown;
   }
 
   /**
@@ -34,7 +86,11 @@ export class CombatShip extends Ship {
   private initCombatStats(): ICombatStats {
     // Базовые характеристики зависят от компонентов корабля
     const baseHull = 100 + this.cargoHold.capacity;
-    const baseShield = this.powerSource.energyCapacity / 10;
+    const shields = this.equipment.filter(eq => eq.type === EquipmentType.SHIELD);
+    const baseShield = this.powerSource.energyCapacity / 10
+      + shields.reduce((total, eq) => total + (eq.effect?.protection ?? 0), 0);
+    const shieldRegenRate = this.powerSource.energyOutput / 5
+      + shields.reduce((total, eq) => total + (eq.effect?.regenRate ?? 0), 0);
     const baseArmor = this.cargoHold.weight / 10;
     const baseEvasion = Math.min(this.engine.maxSpeed / 1000, 0.3);
 
@@ -43,7 +99,7 @@ export class CombatShip extends Ship {
       currentHull: baseHull,
       maxShield: baseShield,
       currentShield: baseShield,
-      shieldRegenRate: this.powerSource.energyOutput / 5,
+      shieldRegenRate,
       armor: baseArmor,
       evasion: baseEvasion
     };
@@ -61,7 +117,7 @@ export class CombatShip extends Ship {
 
     // Улучшаем характеристики если установлено оружие
     this.equipment.forEach(eq => {
-      if (eq.type === 'WEAPON' && eq.effect) {
+      if (eq.type === EquipmentType.WEAPON && eq.effect) {
         baseDamage += eq.effect.damage || 0;
         baseRange += eq.effect.range || 0;
         baseAccuracy = Math.min(baseAccuracy + 0.1, 0.95);
@@ -83,6 +139,8 @@ export class CombatShip extends Ship {
   /**
    * Атаковать цель
    */
+  getAttackAttemptsPerStep(): number { return 1; }
+
   attack(target: CombatShip): IAttackResult | null {
     // Проверяем, можем ли атаковать
     if (this.isDestroyed || target.isDestroyed) {
@@ -139,7 +197,7 @@ export class CombatShip extends Ship {
   /**
    * Получить урон
    */
-  takeDamage(damage: number, critical: boolean = false): IAttackResult {
+  takeDamage(damage: number, critical: boolean = false, _damageType?: 'beam' | 'projectile'): IAttackResult {
     let remainingDamage = damage;
     let shieldDamage = 0;
     let hullDamage = 0;
@@ -154,7 +212,7 @@ export class CombatShip extends Ship {
     // Оставшийся урон по корпусу с учетом брони
     if (remainingDamage > 0) {
       const armorReduction = this.combatStats.armor / (this.combatStats.armor + 100);
-      hullDamage = remainingDamage * (1 - armorReduction);
+      hullDamage = Math.min(remainingDamage * (1 - armorReduction), this.combatStats.currentHull);
       this.combatStats.currentHull -= hullDamage;
 
       // Проверяем уничтожение
@@ -167,7 +225,7 @@ export class CombatShip extends Ship {
 
     return {
       hit: true,
-      damage: damage,
+      damage: shieldDamage + hullDamage,
       shieldDamage: shieldDamage,
       hullDamage: hullDamage,
       critical: critical,
@@ -234,6 +292,7 @@ export class CombatShip extends Ship {
    * Обновление боевого корабля
    */
   update(deltaTime: number): void {
+    if (this.isDestroyed) return;
     super.update(deltaTime);
 
     // Восстанавливаем щит
@@ -261,7 +320,7 @@ export class CombatShip extends Ship {
    * Получить прочность щита в процентах
    */
   getShieldPercent(): number {
-    return (this.combatStats.currentShield / this.combatStats.maxShield) * 100;
+    return this.combatStats.maxShield > 0 ? (this.combatStats.currentShield / this.combatStats.maxShield) * 100 : 0;
   }
 
   /**

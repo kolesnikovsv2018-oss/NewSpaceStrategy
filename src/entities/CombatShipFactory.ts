@@ -1,206 +1,59 @@
-import { CombatShip } from './CombatShip';
-import { ShipComponentFactory } from './ShipComponentFactory';
-import { PowerSourceType, EngineType, CargoType, EquipmentType } from './interfaces/ShipComponents';
+import { z } from 'zod';
+import { DesignedShip } from './DesignedShip';
+import { createCombatDesign } from '../domain/combatPresets';
+import type { ShipDesign } from '../domain/shipDesign';
 
-/**
- * Фабрика для создания боевых кораблей
- */
+const countSchema = z.number().int().min(0).max(128);
+const compositionSchema = z.object({
+  fighters: countSchema.optional(), frigates: countSchema.optional(),
+  cruisers: countSchema.optional(), dreadnoughts: countSchema.optional()
+}).strict().refine(composition => Object.values(composition).reduce<number>((sum, count) => sum + (count ?? 0), 0) <= 128,
+  'Во флоте допускается не более 128 кораблей');
+export type FleetComposition = z.infer<typeof compositionSchema>;
+
+/** All production combat presets use the same blueprint, validator and runtime as the yard. */
 export class CombatShipFactory {
-  
-  /**
-   * Создать легкий истребитель
-   */
-  static createFighter(factionId: string, index: number = 0): CombatShip {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.SOLAR);
-    const engine = ShipComponentFactory.createEngine(EngineType.ION);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.BASIC);
-    
-    const ship = new CombatShip(
-      `fighter_${factionId}_${index}_${Date.now()}`,
-      `Истребитель-${index + 1}`,
-      powerSource,
-      engine,
-      cargoHold,
-      factionId
-    );
-
-    // Легкое вооружение
-    const weapon = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 1);
-    ship.installEquipment(weapon);
-
-    return ship;
+  static createFromDesign(design: ShipDesign, factionId: string): DesignedShip {
+    return new DesignedShip(design, factionId);
   }
 
-  /**
-   * Создать тяжелый крейсер
-   */
-  static createCruiser(factionId: string, index: number = 0): CombatShip {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.FUSION);
-    const engine = ShipComponentFactory.createEngine(EngineType.PLASMA);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.REINFORCED);
-    
-    const ship = new CombatShip(
-      `cruiser_${factionId}_${index}_${Date.now()}`,
-      `Крейсер-${index + 1}`,
-      powerSource,
-      engine,
-      cargoHold,
-      factionId
-    );
-
-    // Мощное вооружение и щиты
-    const weapon1 = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 2);
-    const weapon2 = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 2);
-    const shield = ShipComponentFactory.createEquipment(EquipmentType.SHIELD, 2);
-    
-    ship.installEquipment(weapon1);
-    ship.installEquipment(weapon2);
-    ship.installEquipment(shield);
-
-    return ship;
+  static createFighter(factionId: string, index = 0): DesignedShip {
+    return CombatShipFactory.createFromDesign(createCombatDesign('fighter', index), factionId);
+  }
+  static createFrigate(factionId: string, index = 0): DesignedShip {
+    return CombatShipFactory.createFromDesign(createCombatDesign('frigate', index), factionId);
+  }
+  static createCruiser(factionId: string, index = 0): DesignedShip {
+    return CombatShipFactory.createFromDesign(createCombatDesign('cruiser', index), factionId);
+  }
+  static createDreadnought(factionId: string, index = 0): DesignedShip {
+    return CombatShipFactory.createFromDesign(createCombatDesign('dreadnought', index), factionId);
   }
 
-  /**
-   * Создать фрегат (средний корабль)
-   */
-  static createFrigate(factionId: string, index: number = 0): CombatShip {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.NUCLEAR);
-    const engine = ShipComponentFactory.createEngine(EngineType.ION);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.REINFORCED);
-    
-    const ship = new CombatShip(
-      `frigate_${factionId}_${index}_${Date.now()}`,
-      `Фрегат-${index + 1}`,
-      powerSource,
-      engine,
-      cargoHold,
-      factionId
-    );
-
-    // Сбалансированное вооружение
-    const weapon = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 2);
-    const shield = ShipComponentFactory.createEquipment(EquipmentType.SHIELD, 1);
-    
-    ship.installEquipment(weapon);
-    ship.installEquipment(shield);
-
-    return ship;
+  static createFighterSquadron(factionId: string, count: number): DesignedShip[] {
+    return this.createFleet(factionId, { fighters: count });
   }
 
-  /**
-   * Создать дредноут (супер тяжелый корабль)
-   */
-  static createDreadnought(factionId: string, index: number = 0): CombatShip {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.FUSION);
-    const engine = ShipComponentFactory.createEngine(EngineType.PLASMA);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.ADVANCED);
-    
-    const ship = new CombatShip(
-      `dreadnought_${factionId}_${index}_${Date.now()}`,
-      `Дредноут-${index + 1}`,
-      powerSource,
-      engine,
-      cargoHold,
-      factionId
-    );
-
-    // Максимальное вооружение
-    const weapon1 = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 3);
-    const weapon2 = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 3);
-    const weapon3 = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 2);
-    const shield = ShipComponentFactory.createEquipment(EquipmentType.SHIELD, 3);
-    const repair = ShipComponentFactory.createEquipment(EquipmentType.REPAIR, 2);
-    
-    ship.installEquipment(weapon1);
-    ship.installEquipment(weapon2);
-    ship.installEquipment(weapon3);
-    ship.installEquipment(shield);
-    ship.installEquipment(repair);
-
-    return ship;
+  static createFleet(factionId: string, input: FleetComposition): DesignedShip[] {
+    // Validate all counts before creating anything; NaN/Infinity/fractions cannot start unbounded loops.
+    const composition = compositionSchema.parse(input);
+    return [
+      ...Array.from({ length: composition.fighters ?? 0 }, (_, index) => this.createFighter(factionId, index)),
+      ...Array.from({ length: composition.frigates ?? 0 }, (_, index) => this.createFrigate(factionId, index)),
+      ...Array.from({ length: composition.cruisers ?? 0 }, (_, index) => this.createCruiser(factionId, index)),
+      ...Array.from({ length: composition.dreadnoughts ?? 0 }, (_, index) => this.createDreadnought(factionId, index))
+    ];
   }
 
-  /**
-   * Создать эскадрилью истребителей
-   */
-  static createFighterSquadron(factionId: string, count: number): CombatShip[] {
-    const ships: CombatShip[] = [];
-    for (let i = 0; i < count; i++) {
-      ships.push(this.createFighter(factionId, i));
-    }
-    return ships;
-  }
-
-  /**
-   * Создать флот
-   */
-  static createFleet(
-    factionId: string,
-    composition: {
-      fighters?: number;
-      frigates?: number;
-      cruisers?: number;
-      dreadnoughts?: number;
-    }
-  ): CombatShip[] {
-    const fleet: CombatShip[] = [];
-
-    // Добавляем истребители
-    if (composition.fighters) {
-      for (let i = 0; i < composition.fighters; i++) {
-        fleet.push(this.createFighter(factionId, i));
-      }
-    }
-
-    // Добавляем фрегаты
-    if (composition.frigates) {
-      for (let i = 0; i < composition.frigates; i++) {
-        fleet.push(this.createFrigate(factionId, i));
-      }
-    }
-
-    // Добавляем крейсеры
-    if (composition.cruisers) {
-      for (let i = 0; i < composition.cruisers; i++) {
-        fleet.push(this.createCruiser(factionId, i));
-      }
-    }
-
-    // Добавляем дредноуты
-    if (composition.dreadnoughts) {
-      for (let i = 0; i < composition.dreadnoughts; i++) {
-        fleet.push(this.createDreadnought(factionId, i));
-      }
-    }
-
-    return fleet;
-  }
-
-  /**
-   * Создать случайный корабль
-   */
-  static createRandomShip(factionId: string): CombatShip {
+  static createRandomShip(factionId: string): DesignedShip {
     const random = Math.random();
-    
-    if (random < 0.4) {
-      return this.createFighter(factionId);
-    } else if (random < 0.7) {
-      return this.createFrigate(factionId);
-    } else if (random < 0.95) {
-      return this.createCruiser(factionId);
-    } else {
-      return this.createDreadnought(factionId);
-    }
+    if (random < 0.4) return this.createFighter(factionId);
+    if (random < 0.7) return this.createFrigate(factionId);
+    if (random < 0.95) return this.createCruiser(factionId);
+    return this.createDreadnought(factionId);
   }
 
-  /**
-   * Создать случайный флот
-   */
-  static createRandomFleet(factionId: string, shipCount: number): CombatShip[] {
-    const fleet: CombatShip[] = [];
-    for (let i = 0; i < shipCount; i++) {
-      fleet.push(this.createRandomShip(factionId));
-    }
-    return fleet;
+  static createRandomFleet(factionId: string, shipCount: number): DesignedShip[] {
+    return Array.from({ length: countSchema.parse(shipCount) }, () => this.createRandomShip(factionId));
   }
 }

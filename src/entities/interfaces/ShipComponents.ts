@@ -18,9 +18,9 @@ export interface IEngine extends IShipComponent {
 
 export interface ICargo extends IShipComponent {
   capacity: number;         // Максимальная вместимость в кубических метрах
-  usedSpace: number;       // Занятое пространство
+  readonly usedSpace: number; // Вычисляется из партий груза
   maxWeight: number;       // Максимальный вес груза
-  currentWeight: number;   // Текущий вес груза
+  readonly currentWeight: number; // Вычисляется из груза и legacy-оборудования
 }
 
 // Перечисления для типов компонентов
@@ -39,7 +39,8 @@ export enum EngineType {
 export enum CargoType {
   BASIC = 'Basic Hold',
   REINFORCED = 'Reinforced Hold',
-  ADVANCED = 'Advanced Hold'
+  ADVANCED = 'Advanced Hold',
+  CAPITAL = 'Capital Hold'
 }
 
 /**
@@ -53,7 +54,20 @@ export interface IEquipment {
   weight: number;          // Вес
   cost: number;            // Стоимость
   description?: string;
-  effect?: any;            // Эффект от оборудования
+  effect?: IEquipmentEffect;
+}
+
+// Типизированные эффекты текущей runtime-модели; объединение с Equipment — этап S2.
+export interface IEquipmentEffect {
+  damage?: number;
+  range?: number;
+  protection?: number;
+  regenRate?: number;
+  accuracy?: number;
+  miningSpeed?: number;
+  efficiency?: number;
+  repairRate?: number;
+  bonusCapacity?: number;
 }
 
 /**

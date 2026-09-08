@@ -67,6 +67,10 @@ export class ShipInfoPanel extends Phaser.GameObjects.Container {
    */
   private updateInfo(): void {
     if (!this.ship) return;
+    if (this.ship.getDesign()) {
+      this.infoText.setText(this.ship.getInfo());
+      return;
+    }
 
     const energyPercent = ((this.ship.powerSource.currentEnergy / this.ship.powerSource.energyCapacity) * 100).toFixed(0);
     const cargoPercent = ((this.ship.cargoHold.usedSpace / this.ship.cargoHold.capacity) * 100).toFixed(0);
@@ -97,7 +101,7 @@ ${this.ship.cargoHold.name}
 
 ━━━ ОБОРУДОВАНИЕ ━━━
 Установлено: ${this.ship.equipment.length} ед.
-${this.ship.equipment.map((eq: any) => `• ${eq.name}`).join('\n')}
+${this.ship.getInstalledModuleNames().map(name => `• ${name}`).join('\n')}
     `.trim();
 
     this.infoText.setText(info);

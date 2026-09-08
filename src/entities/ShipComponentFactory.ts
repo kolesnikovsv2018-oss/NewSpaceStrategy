@@ -13,6 +13,7 @@ import {
  * Фабрика для создания компонентов кораблей
  */
 export class ShipComponentFactory {
+  private static equipmentSequence = 0;
   
   /**
    * Создать источник энергии
@@ -113,6 +114,15 @@ export class ShipComponentFactory {
         usedSpace: 0,
         maxWeight: 300,
         currentWeight: 0
+      },
+      [CargoType.CAPITAL]: {
+        name: 'Тяжёлый грузовой отсек',
+        cost: 12000,
+        weight: 300,
+        capacity: 750,
+        usedSpace: 0,
+        maxWeight: 450,
+        currentWeight: 0
       }
     };
     
@@ -181,7 +191,7 @@ export class ShipComponentFactory {
     };
     
     return {
-      id: `${type}_${level}_${Date.now()}`,
+      id: `${type}_${level}_${Date.now()}_${++this.equipmentSequence}`,
       ...baseConfigs[type]
     };
   }
@@ -215,7 +225,8 @@ export class ShipComponentFactory {
     return [
       this.createCargoHold(CargoType.BASIC),
       this.createCargoHold(CargoType.REINFORCED),
-      this.createCargoHold(CargoType.ADVANCED)
+      this.createCargoHold(CargoType.ADVANCED),
+      this.createCargoHold(CargoType.CAPITAL)
     ];
   }
 }

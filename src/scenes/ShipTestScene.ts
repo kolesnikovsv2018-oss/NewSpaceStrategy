@@ -1,9 +1,9 @@
 import { Ship } from '../entities/Ship';
 import { ShipFactory } from '../entities/ShipFactory';
-import { ShipComponentFactory } from '../entities/ShipComponentFactory';
-import { EquipmentType } from '../entities/interfaces/ShipComponents';
 import { ShipSprite } from '../entities/visuals/ShipSprite';
 import { ShipInfoPanel } from '../ui/ShipInfoPanel';
+import { DesignedShip } from '../entities/DesignedShip';
+import { designSchema, type ShipDesign } from '../domain/shipDesign';
 
 /**
  * Демонстрационная сцена для тестирования кораблей
@@ -13,16 +13,38 @@ export class ShipTestScene extends Phaser.Scene {
   private shipSprites: ShipSprite[] = [];
   private infoPanel?: ShipInfoPanel;
   private selectedShip?: ShipSprite;
+  private trialDesign?: ShipDesign;
   
   constructor() {
     super({ key: 'ShipTestScene' });
   }
 
+  init(data: { design?: ShipDesign } = {}): void {
+    this.trialDesign = data.design ? designSchema.parse(data.design) : undefined;
+    // Phaser reuses settings.data when start() receives no payload. Consume it once.
+    this.sys.settings.data = {};
+  }
+
   create() {
+    this.ships = [];
+    this.shipSprites = [];
+    this.selectedShip = undefined;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ESC', this.hideSelection, this);
+      this.ships = [];
+      this.shipSprites = [];
+      this.selectedShip = undefined;
+      this.infoPanel = undefined;
+    });
     // Создаем звездный фон
     this.createStarfield();
     
-    // Создаем несколько кораблей
+    if (this.trialDesign) {
+      const ship = new DesignedShip(this.trialDesign, 'blue', 'flight');
+      ship.position = { x: 480, y: 320 };
+      this.ships.push(ship);
+    } else {
+    // Три проектных пресета и legacy-добытчик со служебным модулем.
     const scout = ShipFactory.createScout();
     const freighter = ShipFactory.createFreighter();
     const warship = ShipFactory.createWarship();
@@ -36,11 +58,8 @@ export class ShipTestScene extends Phaser.Scene {
     warship.position = { x: 600, y: 200 };
     miner.position = { x: 800, y: 200 };
     
-    // Добавляем оборудование на крейсер
-    const weapon = ShipComponentFactory.createEquipment(EquipmentType.WEAPON, 2);
-    const shield = ShipComponentFactory.createEquipment(EquipmentType.SHIELD, 1);
-    warship.installEquipment(weapon);
-    warship.installEquipment(shield);
+    // Крейсер уже выходит из фабрики с полной проверенной комплектацией.
+    }
     
     // Создаем визуальные представления кораблей
     this.createShipSprites();
@@ -50,7 +69,8 @@ export class ShipTestScene extends Phaser.Scene {
     
     // Добавляем инструкции
     this.add.text(this.cameras.main.width - 20, 20, 
-      'Кликните на корабль для просмотра информации\nESC - закрыть панель', {
+      this.trialDesign ? 'Испытание проекта: ' + this.trialDesign.name + '\nESC — вернуться в верфь' :
+        'Кликните на корабль для просмотра информации\nESC - закрыть панель', {
       fontSize: '14px',
       color: '#ffffff',
       backgroundColor: '#000000',
@@ -58,20 +78,45 @@ export class ShipTestScene extends Phaser.Scene {
     }).setOrigin(1, 0);
     
     // Тестируем движение
-    scout.startMoving(400, 400);
+    this.ships[0]?.startMoving(750, 420);
+    if (this.trialDesign) {
+      this.infoPanel.showShipInfo(this.ships[0]);
+      this.add.text(1080, 75, '← В верфь', { fontSize: '18px', color: '#8de1f2', backgroundColor: '#233e58', padding: { x: 12, y: 8 } })
+        .setName('return-to-yard').setInteractive({ useHandCursor: true }).on('pointerdown', () => this.hideSelection());
+      const ship = this.ships[0];
+      const message = this.add.text(800, 205, 'Тест трюма: груз не сохраняется в проекте', { fontSize: '13px', color: '#b5d8ef', wordWrap: { width: 430 } });
+      this.add.text(800, 125, '+ Руда: 10 ед. / 20 т / 10 м³', { fontSize: '16px', color: '#8de1f2', backgroundColor: '#233e58', padding: { x: 10, y: 5 } })
+        .setName('load-test-cargo').setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+          const ok = ship.loadCargo({ resourceType: 'ore', amount: 10, weight: 20, volume: 10 });
+          message.setText(ship.getCargoMessage()).setColor(ok ? '#8af5bd' : '#ff9292');
+        });
+      this.add.text(800, 165, '− Выгрузить 10 ед. руды', { fontSize: '16px', color: '#8de1f2', backgroundColor: '#233e58', padding: { x: 10, y: 5 } })
+        .setName('unload-test-cargo').setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+          const ok = ship.unloadCargo('ore', 10);
+          message.setText(ship.getCargoMessage()).setColor(ok ? '#8af5bd' : '#ff9292');
+        });
+    }
     
     // Обработчик клавиши ESC
-    this.input.keyboard?.on('keydown-ESC', () => {
-      if (this.selectedShip) {
-        this.selectedShip.setSelected(false);
-        this.selectedShip = undefined;
-      }
-      this.infoPanel?.hide();
-    });
+    this.input.keyboard?.on('keydown-ESC', this.hideSelection, this);
+  }
+
+  private hideSelection(): void {
+    if (this.trialDesign) { this.scene.start('ShipyardScene', { design: this.trialDesign }); return; }
+    this.selectedShip?.setSelected(false);
+    this.selectedShip = undefined;
+    this.infoPanel?.hide();
   }
 
   update(_time: number, delta: number) {
     const deltaSeconds = delta / 1000;
+    this.ships.forEach(ship => ship.update(deltaSeconds));
+    if (this.trialDesign && this.ships[0]) {
+      const ship = this.ships[0];
+      if (ship.position.x > 1000 || ship.position.x < 400 || ship.position.y > 620 || ship.position.y < 150) {
+        ship.startMoving(700, 360);
+      }
+    }
     
     // Обновляем все спрайты кораблей
     this.shipSprites.forEach(sprite => {

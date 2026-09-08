@@ -1,105 +1,35 @@
 import { Ship } from './Ship';
+import { DesignedShip } from './DesignedShip';
 import { ShipComponentFactory } from './ShipComponentFactory';
-import { PowerSourceType, EngineType, CargoType } from './interfaces/ShipComponents';
+import { PowerSourceType, EngineType, CargoType, EquipmentType } from './interfaces/ShipComponents';
+import { createCivilianDesign } from '../domain/civilianPresets';
+import { createCombatDesign } from '../domain/combatPresets';
+import { newId } from '../domain/shipDesign';
 
-/**
- * Фабрика для создания готовых кораблей
- */
 export class ShipFactory {
-  
-  /**
-   * Создать легкий разведывательный корабль
-   */
-  static createScout(): Ship {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.SOLAR);
-    const engine = ShipComponentFactory.createEngine(EngineType.ION);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.BASIC);
-    
-    return new Ship(
-      `scout_${Date.now()}`,
-      'Разведчик',
-      powerSource,
-      engine,
-      cargoHold
-    );
+  static createScout(): DesignedShip {
+    return new DesignedShip(createCivilianDesign('scout'), 'neutral', 'flight');
   }
-  
-  /**
-   * Создать грузовой корабль
-   */
-  static createFreighter(): Ship {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.NUCLEAR);
-    const engine = ShipComponentFactory.createEngine(EngineType.CHEMICAL);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.ADVANCED);
-    
-    return new Ship(
-      `freighter_${Date.now()}`,
-      'Грузовоз',
-      powerSource,
-      engine,
-      cargoHold
-    );
+
+  static createFreighter(): DesignedShip {
+    return new DesignedShip(createCivilianDesign('freighter'), 'neutral', 'flight');
   }
-  
-  /**
-   * Создать боевой корабль
-   */
-  static createWarship(): Ship {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.FUSION);
-    const engine = ShipComponentFactory.createEngine(EngineType.PLASMA);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.REINFORCED);
-    
-    return new Ship(
-      `warship_${Date.now()}`,
-      'Крейсер',
-      powerSource,
-      engine,
-      cargoHold
-    );
+
+  static createWarship(): DesignedShip {
+    return new DesignedShip(createCombatDesign('cruiser'), 'neutral');
   }
-  
-  /**
-   * Создать добывающий корабль
-   */
+
+  // Mining is not yet represented by the canonical component schema. Keep it explicit, not silently dropped.
   static createMiner(): Ship {
-    const powerSource = ShipComponentFactory.createPowerSource(PowerSourceType.NUCLEAR);
-    const engine = ShipComponentFactory.createEngine(EngineType.ION);
-    const cargoHold = ShipComponentFactory.createCargoHold(CargoType.REINFORCED);
-    
-    const ship = new Ship(
-      `miner_${Date.now()}`,
-      'Добытчик',
-      powerSource,
-      engine,
-      cargoHold
-    );
-    
-    // Устанавливаем добывающий модуль
-    const miningEquipment = ShipComponentFactory.createEquipment('MINING' as any, 1);
-    ship.installEquipment(miningEquipment);
-    
+    const ship = ShipFactory.createCustomShip('Добытчик', PowerSourceType.NUCLEAR, EngineType.ION, CargoType.REINFORCED);
+    const module = ShipComponentFactory.createEquipment(EquipmentType.MINING, 1);
+    if (!ship.installEquipment(module)) throw new Error('Недопустимая комплектация добытчика');
     return ship;
   }
-  
-  /**
-   * Создать пользовательский корабль
-   */
-  static createCustomShip(
-    name: string,
-    powerSourceType: PowerSourceType,
-    engineType: EngineType,
-    cargoType: CargoType
-  ): Ship {
-    const powerSource = ShipComponentFactory.createPowerSource(powerSourceType);
-    const engine = ShipComponentFactory.createEngine(engineType);
-    const cargoHold = ShipComponentFactory.createCargoHold(cargoType);
-    
-    return new Ship(
-      `custom_${Date.now()}`,
-      name,
-      powerSource,
-      engine,
-      cargoHold
-    );
+
+  /** Legacy custom component API until service modules and component catalogues are migrated. */
+  static createCustomShip(name: string, powerSourceType: PowerSourceType, engineType: EngineType, cargoType: CargoType): Ship {
+    return new Ship(newId('custom'), name, ShipComponentFactory.createPowerSource(powerSourceType),
+      ShipComponentFactory.createEngine(engineType), ShipComponentFactory.createCargoHold(cargoType));
   }
 }
