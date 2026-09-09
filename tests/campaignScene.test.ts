@@ -4,6 +4,8 @@ import * as domain from '../src/domain/campaignSession';
 import * as catalog from '../src/utils/ProductionCatalog';
 import { createDesign, createComponent, installComponent } from '../src/domain/shipDesign';
 import { getProductionQuote } from '../src/domain/production';
+import { createCombatDesign } from '../src/domain/combatPresets';
+import { ShipDesignManager } from '../src/utils/ShipDesignManager';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
@@ -56,6 +58,106 @@ function fixture() {
 }
 
 describe('campaign scene and projection renderer', () => {
+  it.each(['preset', 'library'] as const)('accepts both factions through the full paid colony-to-colony cycle using %s', source => {
+    // Real catalogue/repository/domain; only renderer/input and the storage port are substitutes.
+    const saved = createCombatDesign('fighter'); saved.name = 'Приёмочный проект';
+    const raw = JSON.stringify({ schemaVersion: 2, designs: [saved], components: [] });
+    const storage = { getItem: vi.fn((key: string) => source === 'library' && key === ShipDesignManager.STORAGE_KEY ? raw : null), setItem: vi.fn() };
+    vi.stubGlobal('localStorage', storage);
+    try {
+      const spy = vi.spyOn(domain, 'executeSessionCommand'), f = fixture();
+      const current = (): domain.CampaignSession => {
+        for (let i = spy.mock.results.length - 1; i >= 0; i--) {
+          const result = spy.mock.results[i].value as domain.SessionResult;
+          if (result.ok) return result.state;
+        }
+        throw Error('No successful session command');
+      };
+      const click = (name: string, failure?: domain.SessionErrorCode) => {
+        const calls = spy.mock.calls.length;
+        const before = calls ? structuredClone(current()) : undefined;
+        f.click(name);
+        if (spy.mock.calls.length === calls) { expect(failure).toBeUndefined(); return; }
+        expect(spy.mock.calls.length).toBe(calls + 1);
+        const result = spy.mock.results[calls].value as domain.SessionResult;
+        if (before) expect(spy.mock.calls[calls][0]).toEqual(before);
+        if (failure) {
+          expect(result).toMatchObject({ ok: false, code: failure }); expect(current()).toEqual(before);
+        } else {
+          expect(result.ok).toBe(true); expect(domain.campaignSessionSchema.safeParse(current()).success).toBe(true);
+        }
+      };
+      const end = () => { click('campaign-end-turn'); click('campaign-side-switch'); };
+      const choose = () => { if (source === 'library') for (let i = 0; i < 7; i++) click('production-next'); };
+      // Both colonies are founded by real commands, no preloaded money, ships, ownership or progress.
+      for (const [home, target] of [['sol', 'eden'], ['vega', 'nexus']] as const) {
+        click(`system-${target}`); click('campaign-explore'); click('campaign-colonize');
+        expect(f.find('campaign-income').text).toContain('+20 кредитов · +10 минералов');
+        click(`system-${home}`); click('campaign-production'); choose();
+        expect(f.find('production-quote').text).toContain('185 кр. / 11 мин.');
+        click('production-enqueue', 'INSUFFICIENT_RESOURCES');
+        click('campaign-production'); end();
+      }
+      for (let i = 0; i < 8; i++) end();
+      expect(current().turn).toBe(11);
+      expect(current().treasuries).toEqual({ blue: { credits: 200, minerals: 100 }, red: { credits: 200, minerals: 100 } });
+      const snapshots = [];
+      for (const [faction, home, id] of [['blue', 'sol', 1], ['red', 'vega', 2]] as const) {
+        click(`system-${home}`); click('campaign-production'); choose(); click('production-enqueue');
+        expect(current().treasuries[faction]).toEqual({ credits: 15, minerals: 89 });
+        const order = current().production.orders.find(item => item.id === id)!;
+        expect(order).toMatchObject({ factionId: faction, systemId: home, remainingTurns: 4 });
+        snapshots.push(structuredClone(order.design));
+        if (source === 'library') expect(order.design).toEqual(saved);
+        const paid = structuredClone(order.design);
+        click('production-refresh'); expect(current().production.orders.find(item => item.id === id)!.design).toEqual(paid);
+        click('campaign-production'); end();
+      }
+      // At each boundary only the ending faction's head advances; IDs and paid snapshots persist.
+      for (let i = 0; i < 6; i++) {
+        const faction = current().turn % 2 ? 'blue' : 'red';
+        const enemy = faction === 'blue' ? 'red' : 'blue';
+        const enemyBefore = domain.getCampaignSessionView(current(), enemy).production;
+        end(); expect(domain.getCampaignSessionView(current(), enemy).production).toEqual(enemyBefore);
+      }
+      expect(current().turn).toBe(19); expect(current().production.orders).toEqual([]);
+      expect(current().production.completed.map(item => item.id)).toEqual([1, 2]);
+      for (const [faction, home, target, id] of [['blue', 'sol', 'eden', 1], ['red', 'vega', 'nexus', 2]] as const) {
+        click(`system-${home}`); click('campaign-production');
+        expect(f.find('production-completed').text).toContain(`#${id}`);
+        const turn = current().turn, treasury = structuredClone(current().treasuries);
+        click('production-deploy'); click('production-travel');
+        expect(f.find('travel-ship').text).toContain(`#${id}`);
+        const oldSend = f.find('travel-send').listeners('pointerdown')[0] as () => void;
+        click('travel-send'); const count = spy.mock.calls.length; oldSend(); expect(spy).toHaveBeenCalledTimes(count);
+        expect(current().turn).toBe(turn); expect(current().treasuries).toEqual(treasury);
+        expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: faction, systemId: home,
+          design: snapshots[id - 1], transit: { destinationId: target, remainingTurns: 1 } });
+        expect(f.find('travel-send').interactive).toBe(false);
+        click('campaign-production'); click(`system-${target}`); click('campaign-production'); click('production-travel');
+        expect(f.find('travel-ship').text).toBe('Нет кораблей для отправки.');
+        click('campaign-end-turn');
+        expect(f.find('travel-ship').text).toContain(`#${id}`); expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+        expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: faction, systemId: target, design: snapshots[id - 1] });
+        click('travel-send', 'NOT_ACTIVE_FACTION');
+        click('campaign-production'); click('campaign-side-switch');
+      }
+      expect(current().turn).toBe(21); expect(current().production).toEqual({ lastOrderId: 2, orders: [], completed: [] });
+      expect(current().treasuries).toEqual({ blue: { credits: 115, minerals: 139 }, red: { credits: 115, minerals: 139 } });
+      for (const faction of ['blue', 'red'] as const) {
+        const view = domain.getCampaignSessionView(current(), faction);
+        expect(view.ships).toHaveLength(1); expect(view.ships[0].factionId).toBe(faction);
+        expect(view.ships[0]).not.toHaveProperty('transit');
+      }
+      expect(storage.getItem).toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.getItem(ShipDesignManager.STORAGE_KEY)).toBe(source === 'library' ? raw : null);
+      click('campaign-new'); click('campaign-confirm'); click('campaign-production'); click('production-travel');
+      expect(f.find('travel-count').text).toContain('0/100'); expect(f.find('campaign-turn').text).toContain('Ход 1');
+      click('campaign-menu'); click('campaign-confirm');
+      expect(f.nodes.every(node => node.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it('starts with one panel, six systems and a blue home', () => {
     const f = fixture();
     expect(f.nodes.filter(node => node.name.startsWith('system-'))).toHaveLength(6);
@@ -569,5 +671,172 @@ describe('campaign scene and projection renderer', () => {
     f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-toggle-ships');
     expect(f.find('production-ship').text).toBe('Размещённых кораблей пока нет.');
     f.click('campaign-end-turn'); expect(f.find('production-ship').text).toContain('#1 Готовый 1');
+  });
+
+  function travelFixture(count = 3) {
+    const f = deploymentFixture(count);
+    f.state.ships = f.state.production.completed.splice(0);
+    const eden = f.state.galaxy.systems.find(s => s.id === 'eden')!;
+    eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
+    f.click('production-travel'); return f;
+  }
+
+  it('opens travel without reading the catalog again or changing the state', () => {
+    const f = travelFixture(), before = structuredClone(f.state), reads = f.load.mock.calls.length;
+    expect(f.find('travel-destination').text).toBe('Цель 1/1: Эдем');
+    expect(f.find('travel-ships-title').text).toContain(': 3');
+    expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+    expect(f.find('travel-count').text).toContain('3/100');
+    f.click('production-travel'); f.click('production-travel');
+    expect(f.load).toHaveBeenCalledTimes(reads); expect(f.spy).not.toHaveBeenCalled(); expect(f.state).toEqual(before);
+  });
+
+  it('sends exactly the displayed ship and destination with captured turn without charging', () => {
+    const f = travelFixture(); f.click('travel-ships-next');
+    const old = f.find('travel-send').listeners('pointerdown')[0] as () => void;
+    const treasury = f.find('campaign-treasury').text;
+    old(); old(); expect(f.spy).toHaveBeenCalledTimes(1);
+    expect(f.spy.mock.calls[0][1]).toEqual({ kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 2, destinationId: 'eden' });
+    expect(f.find('travel-ship').text).toContain('2/2 · #3');
+    expect(f.find('travel-transit').text).toContain('#2 Готовый 2');
+    expect(f.find('travel-route').text).toContain('Сол → Эдем');
+    expect(f.find('campaign-treasury').text).toBe(treasury); expect(f.find('campaign-turn').text).toContain('Ход 1');
+    expect(f.message()).toContain('Корабль отправлен');
+  });
+
+  it('clamps ship/trip pages, selects the new trip and disables sends after all depart', () => {
+    const f = travelFixture(); f.click('travel-ships-next'); f.click('travel-ships-next'); f.click('travel-send');
+    expect(f.find('travel-ship').text).toContain('2/2 · #2'); expect(f.find('travel-transit').text).toContain('#3');
+    f.click('travel-send'); expect(f.find('travel-transit').text).toContain('#2');
+    f.click('travel-send'); expect(f.find('travel-send').interactive).toBe(false);
+    const calls = f.spy.mock.calls.length; f.click('travel-send'); expect(f.spy).toHaveBeenCalledTimes(calls);
+    expect(f.find('travel-ships-prev').interactive).toBe(false); expect(f.find('travel-ships-next').interactive).toBe(false);
+    expect(f.find('travel-transit').text).toContain('1/3 · #1');
+    f.click('travel-transit-next'); f.click('travel-transit-next'); expect(f.find('travel-transit').text).toContain('3/3 · #3');
+    expect(f.find('travel-transit-next').interactive).toBe(false);
+    f.click('travel-transit-prev'); expect(f.find('travel-transit').text).toContain('2/3 · #2');
+    f.click('campaign-end-turn'); expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+    expect(f.find('travel-transit-prev').interactive).toBe(false);
+  });
+
+  it('shows arrival in target and sends back along the reverse lane on the next own turn', () => {
+    const f = travelFixture(1); f.click('travel-send'); f.click('campaign-end-turn');
+    f.click('campaign-side-switch'); f.click('campaign-end-turn'); f.click('campaign-side-switch');
+    f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-ship').text).toContain('#1'); expect(f.find('travel-destination').text).toBe('Цель 1/1: Сол');
+    f.click('travel-send'); expect(f.find('travel-route').text).toContain('Эдем → Сол');
+    expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toMatchObject({ expectedTurn: 3, systemId: 'eden', destinationId: 'sol' });
+  });
+
+  it('offers only neighbouring own colonies, supports destination paging and resets selection', () => {
+    const f = travelFixture(1); const nexus = f.state.galaxy.systems.find(s => s.id === 'nexus')!;
+    nexus.ownerId = 'blue'; nexus.exploredBy = ['blue']; f.state.ships[0].systemId = 'eden';
+    f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-destination').text).toBe('Цель 1/2: Сол');
+    f.click('travel-destination-next'); expect(f.find('travel-destination').text).toBe('Цель 2/2: Узел');
+    expect(f.find('travel-destination-next').interactive).toBe(false);
+    f.click('travel-destination-prev'); expect(f.find('travel-destination').text).toContain('Сол');
+    f.click('travel-destination-next'); f.click('production-travel'); f.click('production-travel');
+    expect(f.find('travel-destination').text).toContain('Сол');
+    f.click('travel-destination-next'); f.click('travel-send'); expect(f.find('travel-route').text).toContain('Эдем → Узел');
+  });
+
+  it.each(['neutral', 'enemy', 'unknown'] as const)('disables travel without a valid neighbouring own destination: %s', kind => {
+    const f = travelFixture(1), eden = f.state.galaxy.systems.find(s => s.id === 'eden')!;
+    eden.ownerId = kind === 'enemy' ? 'red' : null;
+    eden.exploredBy = kind === 'unknown' ? [] : kind === 'enemy' ? ['red', 'blue'] : ['blue'];
+    f.click('production-travel'); f.click('production-travel');
+    expect(f.find('travel-destination').text).toBe('Нет соседних собственных колоний.');
+    expect(f.find('travel-send').interactive).toBe(false); f.click('travel-send'); expect(f.spy).not.toHaveBeenCalled();
+  });
+
+  it('does not permit sending ready records without deployed ships', () => {
+    const f = deploymentFixture(1); f.click('production-travel');
+    expect(f.find('travel-ship').text).toBe('Нет кораблей для отправки.');
+    expect(f.find('travel-send').interactive).toBe(false);
+  });
+
+  it('shows inactive rejection without removing the ship or creating a trip', () => {
+    const f = travelFixture(1); f.click('campaign-end-turn'); f.click('travel-send');
+    expect(f.message()).toBe('Сейчас ход другой стороны'); expect(f.find('travel-ship').text).toContain('#1');
+    expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+  });
+
+  it('shows stale or vanished ship errors rather than selecting a replacement', () => {
+    const f = travelFixture(); f.state.turn = 3; f.click('travel-send');
+    expect(f.message()).toContain('Номер хода изменился'); expect(f.spy.mock.calls[0][1]).toMatchObject({ expectedTurn: 1 });
+    f.state.ships.shift(); f.click('travel-send'); expect(f.message()).toContain('Свой корабль не найден');
+    expect(f.find('travel-ship').text).toContain('#2');
+  });
+
+  it('domain rejects a captured destination which is no longer owned', () => {
+    const f = travelFixture(1); f.state.galaxy.systems.find(s => s.id === 'eden')!.ownerId = null;
+    f.click('travel-send'); expect(f.message()).toBe('Перелёт доступен только в свою колонию');
+    expect(f.find('travel-send').interactive).toBe(false); expect(f.find('travel-ship').text).toContain('#1');
+  });
+
+  it('keeps the trip visible when endTurn overflows and when an opponent ends their turn', () => {
+    const f = travelFixture(1); f.click('travel-send');
+    const current = f.spy.mock.results[0].value.state as domain.CampaignSession;
+    current.treasuries.blue.credits = domain.MAX_RESOURCE;
+    f.click('campaign-end-turn'); expect(f.message()).toContain('Доход превысит предел');
+    expect(f.find('travel-route').text).toContain('Сол → Эдем');
+    current.treasuries.blue.credits = 0; current.turn = 2;
+    f.click('campaign-side-switch'); f.click('campaign-end-turn'); f.click('campaign-side-switch'); f.click('production-travel');
+    expect(f.find('travel-transit').text).toContain('#1');
+  });
+
+  it('renders only red ships/routes after switching and sends red to its own neighbour', () => {
+    const f = travelFixture(1), nexus = f.state.galaxy.systems.find(s => s.id === 'nexus')!;
+    nexus.ownerId = 'red'; nexus.exploredBy = ['red', 'blue'];
+    f.state.production.lastOrderId = 2;
+    f.state.ships.push({ ...structuredClone(f.state.ships[0]), id: 2, factionId: 'red', systemId: 'vega', design: { ...f.choices[0].design, name: 'Красный' } });
+    f.click('campaign-end-turn'); f.click('campaign-side-switch');
+    expect(f.nodes.filter(n => !n.destroyed).some(n => n.name.startsWith('travel-'))).toBe(false);
+    f.click('campaign-production'); f.click('system-vega'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-ship').text).toContain('#2 Красный'); expect(f.find('travel-count').text).toContain('1/100');
+    f.click('travel-send'); expect(f.find('travel-route').text).toContain('Вега → Узел');
+    f.click('campaign-side-switch'); f.click('campaign-production'); f.click('system-sol'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+    expect(f.nodes.filter(n => !n.destroyed).some(n => n.text.includes('Красный'))).toBe(false);
+  });
+
+  it.each(['travel-ships-next', 'production-travel', 'campaign-production', 'campaign-side-switch', 'campaign-new'])('old send callback is inert after %s', action => {
+    const f = travelFixture(), old = f.find('travel-send').listeners('pointerdown')[0] as () => void;
+    f.click(action); old(); expect(f.spy).not.toHaveBeenCalled();
+  });
+
+  it('blocks all travel controls while pending and ESC closes one level at a time', () => {
+    const f = travelFixture(); f.click('travel-send'); f.click('travel-send'); f.click('campaign-new');
+    for (const name of ['travel-send', 'travel-ships-next', 'travel-destination-next', 'travel-transit-prev', 'travel-transit-next', 'production-travel']) {
+      expect(f.find(name).interactive).toBe(false); f.click(name);
+    }
+    expect(f.spy).toHaveBeenCalledTimes(2);
+    f.keyboard.emit('keydown-ESC'); expect(f.find('travel-transit')).toBeDefined();
+    f.keyboard.emit('keydown-ESC'); expect(f.find('production-enqueue')).toBeDefined();
+    expect(f.nodes.filter(n => !n.destroyed && n.name === 'travel-panel')).toHaveLength(0);
+    f.keyboard.emit('keydown-ESC'); expect(f.find('system-sol')).toBeDefined(); expect(f.start).not.toHaveBeenCalled();
+  });
+
+  it('clears travel state and callbacks on reset and shutdown/reentry', () => {
+    const f = travelFixture(), old = f.find('travel-send').listeners('pointerdown')[0] as () => void;
+    f.click('travel-ships-next'); f.click('travel-send'); f.click('campaign-new'); f.click('campaign-confirm'); old();
+    expect(f.spy).toHaveBeenCalledTimes(1);
+    f.click('campaign-production'); f.click('production-travel'); expect(f.find('travel-count').text).toContain('0/100');
+    f.click('campaign-menu'); f.click('campaign-confirm'); old();
+    expect(f.nodes.every(n => n.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+    f.scene.create(); f.click('campaign-production'); f.click('production-travel'); old();
+    expect(f.find('travel-ship').text).toBe('Нет кораблей для отправки.');
+    expect(f.nodes.filter(n => !n.destroyed && n.name === 'travel-panel')).toHaveLength(1);
+    expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+  });
+
+  it('fits large IDs and long names without modifying the snapshot in either list', () => {
+    const f = travelFixture(1), name = `Ш\n${'Ш'.repeat(78)}`;
+    f.state.production.lastOrderId = 999999999; f.state.ships[0].id = 999999999; f.state.ships[0].design.name = name;
+    f.click('production-travel'); f.click('production-travel');
+    expect(f.find('travel-ship').width).toBeLessThanOrEqual(745); expect(f.find('travel-ship').text).toMatch(/#999999999 Ш Ш.*…$/);
+    f.click('travel-send'); expect(f.find('travel-transit').width).toBeLessThanOrEqual(745);
+    expect(f.spy.mock.results[0].value.state.ships[0].design.name).toBe(name);
   });
 });

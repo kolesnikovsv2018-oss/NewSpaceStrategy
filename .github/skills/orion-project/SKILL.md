@@ -7,7 +7,7 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 ## Назначение
 
-Браузерный прототип 2D-стратегии в духе Master of Orion. Цикл проекта корабля выполнен в S2. S3.1–S3.4 дают модель/карту галактики и пошаговую экономику в UI; S3.5–S3.6 добавляют чистую производственную очередь и интерфейс заказов. S3.7–S3.8 — модель и UI размещения готового проекта в стратегический корабль. S3.9 — чистый перелёт одного корабля между соседними своими колониями за один свой endTurn, пока без кнопок. Группировка флотов, топливо/снабжение, исследования, дипломатия и законченная кампания ещё не реализованы.
+Браузерный прототип 2D-стратегии в духе Master of Orion. Цикл проекта корабля выполнен в S2. S3.1–S3.4 дают модель/карту галактики и пошаговую экономику в UI; S3.5–S3.6 добавляют чистую производственную очередь и интерфейс заказов. S3.7–S3.8 — модель и UI размещения готового проекта в стратегический корабль. S3.9–S3.10 — модель и UI перелёта одного корабля между соседними своими колониями за один свой endTurn. Группировка флотов, топливо/снабжение, исследования, дипломатия и законченная кампания ещё не реализованы.
 
 ## Стек и команды
 
@@ -25,7 +25,7 @@ description: 'Контекст Orion, стек, карта кода и план 
 - src/entities — Ship, CombatShip, фабрики, BattleManager; визуализация отдельно в visuals/ShipSprite.
 - src/domain/shipDesign.ts — ComponentDefinition с kind, ShipDesign, ShipStats, чистые формулы, корпуса и единый валидатор нового пути.
 - src/domain/campaign.ts — чистая фиксированная галактика S3.1; состояния партий, строгие explore/colonize и проекции стороны. Никаких Phaser/кораблей/RNG/часов/localStorage. Контракты ниже и в docs/CAMPAIGN.md; tests/campaign.test.ts — 45 регрессий.
-- src/domain/campaignSession.ts — CampaignSession{galaxy,turn,treasuries,production,ships}, строгие executeSessionCommand и getCampaignSessionView. Переиспользует схемы/правила campaign.ts; все команды карты идут через session API. tests/campaignSession.test.ts — 60 чистых регрессий, campaignScene.test.ts — 51 контракт UI с fake Phaser.
+- src/domain/campaignSession.ts — CampaignSession{galaxy,turn,treasuries,production,ships}, строгие executeSessionCommand и getCampaignSessionView. Переиспользует схемы/правила campaign.ts; все команды карты идут через session API. tests/campaignSession.test.ts — 60 чистых регрессий, campaignScene.test.ts — 75 контрактов UI с fake Phaser, включая приёмку обеих сторон через реальные каталог/репозиторий/domain и временный StoragePort.
 - src/domain/campaignShips.ts — строгие стратегические записи, лимит100 на сторону; deployProduction переносит completed в ships, sendShip начинает transit, advanceShipTravel завершает own trips на успешном endTurn. isShipAtColony исключает transit из обеих колоний. tests/campaignShips.test.ts — 41 регрессия, campaignTravel.test.ts — 63; без Phaser/runtime/тактических формул.
 - src/utils/ProductionCatalog.ts — read-only снимок семи пресетов и библиотеки ShipDesignManager; tests/ProductionCatalog.test.ts — 5 проверок. src/ui/ProductionPanel.ts — вкладка своей колонии, получает только SessionView/каталог/callbacks; CampaignPanel владеет её destroy.
 - src/domain/production.ts — S3.5: strict productionStateSchema, getProductionQuote/Refund, advanceProduction FIFO без Phaser/runtime/часов. Обязательное session.production; enqueueProduction/cancelProduction и интеграция endTurn в campaignSession. campaignEconomy.ts — общие ресурсы, реэкспорт старых символов сессии сохранён. tests/production.test.ts — 58 регрессий.
@@ -56,11 +56,26 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 ## Текущее состояние
 
-2026-09-09: S3.9 выполнен, [отчёт](../../../reports/2026-09-09/07-campaign-travel.md). 63 новых доменных теста и1 сценовый, всего708/23 файла, typecheck/build. Настоящий Phaser программно проверил обычный endTurn и диагностический completed→deploy→send→arrival, отсутствие корабля в обеих колониях до прибытия, счётчик/сообщение/reset; localStorage неизменен. Это не mouse E2E и не UI перелёта. JS chunk1642.16 kB/gzip387.27 kB, предупреждение сохранено.
+2026-09-09: S3.11 выполнен, [приёмочная сверка](../../../reports/2026-09-09/09-strategic-cycle-acceptance.md). Два новых сквозных теста (пресет/библиотека), каждый проходит обе стороны от начальной партии до прибытия. Всего732/23 файла,75 сценовых, typecheck/build; исправлений игровой логики не потребовалось. Настоящий Phaser повторил цикл обеих сторон с пресетом без подстановки ресурсов/колоний/кораблей: mouse заказ/deploy/send/arrival/inactive, программно география/накопление/прогресс. Turn21: ID1 в eden, ID2 в nexus, казны115/139, очереди пусты, проекты неизменны. Библиотека не записана, после reset/exit/reentry одна панель/ESC/canvas. Не полный mouse E2E; библиотечный вариант в новом браузерном прогоне не повторялся. JS прежний1646.29 kB/gzip388.38 kB, предупреждение сохранено.
 
 S2 закрыт для канонического проектного цикла; [приёмочная сверка](../../../reports/2026-09-08/11-s2-acceptance.md). Разделение Definition/Design/Stats/State/View, общий валидатор, сохранения, испытания и защита черновика приняты. Legacy ShipComponents/IEquipment сохраняются как совместимость; топливо/AI-конструктор/службы ещё не реализованы. Изменение модулей предсказуемо меняет расчёт/отдельные атаки, не гарантирует одинаковый исход случайного боя. Прежние браузерные проверки S2 — в отчётах, в S3.1 они не повторялись.
 
-Далее S3.10: UI отправки выбранного своего стационарного корабля в соседнюю свою колонию и просмотр собственных transit/прибытия. Захватывать полный payload/expectedTurn, блокировать stale/pending, не раскрывать чужие ships; проверить оба направления/стороны, отказы, страницы, reset/cleanup и настоящий браузер. Топливо/содержание/группировка/бой/AI/save отдельно. S3 целиком открыт; службы mining/repair/scanner, autosave/recovery/beforeunload и сохранение кампании не реализованы.
+Далее S3.12: чистая модель стратегического топлива для одиночного корабля. Сначала явно определить ёмкость/начальный запас, расход на прямой перелёт и правила/стоимость заправки в своей колонии; затем строгие state/команды, atomic send/refuel, own/active/expectedTurn, независимые проекции и регрессии. Не использовать тактическую батарею/скорость, не менять ShipDesign v2. UI заправки, снабжение флотов, содержание/группировка/бой/AI/save отдельно; параметры ещё не реализованы. S3 целиком открыт.
+
+## Приёмочный сценарий S3.11
+
+- campaignScene.test.ts: два варианта preset/library, каждый с настоящими ProductionCatalog, ShipDesignManager и session API. Fake Phaser и временный global localStorage-port — только границы среды; стартовое состояние/казны/владение/заказы/ships не подменяются. Глобальный stub снимается в finally, записи storage запрещены проверкой.
+- Обе стороны explore/colonize свою соседнюю колонию, получают одинаковый отказ покупки185/11 на старте100/50, затем обычными endTurn накапливают200/100 к turn11. Blue оплачивает ID1 в sol, red ID2 в vega; по4 собственных шага дают completed к turn19. Refresh не меняет оплаченные snapshot; чужой endTurn не двигает очередь.
+- Deploy→send каждой стороны сохраняют номер хода/казны/ID/проект; до прибытия цель пуста, собственный endTurn переносит туда ровно один корабль. Старый callback инертен, попытка обратного send неактивной стороной отклоняется. На turn21 по одному own ship, lastOrderId2, пустые orders/completed, казны115 credits/139 minerals. Это проверка текущих предварительных коэффициентов, не баланс или законченная партия.
+- Принят только уже реализованный мирный цикл; S3 требует ещё угрозу/технологии/бой/победу. Браузер не заменять fake-тестами; конкретные проверки/ограничения в отчёте.
+
+## Интерфейс перелётов S3.10
+
+- В своей колонии Производство → production-travel открывает отдельную TravelPanel вместо очереди, не поверх неё. Дочерняя панель принадлежит ProductionPanel; destroy цепочки делает старые callbacks инертными. Только SessionView, собственные ships и projected lanes, без full state/definition/storage.
+- Верхний список стационарных ships выбранной колонии: travel-ships-prev/next, travel-ship. Цели — только explored own соседи по lanes: travel-destination-prev/next. travel-send замыкает показанные ship.id/destination.id; MainScene добавляет показанные factionId/systemId/expectedTurn. Нет корабля/цели — disabled; неактивная сторона/сменившееся состояние дают доменные отказы. Новый клик после redraw может отправить следующий корабль, старый callback не может.
+- Нижний список travel-transit-prev/next показывает ВСЕ собственные transit, не только выбранного источника: ID/имя, source→destination,1 свой ход. Повторной отправки transit нет. MainScene ограничивает страницы кораблей/маршрутов; успешная отправка выбирает новый маршрут, исчезновение всех маршрутов после endTurn возвращает страницу0. Имена сокращены реальной text.width до745 px, цель400 px, snapshot неизменен.
+- travelOpen/destinationIndex/transitPage принадлежат сцене; shipsPage общий со списком размещённых. Выбор другого корабля сбрасывает цель. Смена стороны/колонии/карты, reset/shutdown очищают travel state; каталог повторно не читается. Toggle возврата к производству сбрасывает цель/маршрут. Pending блокирует controls; ESC: отмена pending → перелёты в производство → производство на карту → подтверждение меню.
+- 22 новых регрессии в campaignScene.test.ts проверяют captured payload, обе стороны/направления, страницы/цели, no-target/no-ship, ошибки/stale/ownership/overflow, приватность, длинные имена, pending/reset/cleanup. Fake Phaser не hit testing; браузерные результаты в отчёте S3.10. Модель S3.9/стоимость/топливо не менялись.
 
 ## Ограниченный перелёт S3.9
 
@@ -77,7 +92,7 @@ S2 закрыт для канонического проектного цикл�
 - Deploy замыкает показанный record.id, MainScene замыкает factionId/systemId/expectedTurn и вызывает session-команду. Нет completed — disabled; неактивная сторона/SHIP_LIMIT остаются доменными отказами по доступной кнопке. Повтор старого callback после redraw инертен, новое нажатие может разместить следующую запись.
 - MainScene хранит showShips/shipsPage отдельно от completedPage; render ограничивает обе страницы текущими списками, после deploy готовые остаются открыты, shipsPage указывает новый корабль. Выбор колонии/стороны сбрасывает страницы/режим; reset/shutdown очищают их. Переключение режима не меняет игру/каталог.
 - Pending блокирует deploy/toggle/страницы; ESC сначала отменяет pending, иначе закрывает всё производство на карту. Destroy родителя освобождает дочернюю панель и callbacks. Длинный completed имеет570 px до кнопки, ship745 px; реальный text.width+многоточие без изменения snapshot. Счётчик лимита в начале подсказки не теряется при обрезке.
-- UI явно говорит: размещение бесплатно, в этой колонии, без смены хода; кнопок перелёта и боя пока нет. Перелёт модели добавлен S3.9; библиотека и зависимости не менялись. Сценовые тесты с fake Phaser не являются hit testing.
+- UI явно говорит: размещение бесплатно, в этой колонии, без смены хода. S3.10 добавляет кнопку «Перелёты» над очередью; боя нет. Библиотека и зависимости не менялись. Сценовые тесты с fake Phaser не являются hit testing.
 
 ## Стратегическое размещение S3.7
 

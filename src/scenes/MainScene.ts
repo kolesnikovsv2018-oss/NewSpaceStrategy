@@ -22,6 +22,9 @@ export class MainScene extends Phaser.Scene {
   private completedPage = 0;
   private shipsPage = 0;
   private showShips = false;
+  private travelOpen = false;
+  private destinationIndex = 0;
+  private transitPage = 0;
 
   constructor() { super({ key: 'MainScene' }); }
 
@@ -36,10 +39,12 @@ export class MainScene extends Phaser.Scene {
       this.message = ''; this.error = false;
       this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
       this.shipsPage = 0; this.showShips = false;
+      this.resetTravel();
     });
   }
 
   private resetCampaign(): void {
+    this.resetTravel();
     this.campaign = createCampaignSession();
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
     this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
@@ -56,16 +61,19 @@ export class MainScene extends Phaser.Scene {
     const choice = this.catalog?.choices[this.choiceIndex];
     const design = choice?.quote ? designSchema.parse(choice.design) : undefined;
     const view = getCampaignSessionView(this.campaign, factionId);
+    this.transitPage = Math.max(0, Math.min(this.transitPage, view.ships.filter(ship => ship.transit).length - 1));
     this.completedPage = Math.max(0, Math.min(this.completedPage, view.production.completed.filter(record => record.systemId === systemId).length - 1));
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
     this.panel = new CampaignPanel(this, view, {
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
-        completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips } : undefined
+        completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
+        travel: this.travelOpen ? { shipsPage: this.shipsPage, destinationIndex: this.destinationIndex, transitPage: this.transitPage } : undefined } : undefined
     }, {
       select: id => {
         if (this.pending) return;
         this.selectedId = id; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+        this.resetTravel();
         this.message = ''; this.error = false; this.render();
       },
       switchSide: () => {
@@ -73,6 +81,7 @@ export class MainScene extends Phaser.Scene {
         this.factionId = this.factionId === 'blue' ? 'red' : 'blue';
         this.choiceIndex = 0; this.completedPage = 0;
         this.shipsPage = 0; this.showShips = false;
+        this.resetTravel();
         this.message = ''; this.error = false; this.render();
       },
       command: kind => this.execute(kind === 'endTurn'
@@ -80,6 +89,7 @@ export class MainScene extends Phaser.Scene {
       toggleProduction: () => {
         if (this.pending) return;
         this.productionOpen = !this.productionOpen;
+        this.resetTravel();
         if (this.productionOpen && !this.catalog) this.catalog = loadProductionCatalog();
         this.message = ''; this.error = false; this.render();
       },
@@ -98,7 +108,18 @@ export class MainScene extends Phaser.Scene {
         completedPage: page => { if (this.pending) return; this.completedPage = page; this.render(); },
         shipsPage: page => { if (this.pending) return; this.shipsPage = page; this.render(); },
         toggleShips: () => { if (this.pending) return; this.showShips = !this.showShips; this.render(); },
-        deploy: orderId => this.execute({ kind: 'deployProduction', factionId, systemId, expectedTurn, orderId })
+        deploy: orderId => this.execute({ kind: 'deployProduction', factionId, systemId, expectedTurn, orderId }),
+        toggleTravel: () => {
+          if (this.pending) return;
+          this.travelOpen = !this.travelOpen; this.destinationIndex = 0; this.transitPage = 0;
+          this.message = ''; this.error = false; this.render();
+        },
+        travel: {
+          shipsPage: page => { if (this.pending) return; this.shipsPage = page; this.destinationIndex = 0; this.render(); },
+          destination: index => { if (this.pending) return; this.destinationIndex = index; this.render(); },
+          transitPage: page => { if (this.pending) return; this.transitPage = page; this.render(); },
+          send: (shipId, destinationId) => this.execute({ kind: 'sendShip', factionId, expectedTurn, systemId, shipId, destinationId })
+        }
       },
       request: action => { if (this.pending) return; this.pending = action; this.render(); },
       cancel: () => { this.pending = undefined; this.render(); },
@@ -116,6 +137,11 @@ export class MainScene extends Phaser.Scene {
     this.error = !result.ok;
     if (result.ok) {
       this.campaign = result.state;
+      if (command.kind === 'sendShip') {
+        this.destinationIndex = 0;
+        this.transitPage = result.state.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
+          .findIndex(ship => ship.id === command.shipId);
+      }
       if (command.kind === 'deployProduction') {
         this.shipsPage = result.state.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
       }
@@ -130,8 +156,13 @@ export class MainScene extends Phaser.Scene {
 
   private onEscape = (): void => {
     if (!this.campaign) return;
+    if (!this.pending && this.travelOpen) { this.resetTravel(); this.render(); return; }
     if (!this.pending && this.productionOpen) { this.productionOpen = false; this.render(); return; }
     this.pending = this.pending ? undefined : 'menu';
     this.render();
   };
+
+  private resetTravel(): void {
+    this.travelOpen = false; this.destinationIndex = 0; this.transitPage = 0;
+  }
 }

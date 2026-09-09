@@ -4,6 +4,7 @@ import type { SystemId } from '../domain/campaign';
 import { isShipAtColony, MAX_CAMPAIGN_SHIPS } from '../domain/campaignShips';
 import { getProductionQuote, getProductionRefund } from '../domain/production';
 import type { ProductionCatalog } from '../utils/ProductionCatalog';
+import { TravelPanel, type TravelPanelState, type TravelPanelActions } from './TravelPanel';
 
 export interface ProductionPanelState {
   catalog: ProductionCatalog;
@@ -11,6 +12,7 @@ export interface ProductionPanelState {
   completedPage: number;
   shipsPage: number;
   showShips: boolean;
+  travel?: TravelPanelState;
 }
 export interface ProductionPanelActions {
   choose: (index: number) => void;
@@ -21,6 +23,8 @@ export interface ProductionPanelActions {
   shipsPage: (page: number) => void;
   toggleShips: () => void;
   deploy: (orderId: number) => void;
+  toggleTravel: () => void;
+  travel: TravelPanelActions;
 }
 const short = (text: string, length = 42): string => {
   const clean = text.replace(/\s+/g, ' ');
@@ -31,6 +35,7 @@ const short = (text: string, length = 42): string => {
 export class ProductionPanel {
   private readonly root: Phaser.GameObjects.Container;
   private disposed = false;
+  private travel?: TravelPanel;
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, systemId: SystemId,
     state: ProductionPanelState, actions: ProductionPanelActions, private readonly blocked: boolean) {
@@ -39,6 +44,11 @@ export class ProductionPanel {
     this.label(46, 223, `ПРОИЗВОДСТВО · ${system.name}`, 'production-title', 18);
     if (system.visibility !== 'explored' || system.ownerId !== session.galaxy.factionId) {
       this.label(46, 270, 'Выберите свою колонию на карте. Чужие очереди недоступны.', 'production-unavailable');
+      return;
+    }
+    this.button(490, 216, state.travel ? '← Производство' : 'Перелёты', 'production-travel', actions.toggleTravel);
+    if (state.travel) {
+      this.travel = new TravelPanel(scene, session, systemId, state.travel, actions.travel, blocked);
       return;
     }
     const choice = state.catalog.choices[state.choiceIndex];
@@ -75,7 +85,7 @@ export class ProductionPanel {
       this.button(697, 544, '›', 'production-ships-next', () => actions.shipsPage(page + 1), page >= ships.length - 1);
       this.label(46, 594, ship ? `${page + 1}/${ships.length} · #${ship.id} ${short(ship.design.name, 56)}`
         : 'Размещённых кораблей пока нет.', 'production-ship', 16);
-      this.label(46, 627, `Всего у стороны: ${session.ships.length}/${MAX_CAMPAIGN_SHIPS} · Кнопок перелёта и боя пока нет.`, 'production-ships-hint', 13);
+      this.label(46, 627, `Всего у стороны: ${session.ships.length}/${MAX_CAMPAIGN_SHIPS} · Отправка — кнопка «Перелёты» сверху.`, 'production-ships-hint', 13);
       return;
     }
     const page = Math.max(0, Math.min(state.completedPage, completed.length - 1));
@@ -106,5 +116,5 @@ export class ProductionPanel {
     this.root.add(text);
     if (!disabled && !this.blocked) text.setInteractive({ useHandCursor: true }).on('pointerdown', () => { if (!this.disposed) action(); });
   }
-  destroy(): void { if (!this.disposed) { this.disposed = true; this.root.destroy(); } }
+  destroy(): void { if (!this.disposed) { this.disposed = true; this.travel?.destroy(); this.root.destroy(); } }
 }
