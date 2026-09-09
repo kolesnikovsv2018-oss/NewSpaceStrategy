@@ -8,12 +8,15 @@ import { isShipAtColony } from '../domain/campaignShips';
 import { getFleetTransit, isFleetAtColony, isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
 import { CampaignSaveManager } from '../utils/CampaignSaveManager';
+import { executeAiTurn, type AiTurnSummary } from '../domain/campaignAiExecutor';
+import type { AiTurnRequest } from '../domain/campaignAiPlanner';
 
 interface PendingOperation {
   action: CampaignConfirmation;
   generation: number;
   source: CampaignSession;
   candidate?: CampaignSession;
+  aiRequest?: AiTurnRequest;
 }
 
 /** Owns the turn-based session; observation never changes the active faction. */
@@ -24,6 +27,7 @@ export class MainScene extends Phaser.Scene {
   private panel?: CampaignPanel;
   private message = '';
   private error = false;
+  private aiSummary?: AiTurnSummary;
   private pending?: CampaignConfirmation;
   private operation?: PendingOperation;
   private generation = 0;
@@ -62,6 +66,7 @@ export class MainScene extends Phaser.Scene {
       this.panel?.destroy(); this.panel = undefined;
       this.campaign = undefined; this.pending = undefined;
       this.message = ''; this.error = false;
+      this.aiSummary = undefined;
       this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
       this.shipsPage = 0; this.showShips = false;
       this.budgetOpen = false;
@@ -71,6 +76,7 @@ export class MainScene extends Phaser.Scene {
 
   private resetCampaign(): void {
     this.invalidateOperation();
+    this.aiSummary = undefined;
     this.resetTravel();
     this.campaign = createCampaignSession();
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
@@ -85,6 +91,7 @@ export class MainScene extends Phaser.Scene {
     if (!this.campaign || this.disposed) return;
     this.panel?.destroy();
     const operation = this.operation;
+    const source = this.campaign, generation = this.generation;
     // Capture what this panel displayed, not mutable scene fields at invocation time.
     const expectedTurn = this.campaign.turn, factionId = this.factionId, systemId = this.selectedId;
     const choice = this.catalog?.choices[this.choiceIndex];
@@ -102,6 +109,7 @@ export class MainScene extends Phaser.Scene {
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
     this.panel = new CampaignPanel(this, view, {
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
+      aiSummary: this.aiSummary,
       budgetOpen: this.budgetOpen,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
         completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
@@ -112,6 +120,7 @@ export class MainScene extends Phaser.Scene {
     }, {
       select: id => {
         if (this.pending) return;
+        this.aiSummary = undefined;
         this.selectedId = id; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
         this.budgetOpen = false;
         this.resetTravel();
@@ -119,6 +128,7 @@ export class MainScene extends Phaser.Scene {
       },
       switchSide: () => {
         if (this.pending) return;
+        this.aiSummary = undefined;
         this.factionId = this.factionId === 'blue' ? 'red' : 'blue';
         this.choiceIndex = 0; this.completedPage = 0;
         this.shipsPage = 0; this.showShips = false;
@@ -129,6 +139,7 @@ export class MainScene extends Phaser.Scene {
         ? { kind, factionId, expectedTurn } : { kind, factionId, systemId, expectedTurn }),
       toggleProduction: () => {
         if (this.pending) return;
+        this.aiSummary = undefined;
         this.budgetOpen = false;
         this.productionOpen = !this.productionOpen;
         this.resetTravel();
@@ -204,7 +215,10 @@ export class MainScene extends Phaser.Scene {
           refuel: shipId => this.execute({ kind: 'refuelShip', factionId, expectedTurn, systemId, shipId })
         }
       },
-      request: action => this.requestOperation(action),
+      request: action => {
+        if (action === 'ai' && (this.campaign !== source || this.generation !== generation)) return;
+        this.requestOperation(action, action === 'ai' ? { factionId, expectedTurn } : undefined);
+      },
       cancel: () => { if (operation === this.operation) { this.invalidateOperation(); this.render(); } },
       confirm: () => this.confirmOperation(operation)
     });
@@ -220,9 +234,12 @@ export class MainScene extends Phaser.Scene {
       this.campaign === operation.source;
   }
 
-  private requestOperation(action: CampaignConfirmation): void {
+  private requestOperation(action: CampaignConfirmation, aiRequest?: AiTurnRequest): void {
     if (this.disposed || !this.campaign || this.pending) return;
-    const operation: PendingOperation = { action, source: this.campaign, generation: ++this.generation };
+    if (action === 'ai' && (!aiRequest || aiRequest.factionId !== this.factionId ||
+      aiRequest.expectedTurn !== this.campaign.turn ||
+      getCampaignSessionView(this.campaign, this.factionId).activeFactionId !== aiRequest.factionId)) return;
+    const operation: PendingOperation = { action, source: this.campaign, generation: ++this.generation, aiRequest };
     this.operation = operation; this.pending = action;
     if (action === 'save' || action === 'load') {
       // Capture before reading the slot. Never substitute the live session at confirmation.
@@ -249,7 +266,22 @@ export class MainScene extends Phaser.Scene {
       this.invalidateOperation(); this.render(); return;
     }
     const { action, candidate } = operation;
-    if (action === 'save' && candidate) {
+    if (action === 'ai' && operation.aiRequest) {
+      // One atomic domain call, never publish the package's intermediate commands.
+      const result = executeAiTurn(operation.source, operation.aiRequest);
+      if (!this.isCurrentOperation(operation)) return;
+      this.invalidateOperation();
+      this.error = !result.ok;
+      if (result.ok) {
+        this.campaign = result.state;
+        this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
+        this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+        this.resetTravel();
+        this.aiSummary = result.summary;
+        this.message = 'AI завершил один ход. Наблюдение остаётся за этой стороной.';
+      } else this.message = result.message;
+      this.render();
+    } else if (action === 'save' && candidate) {
       const result = this.saves.save(candidate);
       if (!this.isCurrentOperation(operation)) return;
       this.invalidateOperation();
@@ -257,6 +289,7 @@ export class MainScene extends Phaser.Scene {
       this.render();
     } else if (action === 'load' && candidate) {
       this.invalidateOperation();
+      this.aiSummary = undefined;
       this.campaign = candidate;
       this.factionId = getCampaignSessionView(candidate, this.factionId).activeFactionId;
       const galaxy = getGalaxyDefinition();
@@ -276,6 +309,7 @@ export class MainScene extends Phaser.Scene {
 
   private execute(command: SessionCommand): void {
     if (this.disposed || !this.campaign || this.pending) return;
+    this.aiSummary = undefined;
     const result = executeSessionCommand(this.campaign, command);
     this.error = !result.ok;
     if (result.ok) {

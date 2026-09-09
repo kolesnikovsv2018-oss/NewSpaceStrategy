@@ -3,13 +3,15 @@ import type { SystemId } from '../domain/campaign';
 import type { CampaignSessionView } from '../domain/campaignSession';
 import { ProductionPanel, type ProductionPanelState, type ProductionPanelActions } from './ProductionPanel';
 import { BudgetPanel } from './BudgetPanel';
+import type { AiTurnSummary } from '../domain/campaignAiExecutor';
 
-export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load';
+export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load' | 'ai';
 const confirmationText: Record<CampaignConfirmation, string> = {
   new: 'Начать заново?\nТекущая партия будет потеряна.',
   menu: 'Выйти в меню?\nТекущая партия будет потеряна.',
   save: 'Заменить сохранение?\nПрежний слот будет перезаписан.',
-  load: 'Загрузить кампанию?\nТекущая партия будет потеряна.'
+  load: 'Загрузить кампанию?\nТекущая партия будет потеряна.',
+  ai: 'Поручить AI один ход?\nХод наблюдаемой стороны завершится.'
 };
 
 interface PanelState {
@@ -17,6 +19,7 @@ interface PanelState {
   message: string;
   error: boolean;
   pending?: CampaignConfirmation;
+  aiSummary?: AiTurnSummary;
   budgetOpen?: boolean;
   production?: ProductionPanelState;
 }
@@ -50,7 +53,7 @@ export class CampaignPanel {
     graphics.fillStyle(0x101e32).fillRoundedRect(868, 104, 388, 554, 18);
     graphics.lineStyle(1, 0x29455e).strokeRoundedRect(868, 104, 388, 554, 18);
     this.label(28, 22, 'ORION / ГАЛАКТИКА', 26, '#b4f1ff');
-    this.label(28, 60, 'Локальная пошаговая партия · S3.26 · 6 систем', 14, '#859bb6');
+    this.label(28, 60, 'Локальная пошаговая партия · S3.29 · 6 систем', 14, '#859bb6');
     this.button(475, 24, 'Сохранить кампанию', 'campaign-save', () => actions.request('save'), !!state.pending);
     this.button(675, 24, 'Загрузить кампанию', 'campaign-load', () => actions.request('load'), !!state.pending);
     this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), !!state.pending);
@@ -93,14 +96,31 @@ export class CampaignPanel {
     this.label(892, 286, `Доход при завершении своего хода:\n+${session.income.credits} кредитов · +${session.income.minerals} минералов`, 14, '#a6e5d5')
       .setLineSpacing(5).setName('campaign-income');
     const selected = view.systems.find(system => system.id === state.selectedId);
-    this.label(892, 344, selected?.name ?? 'Выберите систему', 24, '#e4f2ff').setName('campaign-system-name');
-    const details = !selected || selected.visibility === 'unknown'
-      ? 'Не разведана\nВладелец: неизвестен\nПригодность: неизвестна'
-      : `Разведана\nВладелец: ${ownerName(selected.ownerId)}\n${selected.habitable ? 'Пригодна для колонизации' : 'Непригодна для колонизации'}`;
-    this.label(892, 386, details, 15, '#c8d9ed').setLineSpacing(6).setName('campaign-system-details');
+    const summary = state.aiSummary?.factionId === view.factionId ? state.aiSummary : undefined;
+    if (summary) {
+      const receipt = summary.endTurnEconomy;
+      const commands = summary.commands.map(command => command.kind === 'endTurn' ? 'Завершение хода'
+        : `${command.kind === 'colonize' ? 'Колонизация' : 'Разведка'}: ${command.systemId}`);
+      this.label(892, 340, [
+        `AI · ${ownerName(summary.factionId)} · ход ${summary.turn}`,
+        ...commands,
+        `Доход: +${receipt.income.credits} кр. / +${receipt.income.minerals} мин.`,
+        `Кораблей: ${receipt.upkeep.shipCount} · Оплата: ${receipt.upkeep.paidCredits}/${receipt.upkeep.dueCredits} кр.`,
+        `Дефицит: ${receipt.upkeep.shortfallCredits} кр. (без долга)`,
+        `Остаток: ${receipt.treasuryAfter.credits} кр. / ${receipt.treasuryAfter.minerals} мин.`
+      ].join('\n'), 13, '#a6e5d5').setLineSpacing(2).setName('campaign-ai-summary');
+    } else {
+      this.label(892, 344, selected?.name ?? 'Выберите систему', 24, '#e4f2ff').setName('campaign-system-name');
+      const details = !selected || selected.visibility === 'unknown'
+        ? 'Не разведана\nВладелец: неизвестен\nПригодность: неизвестна'
+        : `Разведана\nВладелец: ${ownerName(selected.ownerId)}\n${selected.habitable ? 'Пригодна для колонизации' : 'Непригодна для колонизации'}`;
+      this.label(892, 386, details, 15, '#c8d9ed').setLineSpacing(6).setName('campaign-system-details');
+    }
     this.button(892, 478, 'Разведать', 'campaign-explore', () => actions.command('explore'), !!state.pending);
     this.button(1050, 478, 'Колонизировать', 'campaign-colonize', () => actions.command('colonize'), !!state.pending);
     this.button(892, 526, 'Завершить ход', 'campaign-end-turn', () => actions.command('endTurn'), !!state.pending);
+    this.button(1050, 526, 'AI: один ход', 'campaign-ai', () => actions.request('ai'),
+      !!state.pending || session.activeFactionId !== view.factionId);
     this.label(892, state.pending ? 566 : 574, state.pending
       ? confirmationText[state.pending]
       : state.message, 16, state.error && !state.pending ? '#ffad9f' : '#a6e5d5')
@@ -109,7 +129,7 @@ export class CampaignPanel {
       this.button(892, 614, 'Отмена · ESC', 'campaign-cancel', actions.cancel);
       this.button(1066, 614, 'Продолжить', 'campaign-confirm', actions.confirm);
     }
-    this.label(28, 680, 'Ручной локальный слот · Обе стороны целиком · Без автосохранения · Боя и AI кампании нет.', 15, '#99adc5');
+    this.label(28, 680, 'Ручной слот · AI: только один подтверждённый ход активной стороны · Без автозапуска и боя.', 15, '#99adc5');
   }
 
   private label(x: number, y: number, value: string, size: number, color: string): Phaser.GameObjects.Text {

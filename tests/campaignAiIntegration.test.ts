@@ -220,12 +220,13 @@ describe('purity and integration boundary', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('planner has only erased type imports; AI is not reachable from the game entry', () => {
+  it('planner has only erased type imports; the game reaches AI only through MainScene → executor → planner', () => {
     const root = resolve(import.meta.dirname, '..');
     const plannerPath = resolve(root, 'src/domain/campaignAiPlanner.ts');
     const syntax = ts.createSourceFile(plannerPath, readFileSync(plannerPath, 'utf8'), ts.ScriptTarget.Latest, true);
     for (const statement of syntax.statements) if (ts.isImportDeclaration(statement)) expect(statement.importClause?.isTypeOnly).toBe(true);
     const visited = new Set<string>();
+    const imports = new Map<string, Set<string>>();
     function visit(path: string): void {
       if (visited.has(path)) return; visited.add(path);
       const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
@@ -235,11 +236,16 @@ describe('purity and integration boundary', () => {
         const specifier = statement.moduleSpecifier.text;
         if (!specifier.startsWith('.')) continue;
         if (ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly) continue;
-        visit(resolve(dirname(path), specifier + '.ts'));
+        const target = resolve(dirname(path), specifier + '.ts');
+        const parents = imports.get(target) ?? new Set<string>(); parents.add(path); imports.set(target, parents);
+        visit(target);
       }
     }
     visit(resolve(root, 'src/main.ts'));
-    expect(visited.has(plannerPath)).toBe(false);
-    expect(visited.has(resolve(root, 'src/domain/campaignAiExecutor.ts'))).toBe(false);
+    const executorPath = resolve(root, 'src/domain/campaignAiExecutor.ts');
+    expect(visited.has(plannerPath)).toBe(true);
+    expect(visited.has(executorPath)).toBe(true);
+    expect(imports.get(plannerPath)).toEqual(new Set([executorPath]));
+    expect(imports.get(executorPath)).toEqual(new Set([resolve(root, 'src/scenes/MainScene.ts')]));
   });
 });

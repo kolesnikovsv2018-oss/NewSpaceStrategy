@@ -8,6 +8,9 @@ import { createCombatDesign } from '../src/domain/combatPresets';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
+import * as aiExecutor from '../src/domain/campaignAiExecutor';
+import * as aiPlanner from '../src/domain/campaignAiPlanner';
+import { known, rich, threeCommands } from './fixtures/campaignAi';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
@@ -58,6 +61,293 @@ function fixture() {
     details: () => find('campaign-system-details').text,
     message: () => find('campaign-message').text };
 }
+
+describe('S3.29 confirmed manual AI turn', () => {
+  type Runtime = {
+    campaign: domain.CampaignSession; factionId: 'blue' | 'red'; selectedId: string;
+    aiSummary?: aiExecutor.AiTurnSummary; pending?: string; generation: number;
+    productionOpen: boolean; budgetOpen: boolean; catalog?: catalog.ProductionCatalog;
+    choiceIndex: number; completedPage: number; shipsPage: number; showShips: boolean;
+    travelOpen: boolean; destinationIndex: number; transitPage: number; fleetsOpen: boolean;
+    fleetShipIds: number[]; fleetCandidatePage: number; fleetPage: number; fleetMemberPage: number;
+    fleetTravelOpen: boolean; fleetDestinationIndex: number; fleetTransitPage: number;
+    render(): void; resetCampaign(): void; execute(command: domain.SessionCommand): void;
+  };
+  const runtime = (f: ReturnType<typeof fixture>) => f.scene as unknown as Runtime;
+  const capture = (f: ReturnType<typeof fixture>, name: string) => f.find(name).listeners('pointerdown')[0] as () => void;
+  const ui = (r: Runtime) => ({ factionId: r.factionId, selectedId: r.selectedId,
+    productionOpen: r.productionOpen, budgetOpen: r.budgetOpen, catalog: r.catalog,
+    choiceIndex: r.choiceIndex, completedPage: r.completedPage, shipsPage: r.shipsPage, showShips: r.showShips,
+    travelOpen: r.travelOpen, destinationIndex: r.destinationIndex, transitPage: r.transitPage,
+    fleetsOpen: r.fleetsOpen, fleetShipIds: [...r.fleetShipIds], fleetCandidatePage: r.fleetCandidatePage,
+    fleetPage: r.fleetPage, fleetMemberPage: r.fleetMemberPage, fleetTravelOpen: r.fleetTravelOpen,
+    fleetDestinationIndex: r.fleetDestinationIndex, fleetTransitPage: r.fleetTransitPage });
+  function open(f: ReturnType<typeof fixture>, panel: string) {
+    if (panel === 'budget') f.click('campaign-budget');
+    else if (panel !== 'map') {
+      f.click('campaign-production');
+      if (panel === 'travel') f.click('production-travel');
+      if (panel === 'fleets' || panel === 'fleetTravel') f.click('production-fleets');
+      if (panel === 'fleetTravel') f.click('fleet-travel');
+    }
+  }
+  const summaryAbsent = (f: ReturnType<typeof fixture>) => {
+    expect(runtime(f).aiSummary).toBeUndefined();
+    expect(f.nodes.some(n => !n.destroyed && n.name === 'campaign-ai-summary')).toBe(false);
+  };
+
+  it('does no AI or IO on entry/render/reset/shutdown/reentry; inactive observation never silently swaps', () => {
+    const executor = vi.spyOn(aiExecutor, 'executeAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+    const storage = { getItem: vi.fn(), setItem: vi.fn() };
+    const library = vi.spyOn(catalog, 'loadProductionCatalog');
+    vi.stubGlobal('localStorage', storage);
+    try {
+      const f = fixture(), r = runtime(f), state = r.campaign;
+      r.render(); f.click('campaign-side-switch');
+      expect(f.find('campaign-ai').interactive).toBe(false); f.click('campaign-ai');
+      expect(r.campaign).toBe(state); expect(r.factionId).toBe('red'); expect(r.pending).toBeUndefined();
+      f.click('campaign-new'); f.click('campaign-confirm');
+      f.events.emit('shutdown'); f.scene.create();
+      expect(executor).not.toHaveBeenCalled(); expect(planner).not.toHaveBeenCalled();
+      expect(storage.getItem).not.toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(library).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['map', 'budget', 'production', 'travel', 'fleets', 'fleetTravel'])('pending blocks all %s background controls; cancel and ESC preserve UI without planning', panel => {
+    const storage = { getItem: vi.fn(() => null), setItem: vi.fn() }; vi.stubGlobal('localStorage', storage);
+    try {
+      const f = fixture(), r = runtime(f); r.campaign = rich(1, 5); r.render(); open(f, panel);
+      if (panel === 'fleets') { f.click('fleet-select'); f.click('fleet-candidate-next'); f.click('fleet-select'); }
+      const before = structuredClone(r.campaign), state = r.campaign, panels = ui(r), message = f.message();
+      const executor = vi.spyOn(aiExecutor, 'executeAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+      const commands = vi.spyOn(domain, 'executeSessionCommand'), library = vi.spyOn(catalog, 'loadProductionCatalog');
+      const reads = storage.getItem.mock.calls.length;
+      for (const cancel of ['button', 'escape']) {
+        const oldButtons = f.nodes.filter(n => !n.destroyed && n.interactive).map(n => n.listeners('pointerdown')[0] as () => void);
+        f.click('campaign-ai'); const confirm = capture(f, 'campaign-confirm');
+        expect(r.pending).toBe('ai'); expect(f.message()).toContain('Ход наблюдаемой стороны завершится');
+        oldButtons.forEach(callback => callback());
+        for (const node of f.nodes.filter(n => !n.destroyed && !['campaign-cancel', 'campaign-confirm'].includes(n.name))) {
+          expect(node.interactive, node.name).toBe(false); node.emit('pointerdown');
+        }
+        r.execute({ kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+        expect(ui(r)).toEqual(panels); expect(r.campaign).toBe(state); expect(r.campaign).toEqual(before);
+        if (cancel === 'button') f.click('campaign-cancel'); else f.keyboard.emit('keydown-ESC');
+        confirm(); f.click('campaign-ai'); confirm(); expect(r.pending).toBe('ai'); f.click('campaign-cancel');
+        expect(ui(r)).toEqual(panels); expect(f.message()).toBe(message);
+      }
+      expect(executor).not.toHaveBeenCalled(); expect(planner).not.toHaveBeenCalled(); expect(commands).not.toHaveBeenCalled();
+      expect(library).not.toHaveBeenCalled(); expect(storage.getItem).toHaveBeenCalledTimes(reads);
+      expect(storage.setItem).not.toHaveBeenCalled(); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('runs the real four-request start, exactly one executor/planner and one scene replacement per confirmation', () => {
+    const executor = vi.spyOn(aiExecutor, 'executeAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+    const commands = vi.spyOn(domain, 'executeSessionCommand');
+    const storage = { getItem: vi.fn(() => { throw Error('no IO'); }), setItem: vi.fn(() => { throw Error('no IO'); }) };
+    vi.stubGlobal('localStorage', storage);
+    try {
+      const f = fixture(), r = runtime(f), sceneExecute = vi.spyOn(r, 'execute');
+      let current = r.campaign, writes = 0;
+      Object.defineProperty(r, 'campaign', { configurable: true, get: () => current, set: value => { writes++; current = value; } });
+      for (let turn = 1; turn <= 4; turn++) {
+        const before = structuredClone(current), source = current, factionId = turn % 2 ? 'blue' : 'red';
+        const calls = commands.mock.calls.length;
+        f.click('campaign-ai'); expect(executor).toHaveBeenCalledTimes(turn - 1); expect(planner).toHaveBeenCalledTimes(turn - 1);
+        expect(commands).toHaveBeenCalledTimes(calls); expect(writes).toBe(turn - 1);
+        const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+        expect(executor).toHaveBeenCalledTimes(turn); expect(planner).toHaveBeenCalledTimes(turn); expect(writes).toBe(turn);
+        expect(executor.mock.calls[turn - 1]).toEqual([before, { factionId, expectedTurn: turn }]);
+        expect(executor.mock.calls[turn - 1][0]).toBe(source); expect(source).toEqual(before);
+        const result = executor.mock.results[turn - 1].value as aiExecutor.AiTurnResult;
+        if (!result.ok) throw Error(result.message);
+        expect(current).toBe(result.state); expect(r.aiSummary).toBe(result.summary);
+        expect(commands.mock.calls.slice(calls).map(([, c]) => c)).toEqual(result.summary.commands);
+        expect(result.summary.commands.length).toBeLessThanOrEqual(3);
+        expect(result.summary.commands.map(c => c.kind)).toEqual(turn < 3 ? ['explore', 'endTurn'] : ['colonize', 'explore', 'endTurn']);
+        expect(current.turn).toBe(turn + 1); expect(r.factionId).toBe(factionId);
+        expect(f.find('campaign-ai').interactive).toBe(false); f.click('campaign-ai');
+        expect(executor).toHaveBeenCalledTimes(turn);
+        expect(f.find('campaign-ai-summary').text).toContain(`ход ${turn}`);
+        expect(f.find('campaign-ai-summary').text).not.toMatch(/exploredBy|treasuries|lastOrderId/);
+        if (turn < 4) { f.click('campaign-side-switch'); summaryAbsent(f); }
+      }
+      expect(current.turn).toBe(5); expect(current.treasuries).toEqual({ blue: { credits: 130, minerals: 65 }, red: { credits: 130, minerals: 65 } });
+      expect(sceneExecute).not.toHaveBeenCalled(); expect(storage.getItem).not.toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['replace', 'reset', 'shutdown', 'reentry', 'load', 'redraw'] as const)('rejects late request/confirm after %s, including identical turn numbers', change => {
+    const f = fixture(), r = runtime(f), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
+    const request = capture(f, 'campaign-ai'); f.click('campaign-ai'); const confirm = capture(f, 'campaign-confirm');
+    const encoded = encodeCampaignSave(domain.createCampaignSession()); if (!encoded.ok) throw Error(encoded.message);
+    const storage = { getItem: vi.fn(() => encoded.json), setItem: vi.fn() }; vi.stubGlobal('localStorage', storage);
+    try {
+      if (change === 'replace') r.campaign = structuredClone(r.campaign);
+      if (change === 'reset') r.resetCampaign();
+      if (change === 'shutdown' || change === 'reentry') f.events.emit('shutdown');
+      if (change === 'reentry') f.scene.create();
+      if (change === 'redraw') r.render();
+      if (change === 'load') { f.click('campaign-cancel'); f.click('campaign-load'); f.click('campaign-confirm'); }
+      const state = r.campaign; request(); confirm();
+      expect(r.campaign).toBe(state); expect(executor).not.toHaveBeenCalled();
+      if (change === 'shutdown') { expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0); f.scene.create(); confirm(); }
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+      expect(f.nodes.filter(n => n.name === 'campaign-panel' && !n.destroyed)).toHaveLength(1);
+      if (change === 'redraw') { expect(r.pending).toBe('ai'); f.click('campaign-confirm'); expect(executor).toHaveBeenCalledTimes(1); }
+      else expect(r.pending).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('rejects a request from an unredrawn panel after same-turn source replacement', () => {
+    const f = fixture(), r = runtime(f), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
+    const request = capture(f, 'campaign-ai'); r.campaign = structuredClone(r.campaign); request();
+    expect(r.pending).toBeUndefined(); expect(executor).not.toHaveBeenCalled();
+  });
+
+  it.each(['same-side turn', 'other-side turn'] as const)('passes captured request to the real executor after in-place %s becomes stale', change => {
+    const f = fixture(), r = runtime(f), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
+    f.click('campaign-ai'); r.campaign.turn = change === 'same-side turn' ? 3 : 2;
+    const state = r.campaign, before = structuredClone(state); f.click('campaign-confirm');
+    expect(executor.mock.calls[0][1]).toEqual({ factionId: 'blue', expectedTurn: 1 });
+    expect(executor.mock.results[0].value).toMatchObject({ ok: false, code: 'STALE_TURN' });
+    expect(r.campaign).toBe(state); expect(state).toEqual(before); summaryAbsent(f);
+  });
+
+  it.each(['replace', 'reset', 'shutdown', 'reentry'] as const)('discards a real completed result if %s invalidates its operation before acceptance', change => {
+    const execute = aiExecutor.executeAiTurn, f = fixture(), r = runtime(f);
+    let replacement: domain.CampaignSession;
+    const executor = vi.spyOn(aiExecutor, 'executeAiTurn').mockImplementation((state, request) => {
+      const result = execute(state, request); expect(result.ok).toBe(true);
+      // Lifecycle fault only; the planner/commands/result remain real.
+      if (change === 'replace') r.campaign = structuredClone(r.campaign);
+      if (change === 'reset') r.resetCampaign();
+      if (change === 'shutdown' || change === 'reentry') f.events.emit('shutdown');
+      if (change === 'reentry') f.scene.create();
+      replacement = r.campaign;
+      return result;
+    });
+    f.click('campaign-ai'); const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+    expect(executor).toHaveBeenCalledTimes(1); expect(r.campaign).toBe(replacement!); summaryAbsent(f);
+    if (r.campaign) expect(r.campaign.turn).toBe(1);
+  });
+
+  it.each(['blue', 'red'] as const)('shows %s initial forecast errors only after confirm with no dispatch and no UI replacement', faction => {
+    for (const boundary of ['turn', 'credits', 'minerals'] as const) {
+      const f = fixture(), r = runtime(f); r.factionId = faction;
+      r.campaign.turn = boundary === 'turn' ? domain.MAX_TURN - (faction === 'blue' ? 1 : 0) : faction === 'blue' ? 1 : 2;
+      if (boundary === 'turn' && faction === 'blue') {
+        // MAX_TURN is red; blue at MAX_TURN-1 is allowed, so test its resource failure instead.
+        r.campaign.treasuries.blue.credits = domain.MAX_RESOURCE;
+      } else if (boundary !== 'turn') r.campaign.treasuries[faction][boundary] = domain.MAX_RESOURCE;
+      r.render(); f.click('campaign-budget');
+      const state = r.campaign, panels = ui(r), before = structuredClone(state);
+      const executor = vi.spyOn(aiExecutor, 'executeAiTurn'), commands = vi.spyOn(domain, 'executeSessionCommand');
+      executor.mockClear(); commands.mockClear();
+      f.click('campaign-ai'); expect(executor).not.toHaveBeenCalled();
+      f.click('campaign-confirm'); expect(executor).toHaveBeenCalledTimes(1); expect(commands).not.toHaveBeenCalled();
+      expect(r.campaign).toBe(state); expect(state).toEqual(before); expect(ui(r)).toEqual(panels); summaryAbsent(f);
+      expect(executor.mock.results[0].value).toMatchObject({ ok: false, code: boundary === 'turn' && faction === 'red' ? 'TURN_LIMIT' : 'RESOURCE_LIMIT' });
+    }
+  });
+
+  it.each(['map', 'budget', 'production', 'travel', 'fleets', 'fleetTravel'])('success clears %s/subpanels/pages/drafts/catalog/old receipt and retains observation', panel => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() });
+    try {
+      const f = fixture(), r = runtime(f); r.campaign = rich(1, 5); r.render(); open(f, panel);
+      if (panel === 'fleets') { f.click('fleet-select'); f.click('fleet-candidate-next'); f.click('fleet-select'); }
+      Object.assign(r, { choiceIndex: 2, destinationIndex: 1, fleetDestinationIndex: 1, showShips: true });
+      f.click('campaign-ai'); f.click('campaign-confirm');
+      expect(ui(r)).toEqual({ factionId: 'blue', selectedId: 'sol', productionOpen: false, budgetOpen: false, catalog: undefined,
+        choiceIndex: 0, completedPage: 0, shipsPage: 0, showShips: false, travelOpen: false, destinationIndex: 0, transitPage: 0,
+        fleetsOpen: false, fleetShipIds: [], fleetCandidatePage: 0, fleetPage: 0, fleetMemberPage: 0,
+        fleetTravelOpen: false, fleetDestinationIndex: 0, fleetTransitPage: 0 });
+      expect(f.nodes.filter(n => !n.destroyed && ['production-panel', 'campaign-budget-panel', 'fleet-panel', 'travel-panel'].includes(n.name))).toHaveLength(0);
+      expect(f.message()).toContain('AI завершил один ход');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['side', 'select', 'production', 'manual', 'load', 'reset', 'shutdown'] as const)('clears summary on %s (budget keeps the actual receipt)', action => {
+    const encoded = encodeCampaignSave(domain.createCampaignSession()); if (!encoded.ok) throw Error(encoded.message);
+    vi.stubGlobal('localStorage', { getItem: () => encoded.json, setItem: vi.fn() });
+    try {
+      const f = fixture(); f.click('campaign-ai'); f.click('campaign-confirm');
+      const summary = runtime(f).aiSummary; f.click('campaign-budget'); expect(runtime(f).aiSummary).toBe(summary);
+      if (action === 'side') f.click('campaign-side-switch');
+      if (action === 'select') { f.click('campaign-budget'); f.click('system-eden'); }
+      if (action === 'production') f.click('campaign-production');
+      if (action === 'manual') f.click('campaign-end-turn'); // Inactive failure must not leave an old AI report beside the error.
+      if (action === 'load') { f.click('campaign-load'); f.click('campaign-confirm'); }
+      if (action === 'reset') { f.click('campaign-new'); f.click('campaign-confirm'); }
+      if (action === 'shutdown') f.events.emit('shutdown');
+      summaryAbsent(f);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['blue', 'red'] as const)('renders actual %s deficit receipt, not subsequent forecast; FIFO and free/group arrivals continue', faction => {
+    const f = fixture(), r = runtime(f); r.campaign = rich(faction === 'blue' ? 1 : 2); r.factionId = faction;
+    r.campaign.treasuries[faction] = { credits: 5, minerals: 5 }; r.render();
+    const enemy = faction === 'blue' ? 'red' : 'blue', enemyBefore = domain.getCampaignSessionView(r.campaign, enemy);
+    const source = r.campaign, before = structuredClone(source);
+    f.click('campaign-ai'); f.click('campaign-confirm');
+    expect(source).toEqual(before); expect(r.campaign.ships).toHaveLength(200);
+    expect(r.aiSummary?.endTurnEconomy).toMatchObject({ factionId: faction, income: { credits: 20, minerals: 10 },
+      upkeep: { shipCount: 100, dueCredits: 100, paidCredits: 25, shortfallCredits: 75 }, treasuryAfter: { credits: 0, minerals: 15 } });
+    expect(f.find('campaign-ai-summary').text).toContain('Оплата: 25/100 кр.');
+    expect(f.find('campaign-ai-summary').text).toContain('Дефицит: 75 кр.');
+    expect(r.campaign.ships.filter(s => s.factionId === faction && s.transit)).toHaveLength(0);
+    expect(r.campaign.ships.filter(s => s.factionId === faction).slice(0, 3).map(s => s.fuel)).toEqual([0, 0, 0]);
+    expect(r.campaign.fleets.items.find(g => g.factionId === faction)?.systemId).toBe(faction === 'blue' ? 'eden' : 'nexus');
+    expect(r.campaign.production.orders.filter(o => o.factionId === faction).map(o => o.remainingTurns)).toEqual([4, 4]);
+    const enemyAfter = domain.getCampaignSessionView(r.campaign, enemy);
+    expect({ ...enemyAfter, turn: enemyBefore.turn, activeFactionId: enemyBefore.activeFactionId }).toEqual(enemyBefore);
+    f.click('campaign-budget'); expect(f.find('budget-paid').text).toContain('20 кр.');
+    expect(f.find('campaign-ai-summary').text).toContain('Оплата: 25/100 кр.');
+  });
+
+  it.each(['blue', 'red'] as const)('rolls back late %s colonization cap of either resource including all UI/drafts; no retry or partial summary', faction => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() });
+    try {
+      for (const resource of ['credits', 'minerals'] as const) {
+        const f = fixture(), r = runtime(f); r.campaign = rich(faction === 'blue' ? 1 : 2, 5); r.factionId = faction;
+        // A known neutral frontier is colonizable, but its extra income exceeds the gross cap.
+        const target = faction === 'blue' ? 'nexus' : 'eden';
+        r.campaign.ships = r.campaign.ships.filter(s => s.factionId === faction);
+        r.campaign.fleets.items = r.campaign.fleets.items.filter(g => g.factionId === faction);
+        r.campaign.production.orders = r.campaign.production.orders.filter(o => o.factionId === faction);
+        r.campaign.production.completed = r.campaign.production.completed.filter(o => o.factionId === faction);
+        known(r.campaign, target, faction, null);
+        r.campaign.treasuries[faction][resource] = domain.MAX_RESOURCE - (resource === 'credits' ? 20 : 10);
+        r.selectedId = faction === 'blue' ? 'sol' : 'vega'; r.render(); open(f, 'fleets');
+        f.click('fleet-select'); f.click('fleet-candidate-next'); f.click('fleet-select');
+        const before = structuredClone(r.campaign), state = r.campaign, panels = ui(r);
+        expect(domain.campaignSessionSchema.safeParse(state).success).toBe(true);
+        expect(domain.getCampaignSessionView(state, faction).economyForecast.ok).toBe(true);
+        const executor = vi.spyOn(aiExecutor, 'executeAiTurn'), commands = vi.spyOn(domain, 'executeSessionCommand');
+        executor.mockClear(); commands.mockClear();
+        f.click('campaign-ai'); const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+        expect(executor).toHaveBeenCalledTimes(1); expect(commands).toHaveBeenCalledTimes(3);
+        expect(commands.mock.calls.map(([, c]) => (c as domain.SessionCommand).kind)).toEqual(['colonize', 'explore', 'endTurn']);
+        expect(executor.mock.results[0].value).toMatchObject({ ok: false, code: 'RESOURCE_LIMIT' });
+        expect(r.campaign).toBe(state); expect(state).toEqual(before); expect(ui(r)).toEqual(panels); summaryAbsent(f);
+        expect(f.message()).toBe('Доход превысит предел ресурсов; AI-ход не выполнен');
+      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('shows three completed commands and exact capped own balances without exposing other-side fields', () => {
+    const f = fixture(), r = runtime(f); r.campaign = threeCommands();
+    r.campaign.treasuries.blue = { credits: domain.MAX_RESOURCE - 20, minerals: domain.MAX_RESOURCE - 10 }; r.render();
+    f.click('campaign-ai'); f.click('campaign-confirm');
+    const text = f.find('campaign-ai-summary').text;
+    expect(text.split('\n')).toHaveLength(8);
+    expect(text).toContain('Колонизация: eden\nРазведка: nexus\nЗавершение хода');
+    expect(text).toContain('Остаток: 1000000000 кр. / 1000000000 мин.');
+    expect(text).not.toContain('Красная лига');
+  });
+});
 
 describe('S3.26 manual campaign slot UI', () => {
   const key = CampaignSaveManager.STORAGE_KEY;
@@ -375,7 +665,9 @@ describe('S3.26 manual campaign slot UI', () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it.each(['preset', 'library'] as const)('continues both paid %s FIFO and fleet routes across manual saves, shutdown/reentry/load', source => {
+  it.each([
+    ['preset', 'manual'], ['library', 'manual'], ['preset', 'ai'], ['library', 'ai']
+  ] as const)('continues both paid %s FIFO and fleet routes across manual saves, shutdown/reentry/load with %s end turns', (source, mode) => {
     const { contents, storage } = slot();
     try {
       contents.delete(ShipDesignManager.STORAGE_KEY);
@@ -394,16 +686,35 @@ describe('S3.26 manual campaign slot UI', () => {
         expect(expected.ok).toBe(true); if (expected.ok) uninterrupted = expected.state;
         expect(runtime(f).campaign).toEqual(uninterrupted);
       };
-      const end = () => { click('campaign-end-turn'); click('campaign-side-switch'); };
+      const executeAi = aiExecutor.executeAiTurn, aiSpy = vi.spyOn(aiExecutor, 'executeAiTurn');
+      const end = () => {
+        if (mode === 'ai' && uninterrupted.turn >= 31) {
+          const state = runtime(f).campaign, before = structuredClone(state);
+          const calls = aiSpy.mock.calls.length, reads = storage.getItem.mock.calls.length, writes = storage.setItem.mock.calls.length;
+          const expected = executeAi(uninterrupted, { factionId: runtime(f).factionId, expectedTurn: uninterrupted.turn });
+          if (!expected.ok) throw Error(expected.message);
+          const commandCount = spy.mock.calls.length;
+          f.click('campaign-ai'); expect(aiSpy).toHaveBeenCalledTimes(calls); expect(spy).toHaveBeenCalledTimes(commandCount);
+          const oldConfirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); oldConfirm();
+          expect(aiSpy).toHaveBeenCalledTimes(calls + 1); expect(aiSpy.mock.results[calls].value).toEqual(expected);
+          expect(runtime(f).campaign).toEqual(expected.state); expect(state).toEqual(before);
+          expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(storage.setItem).toHaveBeenCalledTimes(writes);
+          expect(runtime(f).factionId).toBe(expected.summary.factionId);
+          uninterrupted = expected.state;
+        } else click('campaign-end-turn');
+        click('campaign-side-switch');
+      };
       const checkpoint = () => {
         const snapshot = structuredClone(runtime(f).campaign), state = runtime(f).campaign;
         const oldEnd = capture(f, 'campaign-end-turn');
+        const oldAi = capture(f, 'campaign-ai'), aiCalls = aiSpy.mock.calls.length;
         click('campaign-save'); if (runtime(f).pending) click('campaign-confirm');
         expect(runtime(f).campaign).toBe(state); expect(contents.get(key)).toBe(raw(snapshot));
         const reads = storage.getItem.mock.calls.length;
         f.events.emit('shutdown'); f.scene.create();
         expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(runtime(f).campaign).toEqual(domain.createCampaignSession());
-        click('campaign-load'); click('campaign-confirm'); oldEnd();
+        click('campaign-load'); click('campaign-confirm'); oldEnd(); oldAi();
+        expect(aiSpy).toHaveBeenCalledTimes(aiCalls);
         expect(storage.getItem).toHaveBeenCalledTimes(reads + 1); expect(runtime(f).campaign).toEqual(snapshot);
         expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
         expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
@@ -438,6 +749,7 @@ describe('S3.26 manual campaign slot UI', () => {
       expect(uninterrupted.fleets.items.map(fleet => fleet.shipIds)).toEqual([[1, 2], [3, 4]]);
       expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
       expect(storage.setItem.mock.calls.filter(([k]) => k === key)).toHaveLength(3);
+      expect(aiSpy).toHaveBeenCalledTimes(mode === 'ai' ? 16 : 0);
     } finally { vi.unstubAllGlobals(); }
   });
 });
