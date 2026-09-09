@@ -6,6 +6,8 @@ import { createDesign, createComponent, installComponent } from '../src/domain/s
 import { getProductionQuote } from '../src/domain/production';
 import { createCombatDesign } from '../src/domain/combatPresets';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
+import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
+import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
@@ -56,6 +58,389 @@ function fixture() {
     details: () => find('campaign-system-details').text,
     message: () => find('campaign-message').text };
 }
+
+describe('S3.26 manual campaign slot UI', () => {
+  const key = CampaignSaveManager.STORAGE_KEY;
+  const raw = (state = domain.createCampaignSession()) => {
+    const encoded = encodeCampaignSave(state);
+    if (!encoded.ok) throw Error(encoded.message);
+    return encoded.json;
+  };
+  const corrupt = [
+    ['empty', ''], ['json', '{'], ['format', '{}'],
+    ['schema', JSON.stringify({ format: 'orion-campaign', schemaVersion: 2, rulesVersion: 1, session: null })],
+    ['rules', JSON.stringify({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 2, session: null })],
+    ['state', JSON.stringify({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 1, session: null })],
+    ['oversized', ' '.repeat(MAX_CAMPAIGN_SAVE_BYTES + 1)]
+  ] as const;
+  type Runtime = {
+    campaign: domain.CampaignSession; factionId: 'blue' | 'red'; selectedId: string;
+    pending?: string; operation?: { candidate: domain.CampaignSession }; generation: number;
+    productionOpen: boolean; budgetOpen: boolean; catalog?: catalog.ProductionCatalog;
+    choiceIndex: number; completedPage: number; shipsPage: number; showShips: boolean;
+    travelOpen: boolean; destinationIndex: number; transitPage: number; fleetsOpen: boolean;
+    fleetShipIds: number[]; fleetCandidatePage: number; fleetPage: number; fleetMemberPage: number;
+    fleetTravelOpen: boolean; fleetDestinationIndex: number; fleetTransitPage: number;
+    resetCampaign(): void;
+  };
+  const runtime = (f: ReturnType<typeof fixture>) => f.scene as unknown as Runtime;
+  const capture = (f: ReturnType<typeof fixture>, name: string) => f.find(name).listeners('pointerdown')[0] as () => void;
+  const ui = (f: ReturnType<typeof fixture>) => {
+    const r = runtime(f);
+    return { factionId: r.factionId, selectedId: r.selectedId, productionOpen: r.productionOpen,
+      budgetOpen: r.budgetOpen, catalog: r.catalog, choiceIndex: r.choiceIndex, completedPage: r.completedPage,
+      shipsPage: r.shipsPage, showShips: r.showShips, travelOpen: r.travelOpen, destinationIndex: r.destinationIndex,
+      transitPage: r.transitPage, fleetsOpen: r.fleetsOpen, fleetShipIds: [...r.fleetShipIds],
+      fleetCandidatePage: r.fleetCandidatePage, fleetPage: r.fleetPage, fleetMemberPage: r.fleetMemberPage,
+      fleetTravelOpen: r.fleetTravelOpen, fleetDestinationIndex: r.fleetDestinationIndex, fleetTransitPage: r.fleetTransitPage };
+  };
+  function slot(initial?: string) {
+    const contents = new Map([[ShipDesignManager.STORAGE_KEY, '{corrupt library'], ['unrelated', 'preserved']]);
+    if (initial !== undefined) contents.set(key, initial);
+    const storage = { getItem: vi.fn((k: string) => contents.get(k) ?? null),
+      setItem: vi.fn((k: string, value: string) => { contents.set(k, value); }) } satisfies StoragePort;
+    vi.stubGlobal('localStorage', storage);
+    return { contents, storage };
+  }
+  function open(f: ReturnType<typeof fixture>, panel: string) {
+    if (panel === 'budget') f.click('campaign-budget');
+    else if (panel !== 'map') {
+      f.click('campaign-production');
+      if (panel === 'travel') f.click('production-travel');
+      if (panel === 'fleets' || panel === 'fleetTravel') f.click('production-fleets');
+      if (panel === 'fleetTravel') f.click('fleet-travel');
+    }
+  }
+
+  it('does no IO on construction, create, reset, exit or reentry, even with a throwing global getter', () => {
+    const getter = vi.fn(() => { throw Error('private storage details'); });
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: getter });
+    try {
+      const f = fixture(); f.click('campaign-new'); f.click('campaign-confirm');
+      f.click('campaign-menu'); f.click('campaign-confirm'); f.scene.create();
+      expect(getter).not.toHaveBeenCalled();
+      for (const action of ['save', 'load']) {
+        const state = runtime(f).campaign;
+        f.click(`campaign-${action}`);
+        expect(f.message()).toBe('Не удалось прочитать сохранение кампании');
+        expect(runtime(f).campaign).toBe(state); expect(runtime(f).pending).toBeUndefined();
+      }
+      expect(getter).toHaveBeenCalledTimes(2);
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
+    }
+  });
+
+  it('saves both sides while observing inactive red, once, and never calls a game command or library method', () => {
+    const { contents, storage } = slot();
+    try {
+      const f = fixture(), commands = vi.spyOn(domain, 'executeSessionCommand');
+      const library = vi.spyOn(ShipDesignManager.prototype, 'load');
+      f.click('campaign-side-switch'); const state = runtime(f).campaign, before = structuredClone(state);
+      const old = capture(f, 'campaign-save'); f.click('campaign-save'); old();
+      expect(commands).not.toHaveBeenCalled(); expect(library).not.toHaveBeenCalled();
+      expect(storage.getItem.mock.calls).toEqual([[key]]); expect(storage.setItem).toHaveBeenCalledTimes(1);
+      expect(contents.get(key)).toBe(raw(before)); expect(runtime(f).campaign).toBe(state);
+      expect(state).toEqual(before); expect(runtime(f).factionId).toBe('red');
+      expect(f.message()).toBe('Кампания сохранена.'); expect(runtime(f).pending).toBeUndefined();
+      expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe('{corrupt library');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([['valid', raw()] as const, ...corrupt])('requires explicit overwrite of %s slot and fixes snapshot at request', (_name, existing) => {
+    const { contents, storage } = slot(existing);
+    try {
+      const f = fixture(), state = runtime(f).campaign, before = structuredClone(state);
+      f.click('campaign-save'); expect(runtime(f).pending).toBe('save');
+      expect(f.message()).toContain('Заменить сохранение?'); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(contents.get(key)).toBe(existing);
+      // Deliberate out-of-band mutation proves the write is a detached request snapshot.
+      state.treasuries.red.credits = 123;
+      contents.set(key, 'external writer while confirmation is open');
+      const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+      expect(storage.getItem.mock.calls).toEqual([[key]]); expect(storage.setItem).toHaveBeenCalledTimes(1);
+      expect(contents.get(key)).toBe(raw(before)); expect(state.treasuries.red.credits).toBe(123);
+      expect(runtime(f).campaign).toBe(state); expect(f.message()).toBe('Кампания сохранена.');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([['missing', undefined] as const, ...corrupt])('load %s fails before confirmation without replacing a party or its panels', (_name, existing) => {
+    const { contents, storage } = slot(existing);
+    try {
+      const f = fixture(); open(f, 'fleetTravel');
+      const state = runtime(f).campaign, before = structuredClone(state), panels = ui(f), keys = [...contents];
+      f.click('campaign-load');
+      expect(runtime(f).campaign).toBe(state); expect(state).toEqual(before); expect(ui(f)).toEqual(panels);
+      expect(runtime(f).pending).toBeUndefined(); expect(f.message()).not.toContain('Загрузить кампанию?');
+      expect(f.message().length).toBeGreaterThan(0);
+      expect(storage.getItem.mock.calls[storage.getItem.mock.calls.length - 1]).toEqual([key]);
+      expect(storage.setItem).not.toHaveBeenCalled(); expect([...contents]).toEqual(keys);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['save', 'load'])('aborts %s on read failure; retry reads again without cached presence', action => {
+    const { contents, storage } = slot(raw());
+    try {
+      const f = fixture(); open(f, 'budget'); const state = runtime(f).campaign, panels = ui(f), keys = [...contents];
+      storage.getItem.mockImplementationOnce(() => { throw new DOMException('secret', 'SecurityError'); });
+      f.click(`campaign-${action}`);
+      expect(f.message()).toBe('Не удалось прочитать сохранение кампании'); expect(runtime(f).pending).toBeUndefined();
+      expect(runtime(f).campaign).toBe(state); expect(ui(f)).toEqual(panels); expect([...contents]).toEqual(keys);
+      expect(storage.setItem).not.toHaveBeenCalled();
+      f.click(`campaign-${action}`); expect(runtime(f).pending).toBe(action); expect(storage.getItem).toHaveBeenCalledTimes(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['map', 'budget', 'production', 'travel', 'fleets', 'fleetTravel'])('cancel/ESC preserve %s for both save and load; stale confirmation cannot confirm a newer operation', panel => {
+    const { contents, storage } = slot(raw());
+    try {
+      const f = fixture(); open(f, panel);
+      const state = runtime(f).campaign, panels = ui(f), keys = [...contents];
+      for (const action of ['save', 'load']) {
+        const message = f.message();
+        f.click(`campaign-${action}`); const old = capture(f, 'campaign-confirm');
+        f.click('campaign-cancel'); old();
+        expect(f.message()).toBe(message); expect(runtime(f).campaign).toBe(state); expect(ui(f)).toEqual(panels);
+        f.click(`campaign-${action}`); old(); expect(runtime(f).pending).toBe(action);
+        const confirm = capture(f, 'campaign-confirm'); f.keyboard.emit('keydown-ESC'); confirm();
+        expect(runtime(f).pending).toBeUndefined(); expect(ui(f)).toEqual(panels); expect(f.message()).toBe(message);
+      }
+      expect([...contents]).toEqual(keys); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['save', 'load'])('blocks every available background command/navigation/reset while %s is pending', action => {
+    const { storage } = slot(raw());
+    try {
+      const f = fixture(), commands = vi.spyOn(domain, 'executeSessionCommand');
+      for (const panel of ['map', 'budget', 'production', 'travel', 'fleets', 'fleetTravel']) {
+        runtime(f).resetCampaign(); open(f, panel);
+        const oldButtons = f.nodes.filter(node => !node.destroyed && node.interactive)
+          .map(node => node.listeners('pointerdown')[0] as () => void);
+        f.click(`campaign-${action}`); const state = runtime(f).campaign, panels = ui(f), reads = storage.getItem.mock.calls.length;
+        oldButtons.forEach(callback => callback());
+        for (const node of f.nodes.filter(node => !node.destroyed && !['campaign-cancel', 'campaign-confirm'].includes(node.name))) {
+          expect(node.interactive, node.name).toBe(false); node.emit('pointerdown');
+        }
+        expect(runtime(f).campaign).toBe(state); expect(ui(f)).toEqual(panels); expect(runtime(f).pending).toBe(action);
+        expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(storage.setItem).not.toHaveBeenCalled();
+        expect(commands).not.toHaveBeenCalled(); f.click('campaign-cancel');
+      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['save', 'load'])('invalidates %s confirmations after same-turn source replacement, reset, shutdown and reentry', action => {
+    const { storage } = slot(raw());
+    try {
+      const f = fixture();
+      for (const change of ['replace', 'reset', 'shutdown', 'reentry']) {
+        f.click(`campaign-${action}`); const confirm = capture(f, 'campaign-confirm');
+        if (change === 'replace') runtime(f).campaign = structuredClone(runtime(f).campaign);
+        if (change === 'reset') runtime(f).resetCampaign();
+        if (change === 'shutdown' || change === 'reentry') f.events.emit('shutdown');
+        if (change === 'reentry') f.scene.create();
+        const state = runtime(f).campaign; confirm();
+        expect(runtime(f).campaign).toBe(state); expect(storage.setItem).not.toHaveBeenCalled();
+        if (change === 'shutdown') {
+          expect(f.nodes.every(node => node.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+          f.scene.create(); confirm();
+        }
+        expect(runtime(f).pending).toBeUndefined(); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+        expect(f.nodes.filter(node => !node.destroyed && node.name === 'campaign-panel')).toHaveLength(1);
+      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('applies exactly the detached load candidate without rereading even if slot disappears; same-turn old commands stay inert', () => {
+    const loaded = domain.createCampaignSession(); loaded.treasuries.red.credits = 42;
+    const { contents, storage } = slot(raw(loaded));
+    try {
+      const f = fixture(), commands = vi.spyOn(domain, 'executeSessionCommand'), library = vi.spyOn(catalog, 'loadProductionCatalog');
+      const oldEnd = capture(f, 'campaign-end-turn'), oldSave = capture(f, 'campaign-save');
+      const state = runtime(f).campaign;
+      f.click('campaign-load'); const candidate = runtime(f).operation!.candidate;
+      expect(candidate).toEqual(loaded); expect(candidate).not.toBe(state);
+      expect(runtime(f).campaign).toBe(state); contents.delete(key);
+      const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm');
+      expect(runtime(f).campaign).toBe(candidate); expect(runtime(f).campaign).toEqual(loaded);
+      const generation = runtime(f).generation;
+      confirm(); oldEnd(); oldSave();
+      expect(runtime(f).generation).toBe(generation); expect(commands).not.toHaveBeenCalled(); expect(library).not.toHaveBeenCalled();
+      expect(storage.getItem.mock.calls).toEqual([[key]]); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(f.message()).toBe('Кампания загружена.');
+      f.click('campaign-end-turn'); expect(runtime(f).campaign.turn).toBe(2);
+      expect(runtime(f).campaign.treasuries).toEqual({ blue: { credits: 110, minerals: 55 }, red: { credits: 42, minerals: 50 } });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['blue', 'red'] as const)('selects first own %s in STATIC order, otherwise its home ID without grants', faction => {
+    const { contents } = slot();
+    try {
+      const f = fixture();
+      for (const own of [true, false]) {
+        const loaded = domain.createCampaignSession(); loaded.turn = faction === 'blue' ? 3 : 2;
+        for (const system of loaded.galaxy.systems) {
+          system.ownerId = own && ['eden', 'nexus'].includes(system.id) ? faction : null;
+          system.exploredBy = system.ownerId ? [faction] : [];
+        }
+        loaded.galaxy.systems.reverse(); contents.set(key, raw(loaded));
+        f.click('campaign-load'); f.click('campaign-confirm');
+        expect(runtime(f).campaign).toEqual(loaded); expect(runtime(f).factionId).toBe(faction);
+        expect(runtime(f).selectedId).toBe(own ? 'eden' : faction === 'blue' ? 'sol' : 'vega');
+        expect(f.details()).toContain(own ? 'Разведана' : 'Не разведана');
+      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['quota', 'getter'] as const)('reports %s write failure, keeps old slot/state/draft and permits retry', fault => {
+    const { contents, storage } = slot(raw());
+    try {
+      const f = fixture(); open(f, 'fleetTravel');
+      const state = runtime(f).campaign, panels = ui(f), keys = [...contents]; f.click('campaign-save');
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+      if (fault === 'quota') storage.setItem.mockImplementationOnce(() => { throw new DOMException('secret', 'QuotaExceededError'); });
+      else Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: () => { throw Error('secret'); } });
+      try { f.click('campaign-confirm'); }
+      finally { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); }
+      expect(f.message()).toBe('Не удалось записать кампанию: хранилище недоступно или заполнено');
+      expect(runtime(f).pending).toBeUndefined(); expect(runtime(f).campaign).toBe(state); expect(ui(f)).toEqual(panels);
+      expect([...contents]).toEqual(keys);
+      f.click('campaign-save'); f.click('campaign-confirm'); expect(f.message()).toBe('Кампания сохранена.');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['budget', 'production', 'travel', 'fleets', 'fleetTravel'])('successful load clears %s, all pages/drafts/catalog and previous receipt, without library IO', panel => {
+    const { storage } = slot(raw());
+    try {
+      const f = fixture(); f.click('campaign-end-turn'); open(f, panel);
+      // UI-only diagnostic fields, not persisted game state.
+      Object.assign(runtime(f), { choiceIndex: 3, completedPage: 8, shipsPage: 9, showShips: true, destinationIndex: 4,
+        transitPage: 6, fleetShipIds: [10, 11], fleetCandidatePage: 2, fleetPage: 3, fleetMemberPage: 2,
+        fleetDestinationIndex: 5, fleetTransitPage: 3 });
+      const oldButtons = f.nodes.filter(node => !node.destroyed && node.interactive)
+        .map(node => node.listeners('pointerdown')[0] as () => void);
+      const reads = storage.getItem.mock.calls.length;
+      f.click('campaign-load'); f.click('campaign-confirm'); oldButtons.forEach(callback => callback());
+      expect(ui(f)).toEqual({ factionId: 'blue', selectedId: 'sol', productionOpen: false, budgetOpen: false,
+        catalog: undefined, choiceIndex: 0, completedPage: 0, shipsPage: 0, showShips: false, travelOpen: false,
+        destinationIndex: 0, transitPage: 0, fleetsOpen: false, fleetShipIds: [], fleetCandidatePage: 0,
+        fleetPage: 0, fleetMemberPage: 0, fleetTravelOpen: false, fleetDestinationIndex: 0, fleetTransitPage: 0 });
+      expect(storage.getItem).toHaveBeenCalledTimes(reads + 1); expect(f.message()).toBe('Кампания загружена.');
+      expect(f.nodes.filter(node => !node.destroyed && ['production-panel', 'campaign-budget-panel', 'fleet-panel', 'travel-panel'].includes(node.name))).toHaveLength(0);
+      f.click('campaign-production'); expect(storage.getItem.mock.calls.slice(reads + 1).length).toBeGreaterThan(0);
+      expect(storage.setItem).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('preserves real valid fleet draft through cancelled load and failed save', () => {
+    const { storage } = slot(raw());
+    try {
+      const f = fixture(), state = runtime(f).campaign;
+      // Diagnostic domain-valid ships solely to exercise UI selection persistence.
+      state.production.lastOrderId = 3;
+      state.ships = [1, 2, 3].map(id => ({ id, factionId: 'blue', systemId: 'sol', fuel: 3, design: createCombatDesign('fighter') }));
+      open(f, 'fleets'); f.click('fleet-select'); f.click('fleet-candidate-next'); f.click('fleet-select');
+      const panels = ui(f), before = structuredClone(state);
+      f.click('campaign-load'); f.click('campaign-cancel'); expect(ui(f)).toEqual(panels);
+      storage.setItem.mockImplementationOnce(() => { throw Error('quota'); });
+      f.click('campaign-save'); f.click('campaign-confirm');
+      expect(ui(f)).toEqual(panels); expect(runtime(f).campaign).toBe(state); expect(state).toEqual(before);
+      expect(f.find('fleet-selection-count').text).toContain('2/10');
+      f.click('fleet-create'); expect(runtime(f).campaign.fleets.items[0].shipIds).toEqual([1, 2]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['turn', 'credits', 'minerals', 'deficit'] as const)('load preserves %s boundary and recalculates forecast, never heals state', boundary => {
+    const loaded = domain.createCampaignSession();
+    if (boundary === 'turn') loaded.turn = domain.MAX_TURN;
+    else if (boundary === 'deficit') {
+      loaded.treasuries.blue.credits = 0; loaded.production.lastOrderId = 12;
+      loaded.ships = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, factionId: 'blue', systemId: 'sol', fuel: 0, design: createCombatDesign('fighter') }));
+    } else loaded.treasuries.blue[boundary] = domain.MAX_RESOURCE;
+    const { storage } = slot(raw(loaded));
+    try {
+      const f = fixture(); f.click('campaign-load'); f.click('campaign-confirm');
+      expect(runtime(f).campaign).toEqual(loaded); f.click('campaign-budget');
+      const faction = runtime(f).factionId, forecast = domain.getCampaignSessionView(loaded, faction).economyForecast;
+      if (boundary === 'deficit') {
+        expect(forecast).toMatchObject({ ok: true, upkeep: { paidCredits: 10, shortfallCredits: 2 } });
+        expect(f.find('budget-shortfall').text).toContain('2 кр.');
+      } else expect(f.find('budget-error').text).toContain(boundary === 'turn' ? 'ход' : 'ресурс');
+      const expected = domain.executeSessionCommand(loaded, { kind: 'endTurn', factionId: faction, expectedTurn: loaded.turn });
+      f.click('campaign-end-turn'); expect(runtime(f).campaign).toEqual(expected.ok ? expected.state : loaded);
+      expect(storage.setItem).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['preset', 'library'] as const)('continues both paid %s FIFO and fleet routes across manual saves, shutdown/reentry/load', source => {
+    const { contents, storage } = slot();
+    try {
+      contents.delete(ShipDesignManager.STORAGE_KEY);
+      const saved = createCombatDesign('fighter'); saved.name = 'Автономный оплаченный снимок';
+      // The library updates updatedAt on save; the paid snapshots below come from its saved result.
+      if (source === 'library') expect(new ShipDesignManager(storage).saveDesign(saved).id).toBe(saved.id);
+      const libraryBefore = contents.get(ShipDesignManager.STORAGE_KEY);
+      const f = fixture(), execute = domain.executeSessionCommand, spy = vi.spyOn(domain, 'executeSessionCommand');
+      let uninterrupted = domain.createCampaignSession();
+      const click = (name: string) => {
+        const calls = spy.mock.calls.length; f.click(name);
+        if (spy.mock.calls.length === calls) return;
+        expect(spy.mock.calls.length).toBe(calls + 1);
+        const expected = execute(uninterrupted, spy.mock.calls[calls][1]);
+        expect(spy.mock.results[calls].value).toEqual(expected);
+        expect(expected.ok).toBe(true); if (expected.ok) uninterrupted = expected.state;
+        expect(runtime(f).campaign).toEqual(uninterrupted);
+      };
+      const end = () => { click('campaign-end-turn'); click('campaign-side-switch'); };
+      const checkpoint = () => {
+        const snapshot = structuredClone(runtime(f).campaign), state = runtime(f).campaign;
+        const oldEnd = capture(f, 'campaign-end-turn');
+        click('campaign-save'); if (runtime(f).pending) click('campaign-confirm');
+        expect(runtime(f).campaign).toBe(state); expect(contents.get(key)).toBe(raw(snapshot));
+        const reads = storage.getItem.mock.calls.length;
+        f.events.emit('shutdown'); f.scene.create();
+        expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(runtime(f).campaign).toEqual(domain.createCampaignSession());
+        click('campaign-load'); click('campaign-confirm'); oldEnd();
+        expect(storage.getItem).toHaveBeenCalledTimes(reads + 1); expect(runtime(f).campaign).toEqual(snapshot);
+        expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
+        expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+      };
+      for (const target of ['eden', 'nexus']) {
+        click(`system-${target}`); click('campaign-explore'); click('campaign-colonize'); end();
+      }
+      for (let i = 0; i < 26; i++) end();
+      expect(uninterrupted.turn).toBe(29);
+      for (const home of ['sol', 'vega']) {
+        click(`system-${home}`); click('campaign-production');
+        if (source === 'library') for (let i = 0; i < 7; i++) click('production-next');
+        click('production-enqueue'); click('production-enqueue'); click('campaign-production'); end();
+      }
+      const designs = uninterrupted.production.orders.map(order => structuredClone(order.design));
+      expect(uninterrupted.production.orders.map(order => order.remainingTurns)).toEqual([3, 4, 3, 4]); checkpoint();
+      for (let i = 0; i < 14; i++) end();
+      expect(uninterrupted.turn).toBe(45); expect(uninterrupted.production.completed.map(item => item.id)).toEqual([1, 3, 2, 4]);
+      for (const home of ['sol', 'vega']) {
+        click(`system-${home}`); click('campaign-production'); click('production-deploy'); click('production-deploy');
+        click('production-fleets'); click('fleet-select'); click('fleet-candidate-next'); click('fleet-select'); click('fleet-create');
+        click('fleet-travel'); click('fleet-travel-send');
+        expect(runtime(f).campaign.ships.filter(ship => ship.transit)).toHaveLength(2);
+        checkpoint(); end();
+      }
+      expect(uninterrupted.turn).toBe(47);
+      expect(uninterrupted.treasuries).toEqual({ blue: { credits: 188, minerals: 258 }, red: { credits: 188, minerals: 258 } });
+      expect(uninterrupted.ships.map(ship => [ship.id, ship.systemId, ship.fuel, ship.transit])).toEqual([
+        [1, 'eden', 2, undefined], [2, 'eden', 2, undefined], [3, 'nexus', 2, undefined], [4, 'nexus', 2, undefined]
+      ]);
+      expect(uninterrupted.ships.map(ship => ship.design)).toEqual(designs);
+      expect(uninterrupted.fleets.items.map(fleet => fleet.shipIds)).toEqual([[1, 2], [3, 4]]);
+      expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
+      expect(storage.setItem.mock.calls.filter(([k]) => k === key)).toHaveLength(3);
+    } finally { vi.unstubAllGlobals(); }
+  });
+});
 
 /** Contract oracle: explicit fixture counts, colony income and arithmetic, never the upkeep calculator. */
 function expectBudgetOracle(f: ReturnType<typeof fixture>, state: domain.CampaignSession,

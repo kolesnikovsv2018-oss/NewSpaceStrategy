@@ -1,12 +1,20 @@
 import Phaser from 'phaser';
-import type { CampaignFactionId, SystemId } from '../domain/campaign';
+import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
 import { createCampaignSession, executeSessionCommand, getCampaignSessionView,
   type CampaignSession, type SessionCommand } from '../domain/campaignSession';
-import { CampaignPanel } from '../ui/CampaignPanel';
+import { CampaignPanel, type CampaignConfirmation } from '../ui/CampaignPanel';
 import { designSchema } from '../domain/shipDesign';
 import { isShipAtColony } from '../domain/campaignShips';
 import { getFleetTransit, isFleetAtColony, isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
+import { CampaignSaveManager } from '../utils/CampaignSaveManager';
+
+interface PendingOperation {
+  action: CampaignConfirmation;
+  generation: number;
+  source: CampaignSession;
+  candidate?: CampaignSession;
+}
 
 /** Owns the turn-based session; observation never changes the active faction. */
 export class MainScene extends Phaser.Scene {
@@ -16,7 +24,11 @@ export class MainScene extends Phaser.Scene {
   private panel?: CampaignPanel;
   private message = '';
   private error = false;
-  private pending?: 'new' | 'menu';
+  private pending?: CampaignConfirmation;
+  private operation?: PendingOperation;
+  private generation = 0;
+  private disposed = true;
+  private readonly saves = new CampaignSaveManager();
   private productionOpen = false;
   private budgetOpen = false;
   private catalog?: ProductionCatalog;
@@ -39,10 +51,13 @@ export class MainScene extends Phaser.Scene {
   constructor() { super({ key: 'MainScene' }); }
 
   create(): void {
+    this.disposed = false;
     this.cameras.main.setBackgroundColor('#070f1e');
     this.resetCampaign();
     this.input.keyboard?.on('keydown-ESC', this.onEscape);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.disposed = true;
+      this.invalidateOperation();
       this.input.keyboard?.off('keydown-ESC', this.onEscape);
       this.panel?.destroy(); this.panel = undefined;
       this.campaign = undefined; this.pending = undefined;
@@ -55,6 +70,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private resetCampaign(): void {
+    this.invalidateOperation();
     this.resetTravel();
     this.campaign = createCampaignSession();
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
@@ -66,8 +82,9 @@ export class MainScene extends Phaser.Scene {
   }
 
   private render(): void {
-    if (!this.campaign) return;
+    if (!this.campaign || this.disposed) return;
     this.panel?.destroy();
+    const operation = this.operation;
     // Capture what this panel displayed, not mutable scene fields at invocation time.
     const expectedTurn = this.campaign.turn, factionId = this.factionId, systemId = this.selectedId;
     const choice = this.catalog?.choices[this.choiceIndex];
@@ -187,18 +204,78 @@ export class MainScene extends Phaser.Scene {
           refuel: shipId => this.execute({ kind: 'refuelShip', factionId, expectedTurn, systemId, shipId })
         }
       },
-      request: action => { if (this.pending) return; this.pending = action; this.render(); },
-      cancel: () => { this.pending = undefined; this.render(); },
-      confirm: () => {
-        const action = this.pending; this.pending = undefined;
-        if (action === 'new') this.resetCampaign();
-        else if (action === 'menu') this.scene.start('MenuScene');
-      }
+      request: action => this.requestOperation(action),
+      cancel: () => { if (operation === this.operation) { this.invalidateOperation(); this.render(); } },
+      confirm: () => this.confirmOperation(operation)
     });
   }
 
+  private invalidateOperation(): void {
+    this.generation++;
+    this.operation = undefined; this.pending = undefined;
+  }
+
+  private isCurrentOperation(operation: PendingOperation): boolean {
+    return !this.disposed && this.operation === operation && this.generation === operation.generation &&
+      this.campaign === operation.source;
+  }
+
+  private requestOperation(action: CampaignConfirmation): void {
+    if (this.disposed || !this.campaign || this.pending) return;
+    const operation: PendingOperation = { action, source: this.campaign, generation: ++this.generation };
+    this.operation = operation; this.pending = action;
+    if (action === 'save' || action === 'load') {
+      // Capture before reading the slot. Never substitute the live session at confirmation.
+      if (action === 'save') operation.candidate = structuredClone(this.campaign);
+      const result = this.saves.load();
+      if (!this.isCurrentOperation(operation)) return;
+      if (action === 'load' && result.ok) operation.candidate = result.state;
+      else if (action === 'load' || (!result.ok && result.code === 'STORAGE_READ_FAILED')) {
+        this.invalidateOperation();
+        if (!result.ok) { this.error = true; this.message = result.message; }
+        this.render(); return;
+      } else if (!result.ok && result.code === 'SAVE_NOT_FOUND') {
+        this.confirmOperation(operation); return;
+      }
+      // Every other load result means an occupied slot, including corrupt/unsupported data.
+      // Reuse the repository's result codes; no second storage/presence API or JSON parser.
+    }
+    this.render();
+  }
+
+  private confirmOperation(operation?: PendingOperation): void {
+    if (!operation || this.operation !== operation || this.disposed) return;
+    if (!this.isCurrentOperation(operation)) {
+      this.invalidateOperation(); this.render(); return;
+    }
+    const { action, candidate } = operation;
+    if (action === 'save' && candidate) {
+      const result = this.saves.save(candidate);
+      if (!this.isCurrentOperation(operation)) return;
+      this.invalidateOperation();
+      this.error = !result.ok; this.message = result.ok ? 'Кампания сохранена.' : result.message;
+      this.render();
+    } else if (action === 'load' && candidate) {
+      this.invalidateOperation();
+      this.campaign = candidate;
+      this.factionId = getCampaignSessionView(candidate, this.factionId).activeFactionId;
+      const galaxy = getGalaxyDefinition();
+      this.selectedId = galaxy.systems.find(system => candidate.galaxy.systems.some(
+        state => state.id === system.id && state.ownerId === this.factionId))?.id ??
+        galaxy.factions.find(faction => faction.id === this.factionId)!.homeSystemId;
+      this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
+      this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+      this.resetTravel();
+      this.message = 'Кампания загружена.'; this.error = false;
+      this.render();
+    } else if (action === 'new') this.resetCampaign();
+    else if (action === 'menu') {
+      this.invalidateOperation(); this.scene.start('MenuScene');
+    }
+  }
+
   private execute(command: SessionCommand): void {
-    if (!this.campaign || this.pending) return;
+    if (this.disposed || !this.campaign || this.pending) return;
     const result = executeSessionCommand(this.campaign, command);
     this.error = !result.ok;
     if (result.ok) {
@@ -239,14 +316,14 @@ export class MainScene extends Phaser.Scene {
   }
 
   private onEscape = (): void => {
-    if (!this.campaign) return;
+    if (this.disposed || !this.campaign) return;
+    if (this.pending) { this.invalidateOperation(); this.render(); return; }
     if (!this.pending && this.budgetOpen) { this.budgetOpen = false; this.render(); return; }
     if (!this.pending && this.fleetTravelOpen) { this.resetFleetTravel(); this.render(); return; }
     if (!this.pending && this.fleetsOpen) { this.resetFleets(); this.render(); return; }
     if (!this.pending && this.travelOpen) { this.resetTravel(); this.render(); return; }
     if (!this.pending && this.productionOpen) { this.productionOpen = false; this.render(); return; }
-    this.pending = this.pending ? undefined : 'menu';
-    this.render();
+    this.requestOperation('menu');
   };
 
   private resetTravel(): void {

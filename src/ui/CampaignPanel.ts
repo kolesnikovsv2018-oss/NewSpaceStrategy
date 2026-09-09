@@ -4,11 +4,19 @@ import type { CampaignSessionView } from '../domain/campaignSession';
 import { ProductionPanel, type ProductionPanelState, type ProductionPanelActions } from './ProductionPanel';
 import { BudgetPanel } from './BudgetPanel';
 
+export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load';
+const confirmationText: Record<CampaignConfirmation, string> = {
+  new: 'Начать заново?\nТекущая партия будет потеряна.',
+  menu: 'Выйти в меню?\nТекущая партия будет потеряна.',
+  save: 'Заменить сохранение?\nПрежний слот будет перезаписан.',
+  load: 'Загрузить кампанию?\nТекущая партия будет потеряна.'
+};
+
 interface PanelState {
   selectedId: SystemId;
   message: string;
   error: boolean;
-  pending?: 'new' | 'menu';
+  pending?: CampaignConfirmation;
   budgetOpen?: boolean;
   production?: ProductionPanelState;
 }
@@ -16,7 +24,7 @@ interface PanelActions {
   select: (id: SystemId) => void;
   switchSide: () => void;
   command: (kind: 'explore' | 'colonize' | 'endTurn') => void;
-  request: (action: 'new' | 'menu') => void;
+  request: (action: CampaignConfirmation) => void;
   cancel: () => void;
   confirm: () => void;
   toggleProduction: () => void;
@@ -42,7 +50,9 @@ export class CampaignPanel {
     graphics.fillStyle(0x101e32).fillRoundedRect(868, 104, 388, 554, 18);
     graphics.lineStyle(1, 0x29455e).strokeRoundedRect(868, 104, 388, 554, 18);
     this.label(28, 22, 'ORION / ГАЛАКТИКА', 26, '#b4f1ff');
-    this.label(28, 60, 'Локальная пошаговая партия · S3.21 · 6 систем', 14, '#859bb6');
+    this.label(28, 60, 'Локальная пошаговая партия · S3.26 · 6 систем', 14, '#859bb6');
+    this.button(475, 24, 'Сохранить кампанию', 'campaign-save', () => actions.request('save'), !!state.pending);
+    this.button(675, 24, 'Загрузить кампанию', 'campaign-load', () => actions.request('load'), !!state.pending);
     this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), !!state.pending);
     this.button(1075, 24, '← Меню · ESC', 'campaign-menu', () => actions.request('menu'), !!state.pending);
     this.label(46, 126, 'КАРТА ПЕРЕХОДОВ', 13, '#859bb6');
@@ -92,14 +102,14 @@ export class CampaignPanel {
     this.button(1050, 478, 'Колонизировать', 'campaign-colonize', () => actions.command('colonize'), !!state.pending);
     this.button(892, 526, 'Завершить ход', 'campaign-end-turn', () => actions.command('endTurn'), !!state.pending);
     this.label(892, state.pending ? 566 : 574, state.pending
-      ? `${state.pending === 'new' ? 'Начать заново?' : 'Выйти в меню?'}\nТекущая партия будет потеряна.`
+      ? confirmationText[state.pending]
       : state.message, 16, state.error && !state.pending ? '#ffad9f' : '#a6e5d5')
       .setWordWrapWidth(338).setLineSpacing(5).setName('campaign-message');
     if (state.pending) {
       this.button(892, 614, 'Отмена · ESC', 'campaign-cancel', actions.cancel);
       this.button(1066, 614, 'Продолжить', 'campaign-confirm', actions.confirm);
     }
-    this.label(28, 680, 'Прототип: производство → размещение → перелёт → заправка в своей колонии. Боя и сохранения партии нет.', 15, '#99adc5');
+    this.label(28, 680, 'Ручной локальный слот · Обе стороны целиком · Без автосохранения · Боя и AI кампании нет.', 15, '#99adc5');
   }
 
   private label(x: number, y: number, value: string, size: number, color: string): Phaser.GameObjects.Text {
