@@ -1739,4 +1739,411 @@ describe('campaign scene and projection renderer', () => {
     f.click('travel-send'); expect(f.find('travel-transit').width).toBeLessThanOrEqual(745);
     expect(f.spy.mock.results[0].value.state.ships[0].design.name).toBe(name);
   });
+
+  describe('S3.21 budget UI', () => {
+    type Harness = ReturnType<typeof fixture>;
+    // Diagnostic access only: these bounded fixtures are not the paid acceptance cycles above.
+    const runtime = (f: Harness) => f.scene as unknown as {
+      campaign: domain.CampaignSession; budgetOpen: boolean; productionOpen: boolean;
+      travelOpen: boolean; fleetsOpen: boolean; fleetTravelOpen: boolean;
+      fleetShipIds: number[]; fleetCandidatePage: number; fleetPage: number; fleetMemberPage: number;
+      fleetDestinationIndex: number; fleetTransitPage: number;
+      render: () => void; execute: (command: domain.SessionCommand) => void;
+    };
+    const live = (f: Harness, name: string) => f.nodes.filter(node => !node.destroyed && node.name === name);
+    const capture = (f: Harness, name: string) => {
+      const callback = f.find(name).listeners('pointerdown')[0] as () => void;
+      expect(callback).toBeTypeOf('function'); return callback;
+    };
+    const successFields = ['budget-ships', 'budget-due', 'budget-paid', 'budget-shortfall', 'budget-after'];
+    const budgetText = (f: Harness) => f.nodes.filter(node => !node.destroyed && node.name.startsWith('budget-'))
+      .map(node => [node.name, node.text]);
+    const currentView = (f: Harness, side: 'blue' | 'red' = 'blue') => domain.getCampaignSessionView(runtime(f).campaign, side);
+    function freeze<T>(value: T): T {
+      if (value && typeof value === 'object') {
+        Object.values(value).forEach(child => freeze(child)); Object.freeze(value);
+      }
+      return value;
+    }
+    function diagnosticState(blue = 0, red = 0) {
+      const state = domain.createCampaignSession(), design = createCombatDesign('fighter');
+      state.production.lastOrderId = blue + red;
+      state.ships = Array.from({ length: blue + red }, (_, index) => ({ id: index + 1,
+        factionId: index < blue ? 'blue' : 'red', systemId: index < blue ? 'sol' : 'vega',
+        fuel: index % 4, design: structuredClone(design) }));
+      return state;
+    }
+    function budgetFixture(state = domain.createCampaignSession()) {
+      expect(domain.campaignSessionSchema.safeParse(state).success).toBe(true);
+      vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
+      const commands = vi.spyOn(domain, 'executeSessionCommand');
+      const load = vi.spyOn(catalog, 'loadProductionCatalog');
+      return { ...fixture(), state, commands, load };
+    }
+    function expectProjection(f: Harness, view: domain.CampaignSessionView) {
+      expect(f.find('budget-title').text).toBe(`БЮДЖЕТ · ${view.galaxy.factionId === 'blue' ? 'Синий союз' : 'Красная лига'}`);
+      expect(f.find('budget-context').text).toBe(view.activeFactionId === view.galaxy.factionId
+        ? 'Прогноз завершения текущего хода' : 'Условный прогноз своего хода · сейчас ход другой стороны');
+      expect(f.find('budget-treasury').text).toBe(`Сейчас: ${view.treasury.credits} кр. / ${view.treasury.minerals} мин.`);
+      expect(f.find('budget-income').text).toBe(`Валовой доход: +${view.income.credits} кр. / +${view.income.minerals} мин.`);
+      const forecast = view.economyForecast;
+      if (!forecast.ok) {
+        expect(f.find('budget-error').text).toBe(forecast.code === 'TURN_LIMIT'
+          ? 'TURN_LIMIT: достигнут предел номера хода. Расчёт не будет выполнен.'
+          : 'RESOURCE_LIMIT: валовой доход превысит предел ресурсов. Списание не исправляет переполнение.');
+        for (const name of successFields) expect(live(f, name), name).toHaveLength(0);
+      } else {
+        expect(live(f, 'budget-error')).toHaveLength(0);
+        expect(f.find('budget-ships').text).toBe(`Кораблей на содержании: ${forecast.upkeep.shipCount}`);
+        expect(f.find('budget-due').text).toBe(`Начислено: ${forecast.upkeep.dueCredits} кр.`);
+        expect(f.find('budget-paid').text).toBe(`Будет списано: ${forecast.upkeep.paidCredits} кр.`);
+        expect(f.find('budget-shortfall').text).toBe(`Дефицит: ${forecast.upkeep.shortfallCredits} кр. (без долга)`);
+        expect(f.find('budget-after').text).toBe(`Остаток после расчёта: ${forecast.treasuryAfter.credits} кр. / ${forecast.treasuryAfter.minerals} мин.`);
+        expect(f.find('budget-rule').text).toContain('груп');
+        expect(f.find('budget-rule').text).toContain('перелёт');
+        expect(f.find('budget-rule').text).toContain('не долг');
+        expect(f.find('budget-note').text).toBe('Это прогноз, не квитанция. Фактический платёж — в сообщении справа.');
+      }
+    }
+    function expectExclusiveBudget(f: Harness) {
+      expect(runtime(f).budgetOpen).toBe(true);
+      expect(live(f, 'campaign-budget-panel')).toHaveLength(1);
+      expect(live(f, 'production-panel')).toHaveLength(0);
+      expect(f.nodes.filter(node => !node.destroyed && node.name.startsWith('system-'))).toHaveLength(0);
+    }
+
+    it('starts on the map and toggles an exclusive budget without commands or catalog loading', () => {
+      const f = budgetFixture(), before = structuredClone(f.state), message = f.message();
+      expect(runtime(f).budgetOpen).toBe(false); expect(live(f, 'campaign-budget-panel')).toHaveLength(0);
+      expect(f.find('system-sol')).toBeDefined(); expect(f.find('campaign-budget').interactive).toBe(true);
+      expect(f.find('campaign-production').interactive).toBe(true);
+      f.click('campaign-budget'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      expect(f.find('budget-after').text).toBe('Остаток после расчёта: 110 кр. / 55 мин.');
+      expect(f.message()).toBe(message);
+      f.click('campaign-budget'); expect(runtime(f).budgetOpen).toBe(false);
+      expect(live(f, 'campaign-budget-panel')).toHaveLength(0); expect(f.find('system-sol')).toBeDefined();
+      expect(f.message()).toBe(message); expect(f.state).toEqual(before);
+      expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { side: 'blue', turn: 1 }, { side: 'red', turn: 1 },
+      { side: 'blue', turn: 2 }, { side: 'red', turn: 2 }
+    ] as const)('shows only $side budget on turn $turn, active or hypothetical, across side switches', ({ side, turn }) => {
+      const state = diagnosticState(2, 7); state.turn = turn;
+      state.treasuries.blue = { credits: 123456, minerals: 234567 };
+      state.treasuries.red = { credits: 765432, minerals: 654321 };
+      const f = budgetFixture(state), before = structuredClone(state);
+      if (side === 'red') f.click('campaign-side-switch');
+      f.click('campaign-budget'); expectProjection(f, currentView(f, side)); expectExclusiveBudget(f);
+      const enemy = side === 'blue' ? 'red' : 'blue';
+      const shown = f.nodes.filter(node => !node.destroyed).map(node => node.text).join('\n');
+      expect(shown).not.toContain(String(state.treasuries[enemy].credits));
+      expect(shown).not.toContain(String(state.treasuries[enemy].minerals));
+      expect(shown).not.toContain(`Кораблей на содержании: ${side === 'blue' ? 7 : 2}`);
+      f.click('campaign-side-switch'); expectExclusiveBudget(f); expectProjection(f, currentView(f, enemy));
+      f.click('campaign-side-switch'); expectProjection(f, currentView(f, side));
+      expect(f.find('campaign-end-turn').interactive).toBe(true);
+      expect(state).toEqual(before); expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { side: 'blue', selection: 'vega', enemy: true }, { side: 'blue', selection: 'nexus', enemy: false },
+      { side: 'red', selection: 'sol', enemy: true }, { side: 'red', selection: 'eden', enemy: false }
+    ] as const)('ignores selected $selection ownership/visibility for the $side forecast', ({ side, selection, enemy }) => {
+      const state = diagnosticState(2, 7);
+      if (enemy) state.galaxy.systems.find(system => system.id === selection)!.exploredBy.push(side);
+      const f = budgetFixture(state);
+      if (side === 'red') f.click('campaign-side-switch');
+      f.click(`system-${selection}`); const details = f.details();
+      expect(details).toContain(enemy ? (side === 'blue' ? 'Красная лига' : 'Синий союз') : 'неизвестен');
+      f.click('campaign-budget'); expectExclusiveBudget(f); expectProjection(f, currentView(f, side));
+      expect(f.details()).toBe(details); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { count: 0, paid: 0, shortfall: 0, after: 25 },
+      { count: 2, paid: 2, shortfall: 0, after: 23 },
+      { count: 100, paid: 25, shortfall: 75, after: 0 }
+    ])('renders the explicit $count-ship budget fixture, including partial payment without debt', ({ count, paid, shortfall, after }) => {
+      const state = diagnosticState(count), eden = state.galaxy.systems.find(system => system.id === 'eden')!;
+      eden.ownerId = 'blue'; eden.exploredBy = ['blue']; state.treasuries.blue = { credits: 5, minerals: 5 };
+      const f = budgetFixture(state); f.click('campaign-budget'); expectProjection(f, currentView(f));
+      expect(f.find('budget-ships').text).toBe(`Кораблей на содержании: ${count}`);
+      expect(f.find('budget-due').text).toBe(`Начислено: ${count} кр.`);
+      expect(f.find('budget-paid').text).toBe(`Будет списано: ${paid} кр.`);
+      expect(f.find('budget-shortfall').text).toBe(`Дефицит: ${shortfall} кр. (без долга)`);
+      expect(f.find('budget-after').text).toBe(`Остаток после расчёта: ${after} кр. / 15 мин.`);
+      expect(f.commands).not.toHaveBeenCalled();
+    });
+
+    it('keeps frozen state and library unchanged and never aliases the rendered forecast back to state', () => {
+      const state = diagnosticState(2, 3), before = structuredClone(state);
+      const storage = { getItem: vi.fn(() => null), setItem: vi.fn() } satisfies StoragePort;
+      vi.stubGlobal('localStorage', storage);
+      try {
+        const project = structuredClone(state.ships[0].design), f = budgetFixture(freeze(state));
+        const views = vi.spyOn(domain, 'getCampaignSessionView');
+        f.click('campaign-budget'); const text = budgetText(f);
+        const projected = views.mock.results[views.mock.results.length - 1].value as domain.CampaignSessionView;
+        expect(projected.treasury).not.toBe(state.treasuries.blue);
+        expect(projected.ships[0].design).not.toBe(state.ships[0].design);
+        if (!projected.economyForecast.ok) throw Error(projected.economyForecast.code);
+        expect(projected.economyForecast.treasuryAfter).not.toBe(projected.treasury);
+        expect(projected.economyForecast.income).not.toBe(projected.income);
+        projected.treasury.credits = 999; projected.economyForecast.upkeep.paidCredits = 999;
+        projected.economyForecast.treasuryAfter.credits = 999; projected.ships[0].design.name = 'Projection only';
+        expect(budgetText(f)).toEqual(text); expect(state).toEqual(before);
+        f.click('campaign-budget'); f.click('campaign-budget'); expect(budgetText(f)).toEqual(text);
+        f.click('campaign-side-switch'); f.click('campaign-side-switch'); expect(budgetText(f)).toEqual(text);
+        expect(state.ships[0].design).toEqual(project); expect(runtime(f).campaign).toBe(state);
+        expect(f.load).not.toHaveBeenCalled(); expect(storage.getItem).not.toHaveBeenCalled();
+        expect(storage.setItem).not.toHaveBeenCalled(); expect(f.commands).not.toHaveBeenCalled();
+      } finally { vi.unstubAllGlobals(); }
+    });
+
+    it('renders a synthetic SessionView verbatim without deriving budget numbers from ships or treasury', async () => {
+      const { BudgetPanel } = await import('../src/ui/BudgetPanel');
+      const f = fixture(); f.events.emit('shutdown');
+      // Intentionally inconsistent with empty ships and treasury: a renderer must trust its projection.
+      const view = domain.getCampaignSessionView(domain.createCampaignSession(), 'blue');
+      view.income = { credits: 17, minerals: 9 };
+      view.economyForecast = { ok: true, income: { credits: 17, minerals: 9 },
+        upkeep: { shipCount: 37, dueCredits: 73, paidCredits: 50, shortfallCredits: 23 },
+        treasuryAfter: { credits: 123, minerals: 456 } };
+      const before = structuredClone(view), panel = new BudgetPanel(f.scene, freeze(view));
+      expectProjection(f, view); expect(live(f, 'campaign-budget-panel')).toHaveLength(1);
+      expect(view).toEqual(before); expect(view.ships).toEqual([]); expect(view).not.toHaveProperty('treasuries');
+      panel.destroy(); panel.destroy(); expect(f.nodes.every(node => node.destroyed)).toBe(true);
+    });
+
+    it('preserves the actual paid25 receipt while showing the following paid20 forecast', () => {
+      const f = travelFixture(100); f.state.treasuries.blue = { credits: 5, minerals: 5 };
+      f.click('campaign-end-turn');
+      const receipt = 'Ход передан. Доход: +20 кр. / +10 мин. Содержание: 25/100 кр. Дефицит: 75 кр. (без долга).';
+      expect(f.message()).toBe(receipt);
+      f.click('campaign-budget'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      expect(f.message()).toBe(receipt); expect(f.find('budget-paid').text).toBe('Будет списано: 20 кр.');
+      expect(f.find('budget-shortfall').text).toBe('Дефицит: 80 кр. (без долга)');
+      f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+      f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+      const before = structuredClone(runtime(f).campaign), forecast = budgetText(f);
+      expect(f.find('campaign-end-turn').interactive).toBe(true); f.click('campaign-end-turn');
+      expect(f.message()).toBe('Сейчас ход другой стороны'); expectExclusiveBudget(f);
+      expect(budgetText(f)).toEqual(forecast); expect(runtime(f).campaign).toEqual(before);
+    });
+
+    it('reprojects after real deploy, refuel and colonize commands while keeping the budget open', () => {
+      const state = diagnosticState(1); state.ships[0].fuel = 0;
+      state.production.lastOrderId = 3;
+      const record = { id: 2, factionId: 'blue' as const, systemId: 'sol' as const, design: structuredClone(state.ships[0].design) };
+      state.production.completed = [record]; state.production.orders = [{ ...structuredClone(record), id: 3, remainingTurns: 1 }];
+      const f = budgetFixture(state); f.click('system-eden'); f.click('campaign-budget');
+      expectProjection(f, currentView(f)); expect(f.find('budget-ships').text).toBe('Кораблей на содержании: 1');
+      const execute = (command: domain.SessionCommand) => {
+        const before = structuredClone(runtime(f).campaign), input = runtime(f).campaign;
+        runtime(f).execute(command);
+        expect(input).toEqual(before); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+        expect(f.commands.mock.results[f.commands.mock.results.length - 1].value).toMatchObject({ ok: true });
+      };
+      // No production controls are mounted in budget mode; exercise the real scene/session command boundary.
+      execute({ kind: 'deployProduction', factionId: 'blue', expectedTurn: 1, systemId: 'sol', orderId: 2 });
+      expect(f.find('budget-ships').text).toBe('Кораблей на содержании: 2');
+      expect(runtime(f).campaign.treasuries.blue).toEqual({ credits: 100, minerals: 50 });
+      execute({ kind: 'refuelShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 1 });
+      expect(f.find('budget-treasury').text).toBe('Сейчас: 85 кр. / 44 мин.');
+      expect(f.find('budget-after').text).toBe('Остаток после расчёта: 93 кр. / 49 мин.');
+      f.click('campaign-explore'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      f.click('campaign-colonize'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      expect(f.message()).toBe('Колония основана.');
+      expect(f.find('budget-income').text).toBe('Валовой доход: +20 кр. / +10 мин.');
+      expect(f.find('budget-after').text).toBe('Остаток после расчёта: 103 кр. / 54 мин.');
+      const beforeEnd = currentView(f).economyForecast; f.click('campaign-end-turn');
+      expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      const result = f.commands.mock.results[f.commands.mock.results.length - 1].value as domain.SessionResult;
+      if (!result.ok || !beforeEnd.ok) throw Error('Expected successful economy');
+      const { ok: _ok, ...budget } = beforeEnd;
+      expect(result.endTurnEconomy).toEqual({ ...budget, factionId: 'blue', turn: 1 });
+      expect(result.state.production.completed.map(item => item.id)).toEqual([3]);
+      expect(f.find('budget-ships').text).toBe('Кораблей на содержании: 2');
+      expect(state.production.completed).toEqual([record]); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it('counts free ships and grouped members exactly once before transit, in transit and after arrival', () => {
+      const f = travelFixture(4), snapshots = f.state.ships.map(ship => structuredClone(ship.design));
+      const reads = f.load.mock.calls.length;
+      f.click('campaign-budget');
+      const execute = (command: domain.SessionCommand) => {
+        runtime(f).execute(command); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+        expect(f.find('budget-ships').text).toBe('Кораблей на содержании: 4');
+        expect(f.find('budget-due').text).toBe('Начислено: 4 кр.');
+        expect(f.spy.mock.results[f.spy.mock.results.length - 1].value).toMatchObject({ ok: true });
+      };
+      execute({ kind: 'createFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipIds: [1, 2] });
+      execute({ kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 1, destinationId: 'eden' });
+      execute({ kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 3, destinationId: 'eden' });
+      expect(runtime(f).campaign.ships.filter(ship => ship.transit)).toHaveLength(3);
+      execute({ kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+      expect(runtime(f).campaign.ships.filter(ship => ship.transit)).toHaveLength(0);
+      expect(runtime(f).campaign.ships.filter(ship => ship.systemId === 'eden')).toHaveLength(3);
+      expect(runtime(f).campaign.fleets.items[0].systemId).toBe('eden');
+      expect(runtime(f).campaign.ships.map(ship => ship.design)).toEqual(snapshots);
+      expect(f.load).toHaveBeenCalledTimes(reads);
+    });
+
+    it.each(['credits', 'minerals'] as const)('clears stale successful fields on gross %s overflow and restores them after recovery', resource => {
+      const state = diagnosticState(2), f = budgetFixture(state);
+      f.click('campaign-budget'); expectProjection(f, currentView(f));
+      const oldFields = successFields.map(name => f.find(name));
+      // Diagnostic external state change followed by redraw, not an earned treasury.
+      state.treasuries.blue[resource] = domain.MAX_RESOURCE - (resource === 'credits' ? 9 : 4);
+      const before = structuredClone(state); runtime(f).render();
+      expectProjection(f, currentView(f)); expect(oldFields.every(node => node.destroyed)).toBe(true);
+      expect(f.find('campaign-end-turn').interactive).toBe(true); f.click('campaign-end-turn');
+      expect(f.commands.mock.results[0].value).toMatchObject({ ok: false, code: 'RESOURCE_LIMIT' });
+      expect(runtime(f).campaign).toBe(state); expect(state).toEqual(before); expectExclusiveBudget(f);
+      expectProjection(f, currentView(f)); expect(f.message()).toContain('Доход превысит предел');
+      state.treasuries.blue[resource] = 0; runtime(f).render(); expectProjection(f, currentView(f));
+      expect(live(f, 'budget-error')).toHaveLength(0);
+      for (const name of successFields) expect(live(f, name)).toHaveLength(1);
+    });
+
+    it.each(['credits', 'minerals'] as const)('accepts the exact gross %s cap without suppressing endTurn', resource => {
+      const state = diagnosticState(2);
+      state.treasuries.blue[resource] = domain.MAX_RESOURCE - (resource === 'credits' ? 10 : 5);
+      const f = budgetFixture(state); f.click('campaign-budget'); expectProjection(f, currentView(f));
+      expect(live(f, 'budget-error')).toHaveLength(0); expect(f.find('campaign-end-turn').interactive).toBe(true);
+      f.click('campaign-end-turn'); expectExclusiveBudget(f);
+      const result = f.commands.mock.results[0].value as domain.SessionResult;
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw Error(result.message);
+      expect(result.state.treasuries.blue[resource]).toBe(domain.MAX_RESOURCE - (resource === 'credits' ? 2 : 0));
+      expectProjection(f, currentView(f)); // The next forecast may now overflow; it is not the receipt.
+    });
+
+    it('prioritizes TURN_LIMIT over gross overflow, removes success fields and retains inactive command refusal', () => {
+      const state = diagnosticState(2, 3), f = budgetFixture(state);
+      f.click('campaign-budget'); expectProjection(f, currentView(f));
+      state.turn = domain.MAX_TURN;
+      state.treasuries.blue.credits = domain.MAX_RESOURCE; state.treasuries.red.minerals = domain.MAX_RESOURCE;
+      runtime(f).render(); expectProjection(f, currentView(f));
+      const before = structuredClone(state);
+      expect(f.find('campaign-end-turn').interactive).toBe(true); f.click('campaign-end-turn');
+      expect(f.commands.mock.results[0].value).toMatchObject({ ok: false, code: 'NOT_ACTIVE_FACTION' });
+      expectProjection(f, currentView(f)); f.click('campaign-side-switch');
+      expectExclusiveBudget(f); expectProjection(f, currentView(f, 'red'));
+      expect(f.find('campaign-end-turn').interactive).toBe(true); f.click('campaign-end-turn');
+      expect(f.commands.mock.results[1].value).toMatchObject({ ok: false, code: 'TURN_LIMIT' });
+      expect(f.message()).toBe('Достигнут предел номера хода'); expectProjection(f, currentView(f, 'red'));
+      expect(runtime(f).campaign).toBe(state); expect(state).toEqual(before);
+      state.turn = 2; state.treasuries.red.minerals = 0; runtime(f).render();
+      expectProjection(f, currentView(f, 'red')); expect(live(f, 'budget-error')).toHaveLength(0);
+    });
+
+    it.each(['campaign-new', 'campaign-menu'])('blocks budget and existing background controls while %s is pending', request => {
+      const f = budgetFixture(); f.click('campaign-budget');
+      const oldToggle = capture(f, 'campaign-budget'), oldEnd = capture(f, 'campaign-end-turn');
+      const before = structuredClone(f.state), text = budgetText(f); f.click(request);
+      for (const name of ['campaign-budget', 'campaign-production', 'campaign-side-switch', 'campaign-explore',
+        'campaign-colonize', 'campaign-end-turn', 'campaign-new', 'campaign-menu']) {
+        expect(f.find(name).interactive, name).toBe(false); f.click(name);
+      }
+      oldToggle(); oldEnd(); expectExclusiveBudget(f); expect(budgetText(f)).toEqual(text);
+      expect(f.find('campaign-cancel').interactive).toBe(true); expect(f.find('campaign-confirm').interactive).toBe(true);
+      f.click('campaign-cancel'); expectExclusiveBudget(f); expect(budgetText(f)).toEqual(text);
+      expect(f.find('campaign-budget').interactive).toBe(true); expect(f.state).toEqual(before);
+      expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled(); expect(f.start).not.toHaveBeenCalled();
+    });
+
+    it.each(['campaign-side-switch', 'campaign-end-turn', 'campaign-budget'])('disposes old budget and command callbacks after %s redraw', action => {
+      const f = budgetFixture(); f.click('campaign-budget');
+      const callbacks = ['campaign-budget', 'campaign-production', 'campaign-end-turn', 'campaign-side-switch']
+        .map(name => capture(f, name));
+      f.click(action); const before = structuredClone(runtime(f).campaign), text = budgetText(f);
+      const commands = f.commands.mock.calls.length, open = runtime(f).budgetOpen;
+      callbacks.forEach(callback => callback());
+      expect(f.commands).toHaveBeenCalledTimes(commands); expect(f.load).not.toHaveBeenCalled();
+      expect(runtime(f).budgetOpen).toBe(open); expect(runtime(f).campaign).toEqual(before); expect(budgetText(f)).toEqual(text);
+    });
+
+    it.each(['queue', 'single routes', 'group routes'] as const)('closes %s when opening budget and returns to production without restoring routes', mode => {
+      const f = mode === 'group routes' ? fleetTravelFixture(2) : travelFixture(2);
+      if (mode === 'queue') f.click('production-travel');
+      const reads = f.load.mock.calls.length, before = structuredClone(runtime(f).campaign);
+      const old = capture(f, mode === 'group routes' ? 'fleet-travel-send' : mode === 'queue' ? 'production-enqueue' : 'travel-send');
+      const calls = f.spy.mock.calls.length;
+      f.click('campaign-budget'); expectExclusiveBudget(f); old();
+      expect(runtime(f)).toMatchObject({ productionOpen: false, travelOpen: false, fleetsOpen: false, fleetTravelOpen: false });
+      for (const name of ['travel-panel', 'fleet-panel', 'fleet-travel-panel']) expect(live(f, name)).toHaveLength(0);
+      f.click('campaign-production'); expect(runtime(f).budgetOpen).toBe(false);
+      expect(live(f, 'campaign-budget-panel')).toHaveLength(0); expect(f.find('production-enqueue')).toBeDefined();
+      expect(live(f, 'production-panel')).toHaveLength(1);
+      expect(f.load).toHaveBeenCalledTimes(reads); expect(f.spy).toHaveBeenCalledTimes(calls);
+      expect(runtime(f).campaign).toEqual(before);
+    });
+
+    it('clears the membership draft and all group pages when budget replaces groups', () => {
+      const f = fleetFixture(4); f.selectTwo(); const before = structuredClone(runtime(f).campaign);
+      expect(runtime(f).fleetShipIds).toEqual([1, 2]); const old = capture(f, 'fleet-create');
+      f.click('campaign-budget'); old(); expectExclusiveBudget(f);
+      expect(runtime(f)).toMatchObject({ fleetShipIds: [], fleetCandidatePage: 0, fleetPage: 0, fleetMemberPage: 0,
+        fleetDestinationIndex: 0, fleetTransitPage: 0, fleetsOpen: false, fleetTravelOpen: false });
+      f.click('campaign-production'); f.click('production-fleets');
+      expect(f.find('fleet-create').interactive).toBe(false); expect(runtime(f).fleetShipIds).toEqual([]);
+      expect(runtime(f).campaign).toEqual(before); expect(f.spy).not.toHaveBeenCalled();
+    });
+
+    it('passes budgetOpen to PanelState and closes budget through the current selection callback', async () => {
+      const panels = await import('../src/ui/CampaignPanel'), Original = panels.CampaignPanel;
+      // Observe constructor arguments while preserving the real renderer and its disposed guards.
+      const constructors = vi.spyOn(panels, 'CampaignPanel').mockImplementation(function (...args) { return new Original(...args); });
+      const f = budgetFixture();
+      expect(constructors.mock.calls[constructors.mock.calls.length - 1][2]).toMatchObject({ budgetOpen: false });
+      f.click('campaign-budget');
+      const args = constructors.mock.calls[constructors.mock.calls.length - 1];
+      expect(args[2]).toMatchObject({ budgetOpen: true }); expect(args[1]).not.toHaveProperty('treasuries');
+      expect(args[1].ships).toEqual([]);
+      // No map marker is mounted in budget mode; invoke the current scene callback directly.
+      args[3].select('eden'); expect(runtime(f).budgetOpen).toBe(false);
+      expect(live(f, 'campaign-budget-panel')).toHaveLength(0); expect(f.find('system-eden')).toBeDefined();
+      expect(f.find('campaign-system-name').text).toBe('Эдем'); expect(f.commands).not.toHaveBeenCalled();
+    });
+
+    it('uses Escape for pending cancellation first, then budget to map, then menu confirmation', () => {
+      const f = budgetFixture(); f.click('campaign-budget'); f.click('campaign-new');
+      f.keyboard.emit('keydown-ESC'); expectExclusiveBudget(f); expect(live(f, 'campaign-confirm')).toHaveLength(0);
+      f.keyboard.emit('keydown-ESC'); expect(runtime(f).budgetOpen).toBe(false);
+      expect(f.find('system-sol')).toBeDefined(); expect(live(f, 'campaign-confirm')).toHaveLength(0);
+      f.keyboard.emit('keydown-ESC'); expect(f.message()).toContain('Выйти в меню?');
+      expect(f.find('campaign-confirm').interactive).toBe(true); expect(f.start).not.toHaveBeenCalled();
+      f.keyboard.emit('keydown-ESC'); expect(f.find('system-sol')).toBeDefined();
+      expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it('resets budget to the initial map and prevents old callbacks reopening it at turn1', () => {
+      const f = budgetFixture(diagnosticState(2)); f.click('campaign-budget');
+      const oldToggle = capture(f, 'campaign-budget'), oldEnd = capture(f, 'campaign-end-turn');
+      f.click('campaign-new'); f.click('campaign-confirm'); oldToggle(); oldEnd();
+      expect(runtime(f).budgetOpen).toBe(false); expect(live(f, 'campaign-budget-panel')).toHaveLength(0);
+      expect(f.find('system-sol')).toBeDefined(); expect(f.find('campaign-turn').text).toBe('Ход 1 · Синий союз');
+      f.click('campaign-budget'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      expect(f.find('budget-ships').text).toBe('Кораблей на содержании: 0');
+      expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled();
+    });
+
+    it.each(['shutdown', 'menu'] as const)('destroys budget on %s and reenters with one panel and one Escape listener', exit => {
+      const f = budgetFixture(); f.click('campaign-budget');
+      const oldToggle = capture(f, 'campaign-budget'), oldEnd = capture(f, 'campaign-end-turn');
+      if (exit === 'menu') { f.click('campaign-menu'); f.click('campaign-confirm'); }
+      else f.events.emit('shutdown');
+      expect(runtime(f).budgetOpen).toBe(false); expect(runtime(f).campaign).toBeUndefined();
+      expect(f.nodes.every(node => node.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+      oldToggle(); oldEnd(); expect(f.nodes.every(node => node.destroyed)).toBe(true);
+      f.scene.create(); oldToggle(); oldEnd(); expect(runtime(f).budgetOpen).toBe(false);
+      expect(f.find('system-sol')).toBeDefined(); expect(live(f, 'campaign-budget-panel')).toHaveLength(0);
+      f.click('campaign-budget'); expectExclusiveBudget(f); expectProjection(f, currentView(f));
+      expect(live(f, 'campaign-panel')).toHaveLength(1); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+      expect(f.commands).not.toHaveBeenCalled(); expect(f.load).not.toHaveBeenCalled();
+    });
+  });
 });

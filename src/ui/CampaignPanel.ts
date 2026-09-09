@@ -2,12 +2,14 @@ import type Phaser from 'phaser';
 import type { SystemId } from '../domain/campaign';
 import type { CampaignSessionView } from '../domain/campaignSession';
 import { ProductionPanel, type ProductionPanelState, type ProductionPanelActions } from './ProductionPanel';
+import { BudgetPanel } from './BudgetPanel';
 
 interface PanelState {
   selectedId: SystemId;
   message: string;
   error: boolean;
   pending?: 'new' | 'menu';
+  budgetOpen?: boolean;
   production?: ProductionPanelState;
 }
 interface PanelActions {
@@ -18,6 +20,7 @@ interface PanelActions {
   cancel: () => void;
   confirm: () => void;
   toggleProduction: () => void;
+  toggleBudget: () => void;
   production: ProductionPanelActions;
 }
 const ownerName = (owner: 'blue' | 'red' | null): string =>
@@ -28,6 +31,7 @@ export class CampaignPanel {
   private readonly root: Phaser.GameObjects.Container;
   private disposed = false;
   private production?: ProductionPanel;
+  private budget?: BudgetPanel;
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, state: PanelState, actions: PanelActions) {
     const view = session.galaxy;
@@ -38,16 +42,19 @@ export class CampaignPanel {
     graphics.fillStyle(0x101e32).fillRoundedRect(868, 104, 388, 554, 18);
     graphics.lineStyle(1, 0x29455e).strokeRoundedRect(868, 104, 388, 554, 18);
     this.label(28, 22, 'ORION / ГАЛАКТИКА', 26, '#b4f1ff');
-    this.label(28, 60, 'Локальная пошаговая партия · S3.17 · 6 систем', 14, '#859bb6');
+    this.label(28, 60, 'Локальная пошаговая партия · S3.21 · 6 систем', 14, '#859bb6');
     this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), !!state.pending);
     this.button(1075, 24, '← Меню · ESC', 'campaign-menu', () => actions.request('menu'), !!state.pending);
     this.label(46, 126, 'КАРТА ПЕРЕХОДОВ', 13, '#859bb6');
+    this.button(440, 114, state.budgetOpen ? '← Карта' : 'Бюджет', 'campaign-budget', actions.toggleBudget, !!state.pending);
     this.button(630, 114, state.production ? '← Карта' : 'Производство', 'campaign-production', actions.toggleProduction, !!state.pending);
     this.label(46, 156, `Ход ${session.turn} · ${ownerName(session.activeFactionId)}`, 20, '#e4f2ff').setName('campaign-turn');
     this.label(46, 187, session.activeFactionId === view.factionId
       ? 'Ваша очередь: действия или завершение хода.'
       : 'Ход другой стороны. Смените сторону наблюдения для управления.', 14, '#a6e5d5').setName('campaign-turn-hint');
-    if (state.production) {
+    if (state.budgetOpen) {
+      this.budget = new BudgetPanel(scene, session);
+    } else if (state.production) {
       this.production = new ProductionPanel(scene, session, state.selectedId, state.production, actions.production, !!state.pending);
     } else {
       this.label(46, 620, '○ Неизвестно     ◇ Разведано     ● Колония', 15, '#b5c7dc');
@@ -110,5 +117,5 @@ export class CampaignPanel {
     text.on('pointerdown', () => { if (!this.disposed) action(); });
   }
 
-  destroy(): void { if (this.disposed) return; this.disposed = true; this.production?.destroy(); this.root.destroy(); }
+  destroy(): void { if (this.disposed) return; this.disposed = true; this.production?.destroy(); this.budget?.destroy(); this.root.destroy(); }
 }

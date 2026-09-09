@@ -18,6 +18,7 @@ export class MainScene extends Phaser.Scene {
   private error = false;
   private pending?: 'new' | 'menu';
   private productionOpen = false;
+  private budgetOpen = false;
   private catalog?: ProductionCatalog;
   private choiceIndex = 0;
   private completedPage = 0;
@@ -48,6 +49,7 @@ export class MainScene extends Phaser.Scene {
       this.message = ''; this.error = false;
       this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
       this.shipsPage = 0; this.showShips = false;
+      this.budgetOpen = false;
       this.resetTravel();
     });
   }
@@ -57,6 +59,7 @@ export class MainScene extends Phaser.Scene {
     this.campaign = createCampaignSession();
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
     this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
+    this.budgetOpen = false;
     this.shipsPage = 0; this.showShips = false;
     this.message = 'Выберите соседнюю систему и отправьте разведку.'; this.error = false;
     this.render();
@@ -82,6 +85,7 @@ export class MainScene extends Phaser.Scene {
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
     this.panel = new CampaignPanel(this, view, {
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
+      budgetOpen: this.budgetOpen,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
         completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
         travel: this.travelOpen ? { shipsPage: this.shipsPage, destinationIndex: this.destinationIndex, transitPage: this.transitPage } : undefined,
@@ -92,6 +96,7 @@ export class MainScene extends Phaser.Scene {
       select: id => {
         if (this.pending) return;
         this.selectedId = id; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+        this.budgetOpen = false;
         this.resetTravel();
         this.message = ''; this.error = false; this.render();
       },
@@ -107,10 +112,18 @@ export class MainScene extends Phaser.Scene {
         ? { kind, factionId, expectedTurn } : { kind, factionId, systemId, expectedTurn }),
       toggleProduction: () => {
         if (this.pending) return;
+        this.budgetOpen = false;
         this.productionOpen = !this.productionOpen;
         this.resetTravel();
         if (this.productionOpen && !this.catalog) this.catalog = loadProductionCatalog();
         this.message = ''; this.error = false; this.render();
+      },
+      toggleBudget: () => {
+        if (this.pending) return;
+        this.budgetOpen = !this.budgetOpen;
+        this.productionOpen = false; this.resetTravel();
+        // Keep the last command message: the receipt and the next forecast are distinct.
+        this.render();
       },
       production: {
         choose: index => {
@@ -227,6 +240,7 @@ export class MainScene extends Phaser.Scene {
 
   private onEscape = (): void => {
     if (!this.campaign) return;
+    if (!this.pending && this.budgetOpen) { this.budgetOpen = false; this.render(); return; }
     if (!this.pending && this.fleetTravelOpen) { this.resetFleetTravel(); this.render(); return; }
     if (!this.pending && this.fleetsOpen) { this.resetFleets(); this.render(); return; }
     if (!this.pending && this.travelOpen) { this.resetTravel(); this.render(); return; }
