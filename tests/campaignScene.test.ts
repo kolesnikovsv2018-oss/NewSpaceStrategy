@@ -57,6 +57,35 @@ function fixture() {
     message: () => find('campaign-message').text };
 }
 
+/** Contract oracle: explicit fixture counts, colony income and arithmetic, never the upkeep calculator. */
+function expectBudgetOracle(f: ReturnType<typeof fixture>, state: domain.CampaignSession,
+  faction: 'blue' | 'red', shipCount: number, colonies: number) {
+  const treasury = state.treasuries[faction], income = { credits: colonies * 10, minerals: colonies * 5 };
+  const paid = Math.min(treasury.credits + income.credits, shipCount);
+  const expected = { ok: true as const, income,
+    upkeep: { shipCount, dueCredits: shipCount, paidCredits: paid, shortfallCredits: shipCount - paid },
+    treasuryAfter: { credits: treasury.credits + income.credits - paid, minerals: treasury.minerals + income.minerals } };
+  const view = domain.getCampaignSessionView(state, faction);
+  expect(view.economyForecast).toEqual(expected); expect(view.income).toEqual(income);
+  expect(view.ships).toHaveLength(shipCount); expect(view.ships.every(ship => ship.factionId === faction)).toBe(true);
+  expect(view).not.toHaveProperty('treasuries'); expect(view).not.toHaveProperty('endTurnEconomy');
+  expect(view.production.orders.every(order => order.factionId === faction)).toBe(true);
+  expect(view.fleets.every(fleet => fleet.factionId === faction)).toBe(true);
+  expect(f.find('budget-title').text).toBe(`БЮДЖЕТ · ${faction === 'blue' ? 'Синий союз' : 'Красная лига'}`);
+  expect(f.find('budget-context').text).toBe((state.turn % 2 ? 'blue' : 'red') === faction
+    ? 'Прогноз завершения текущего хода' : 'Условный прогноз своего хода · сейчас ход другой стороны');
+  expect(f.find('budget-treasury').text).toBe(`Сейчас: ${treasury.credits} кр. / ${treasury.minerals} мин.`);
+  expect(f.find('budget-income').text).toBe(`Валовой доход: +${income.credits} кр. / +${income.minerals} мин.`);
+  expect(f.find('budget-ships').text).toBe(`Кораблей на содержании: ${shipCount}`);
+  expect(f.find('budget-due').text).toBe(`Начислено: ${shipCount} кр.`);
+  expect(f.find('budget-paid').text).toBe(`Будет списано: ${paid} кр.`);
+  expect(f.find('budget-shortfall').text).toBe(`Дефицит: ${shipCount - paid} кр. (без долга)`);
+  expect(f.find('budget-after').text).toBe(`Остаток после расчёта: ${expected.treasuryAfter.credits} кр. / ${expected.treasuryAfter.minerals} мин.`);
+  expect(f.nodes.filter(node => !node.destroyed && node.name === 'campaign-budget-panel')).toHaveLength(1);
+  expect(f.nodes.filter(node => !node.destroyed && ['production-panel', 'budget-error'].includes(node.name))).toHaveLength(0);
+  return expected;
+}
+
 describe('campaign scene and projection renderer', () => {
   it.each(['preset', 'library'] as const)('accepts both factions through the full paid colony-to-colony cycle using %s', source => {
     // Real catalogue/repository/domain; only renderer/input and the storage port are substitutes.
@@ -239,10 +268,19 @@ describe('campaign scene and projection renderer', () => {
       };
       const end = () => {
         const before = structuredClone(current()), faction = before.turn % 2 ? 'blue' : 'red';
+        // Budget opening resets production/routes. Restore the production shell after side switch;
+        // the original side switch itself always cleared travel/fleet subpanels and their pages.
+        const productionWasOpen = (f.scene as unknown as { productionOpen: boolean }).productionOpen;
+        const readsBefore = load.mock.calls.length;
+        const dueBySchedule = before.turn >= 45 ? 2 : 0;
+        click('campaign-budget');
+        const forecast = expectBudgetOracle(f, current(), faction, dueBySchedule, 2);
+        const oldBudget = capture('campaign-budget');
         const old = capture('campaign-end-turn');
-        click('campaign-end-turn'); inert(old);
+        click('campaign-end-turn'); inert(old); inert(oldBudget);
         expect(current().turn).toBe(before.turn + 1);
         const due = before.ships.filter(ship => ship.factionId === faction).length;
+        expect(due).toBe(dueBySchedule); // Orders/completed are not ships, including the finishing FIFO head.
         const paid = Math.min(before.treasuries[faction].credits + 20, due);
         expect(current().treasuries[faction]).toEqual({
           credits: before.treasuries[faction].credits + 20 - paid, minerals: before.treasuries[faction].minerals + 10
@@ -253,6 +291,13 @@ describe('campaign scene and projection renderer', () => {
           income: { credits: 20, minerals: 10 },
           upkeep: { shipCount: due, dueCredits: due, paidCredits: paid, shortfallCredits: due - paid },
           treasuryAfter: current().treasuries[faction] });
+        const { ok: _ok, ...predicted } = forecast;
+        expect(result.endTurnEconomy).toEqual({ ...predicted, factionId: faction, turn: before.turn });
+        expectBudgetOracle(f, current(), faction, dueBySchedule, 2);
+        const receipt = `Ход передан. Доход: +20 кр. / +10 мин. Содержание: ${paid}/${due} кр. Дефицит: 0 кр. (без долга).`;
+        expect(f.message()).toBe(receipt);
+        click('campaign-budget'); expect(f.message()).toBe(receipt);
+        click('campaign-budget'); expect(f.message()).toBe(receipt);
         // Independent FIFO oracle: one head per own colony, no spillover into the second order.
         const heads = new Set<string>(), finished: number[] = [];
         const orders = before.production.orders.flatMap(order => {
@@ -274,7 +319,23 @@ describe('campaign scene and projection renderer', () => {
           return fleet.factionId === faction && trip ? { ...fleet, systemId: trip.destinationId } : fleet;
         }) });
         click('campaign-end-turn', 'NOT_ACTIVE_FACTION'); // No second payment/arrival while observing the old side.
+        expectBudgetOracle(f, current(), faction, dueBySchedule, 2);
         click('campaign-side-switch');
+        const enemy = faction === 'blue' ? 'red' : 'blue';
+        // The first blue income precedes red colonization; deployment also occurs one side at a time.
+        expectBudgetOracle(f, current(), enemy, current().turn >= (enemy === 'blue' ? 46 : 47) ? 2 : 0,
+          before.turn === 1 ? 1 : 2);
+        click('campaign-budget');
+        if (productionWasOpen) click('campaign-production');
+        expect(load).toHaveBeenCalledTimes(readsBefore);
+      };
+      const budgetCheckpoint = (turn: number, count: number) => {
+        expect(current().turn).toBe(turn);
+        const before = structuredClone(current()), readsBefore = load.mock.calls.length;
+        click('campaign-budget'); expectBudgetOracle(f, current(), 'blue', count, 2);
+        click('campaign-side-switch'); expectBudgetOracle(f, current(), 'red', count, 2);
+        click('campaign-side-switch'); click('campaign-budget');
+        expect(current()).toEqual(before); expect(load).toHaveBeenCalledTimes(readsBefore);
       };
       const ownShips = (faction: 'blue' | 'red') => current().ships.filter(ship => ship.factionId === faction);
       const checkShips = (side: typeof sides[number], systemId: typeof side.home | typeof side.neighbor,
@@ -301,6 +362,7 @@ describe('campaign scene and projection renderer', () => {
       for (let i = 0; i < 26; i++) end();
       expect(current().turn).toBe(29);
       expect(current().treasuries).toEqual({ blue: { credits: 380, minerals: 190 }, red: { credits: 380, minerals: 190 } });
+      budgetCheckpoint(29, 0);
       for (const side of sides) {
         click(`system-${side.home}`); click('campaign-production'); choose();
         for (const [index, id] of side.ids.entries()) {
@@ -323,6 +385,7 @@ describe('campaign scene and projection renderer', () => {
       expect(current().turn).toBe(45); expect(current().production.orders).toEqual([]);
       expect(current().production.completed.map(record => record.id)).toEqual([1, 3, 2, 4]);
       expect(current().treasuries).toEqual({ blue: { credits: 170, minerals: 248 }, red: { credits: 170, minerals: 248 } });
+      budgetCheckpoint(45, 0);
       for (const side of sides) {
         click(`system-${side.home}`); click('campaign-production');
         for (const id of side.ids) {
@@ -331,6 +394,8 @@ describe('campaign scene and projection renderer', () => {
           expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: side.faction,
             systemId: side.home, fuel: 3, design: snapshots.get(id) });
           expect(current().production.completed.some(record => record.id === id)).toBe(false);
+          click('campaign-budget'); expectBudgetOracle(f, current(), side.faction, id === side.ids[0] ? 1 : 2, 2);
+          click('campaign-budget'); click('campaign-production');
         }
         click('production-fleets');
         expect(f.find('fleet-candidates-title').text).toBe('СВОБОДНЫЕ КОРАБЛИ: 2');
@@ -351,6 +416,7 @@ describe('campaign scene and projection renderer', () => {
       }
       expect(current().turn).toBe(47);
       expect(current().treasuries).toEqual({ blue: { credits: 188, minerals: 258 }, red: { credits: 188, minerals: 258 } });
+      budgetCheckpoint(47, 2);
       expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
       const reads = load.mock.calls.length;
       // Three real flight legs exhaust both tanks; the fourth returns each group home.
@@ -416,6 +482,7 @@ describe('campaign scene and projection renderer', () => {
       }
       expect(current().turn).toBe(55);
       expect(current().treasuries).toEqual({ blue: { credits: 230, minerals: 286 }, red: { credits: 230, minerals: 286 } });
+      budgetCheckpoint(55, 2);
       for (const side of sides) {
         checkShips(side, side.home, [2, 2]);
         click(`system-${side.home}`); click('campaign-production'); click('production-fleets');
@@ -435,8 +502,19 @@ describe('campaign scene and projection renderer', () => {
       }
       expect(current().turn).toBe(57); expect(current().fleets).toEqual({ lastFleetId: 2, items: [] });
       expect(current().treasuries).toEqual({ blue: { credits: 248, minerals: 296 }, red: { credits: 248, minerals: 296 } });
+      budgetCheckpoint(57, 2);
       expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
       expect(current().ships.map(ship => [ship.id, ship.systemId, ship.fuel])).toEqual([[1, 'sol', 2], [2, 'sol', 2], [3, 'vega', 2], [4, 'vega', 2]]);
+      const receipts = spy.mock.results.flatMap(({ value }) => {
+        const result = value as domain.SessionResult;
+        return result.ok && result.endTurnEconomy?.upkeep.dueCredits ? [result.endTurnEconomy] : [];
+      });
+      for (const side of sides) {
+        const own = receipts.filter(receipt => receipt.factionId === side.faction);
+        expect(own.map(receipt => receipt.turn)).toEqual(side.faction === 'blue' ? [45, 47, 49, 51, 53, 55] : [46, 48, 50, 52, 54, 56]);
+        expect(own.map(receipt => receipt.upkeep.paidCredits)).toEqual([2, 2, 2, 2, 2, 2]);
+        expect(own.reduce((sum, receipt) => sum + receipt.upkeep.paidCredits, 0)).toBe(12);
+      }
       expect(load).toHaveBeenCalledTimes(reads); expect(repositoryLoad).toHaveBeenCalledTimes(reads);
       expect(repositoryLoad).toHaveBeenCalled(); expect(storage.getItem).toHaveBeenCalled();
       expect([...contents]).toEqual(originalContents); expect(storage.setItem).not.toHaveBeenCalled();
@@ -1811,6 +1889,175 @@ describe('campaign scene and projection renderer', () => {
       expect(live(f, 'production-panel')).toHaveLength(0);
       expect(f.nodes.filter(node => !node.destroyed && node.name.startsWith('system-'))).toHaveLength(0);
     }
+
+    describe('S3.22 integrated diagnostic budget turns (not earned cycles)', () => {
+      function integrated(side: 'blue' | 'red') {
+        // Deliberately preloaded limit fleet and paid FIFO; all commands/results below are real.
+        const enemy: 'blue' | 'red' = side === 'blue' ? 'red' : 'blue';
+        const home: 'sol' | 'vega' = side === 'blue' ? 'sol' : 'vega';
+        const target = side === 'blue' ? 'eden' : 'nexus', enemyTarget = side === 'blue' ? 'nexus' : 'eden';
+        const state = diagnosticState(side === 'blue' ? 100 : 3, side === 'red' ? 100 : 3);
+        state.turn = side === 'blue' ? 1 : 2;
+        for (const [id, faction] of [[target, side], [enemyTarget, enemy]] as const) {
+          const colony = state.galaxy.systems.find(system => system.id === id)!;
+          colony.ownerId = faction; colony.exploredBy = [faction];
+        }
+        const ownIds = state.ships.filter(ship => ship.factionId === side).map(ship => ship.id);
+        const enemyIds = state.ships.filter(ship => ship.factionId === enemy).map(ship => ship.id);
+        for (const ship of state.ships) {
+          ship.fuel = 0;
+          if (ownIds.slice(0, 3).includes(ship.id)) ship.fuel = 1;
+          if (ship.factionId === enemy) ship.transit = { destinationId: enemyTarget, remainingTurns: 1 };
+        }
+        state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: enemy,
+          systemId: side === 'blue' ? 'vega' : 'sol', shipIds: enemyIds.slice(0, 2) }] };
+        const record: domain.CampaignSession['production']['completed'][number] = {
+          id: 104, factionId: side, systemId: home, design: structuredClone(state.ships[0].design)
+        };
+        state.production = { lastOrderId: 107, orders: [
+          { ...structuredClone(record), remainingTurns: 1 },
+          { ...structuredClone(record), id: 105, remainingTurns: 4 },
+          { ...structuredClone(record), id: 106, factionId: enemy, systemId: side === 'blue' ? 'vega' : 'sol', remainingTurns: 1 }
+        ], completed: [{ ...structuredClone(record), id: 107 }] };
+        state.treasuries[side] = { credits: 5, minerals: 5 };
+        const f = budgetFixture(freeze(state)), current = () => runtime(f).campaign;
+        if (side === 'red') f.click('campaign-side-switch');
+        f.click('campaign-budget');
+        const execute = (command: domain.SessionCommand) => {
+          const input = freeze(current()), before = structuredClone(input), calls = f.commands.mock.calls.length;
+          runtime(f).execute(command);
+          expect(f.commands).toHaveBeenCalledTimes(calls + 1);
+          expect(f.commands.mock.calls[calls]).toEqual([before, command]);
+          const result = f.commands.mock.results[calls].value as domain.SessionResult;
+          expect(result.ok).toBe(true); if (!result.ok) throw Error(result.message);
+          expect(current()).toBe(result.state); expect(input).toEqual(before);
+          expectExclusiveBudget(f); return result;
+        };
+        const treasury = structuredClone(current().treasuries);
+        for (const command of [
+          { kind: 'createFleet', shipIds: ownIds.slice(0, 2) },
+          { kind: 'sendFleet', fleetId: 2, destinationId: target },
+          { kind: 'sendShip', shipId: ownIds[2], destinationId: target }
+        ] as const) {
+          const result = execute({ ...command, factionId: side, expectedTurn: state.turn, systemId: home });
+          expect(result).not.toHaveProperty('endTurnEconomy');
+          expect(current().treasuries).toEqual(treasury);
+          expectBudgetOracle(f, current(), side, 100, 2);
+        }
+        const assertAdvance = (before: domain.CampaignSession) => {
+          const { remainingTurns: _remaining, ...completed } = before.production.orders[0];
+          expect(current().production).toEqual({ lastOrderId: 107, orders: before.production.orders.slice(1),
+            completed: [...before.production.completed, completed] });
+          expect(current().production.orders.find(order => order.id === 105)?.remainingTurns).toBe(4);
+          expect(current().ships).toEqual(before.ships.map(ship => {
+            if (ship.factionId !== side || !ship.transit) return ship;
+            const { transit, ...stationary } = ship; return { ...stationary, systemId: transit.destinationId };
+          }));
+          expect(current().fleets).toEqual({ ...before.fleets, items: before.fleets.items.map(fleet =>
+            fleet.factionId === side ? { ...fleet, systemId: target } : fleet) });
+          expect(current().ships.filter(ship => ship.factionId === side && ship.systemId === target)).toHaveLength(3);
+          expect(current().ships).toHaveLength(103); expect(current().turn).toBe(before.turn + 1);
+          expect(domain.getCampaignSessionView(current(), enemy)).toEqual({ ...domain.getCampaignSessionView(before, enemy),
+            turn: before.turn + 1, activeFactionId: enemy });
+          expect(current().ships.map(ship => ship.design)).toEqual(before.ships.map(ship => ship.design));
+          expect(domain.campaignSessionSchema.safeParse(current()).success).toBe(true);
+          expect(f.load).not.toHaveBeenCalled();
+        };
+        return { f, current, execute, assertAdvance, side, enemy, home, ownIds } as const;
+      }
+
+      it.each(['blue', 'red'] as const)('settles %s deficit with FIFO, grouped/free arrivals, pending guards and no carried debt', side => {
+        const { f, current, execute, assertAdvance, enemy } = integrated(side);
+        try {
+          const forecast = expectBudgetOracle(f, current(), side, 100, 2);
+          expect(forecast.upkeep).toEqual({ shipCount: 100, dueCredits: 100, paidCredits: 25, shortfallCredits: 75 });
+          const before = structuredClone(current()), input = freeze(current());
+          const oldEnd = capture(f, 'campaign-end-turn'), oldBudget = capture(f, 'campaign-budget');
+          const calls = f.commands.mock.calls.length;
+          f.click('campaign-new');
+          for (const name of ['campaign-end-turn', 'campaign-budget', 'campaign-side-switch', 'campaign-production']) {
+            expect(f.find(name).interactive).toBe(false); f.click(name);
+          }
+          oldEnd(); oldBudget(); expect(f.commands).toHaveBeenCalledTimes(calls); expect(current()).toBe(input);
+          f.click('campaign-cancel'); expectBudgetOracle(f, current(), side, 100, 2);
+          f.click('campaign-end-turn'); oldEnd(); oldBudget();
+          expect(f.commands).toHaveBeenCalledTimes(calls + 1); expect(input).toEqual(before);
+          const result = f.commands.mock.results[calls].value as domain.SessionResult;
+          if (!result.ok) throw Error(result.message);
+          const { ok: _ok, ...predicted } = forecast;
+          expect(result.endTurnEconomy).toEqual({ ...predicted, factionId: side, turn: before.turn });
+          expect(current()).toBe(result.state); expect(current().treasuries[side]).toEqual({ credits: 0, minerals: 15 });
+          assertAdvance(before); expectExclusiveBudget(f);
+          const next = expectBudgetOracle(f, current(), side, 100, 2);
+          expect(next.upkeep).toEqual({ shipCount: 100, dueCredits: 100, paidCredits: 20, shortfallCredits: 80 });
+          const receipt = 'Ход передан. Доход: +20 кр. / +10 мин. Содержание: 25/100 кр. Дефицит: 75 кр. (без долга).';
+          expect(f.message()).toBe(receipt);
+          f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+          f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+          const settled = current(); f.click('campaign-end-turn');
+          expect(f.commands.mock.results.at(-1)?.value).toMatchObject({ ok: false, code: 'NOT_ACTIVE_FACTION' });
+          expect(current()).toBe(settled); expectBudgetOracle(f, current(), side, 100, 2);
+          f.click('campaign-side-switch'); expectBudgetOracle(f, current(), enemy, 3, 2);
+          f.click('campaign-end-turn'); f.click('campaign-side-switch');
+          expect(current().treasuries[side]).toEqual({ credits: 0, minerals: 15 });
+          expectBudgetOracle(f, current(), side, 100, 2);
+          const repeated = execute({ kind: 'endTurn', factionId: side, expectedTurn: current().turn });
+          expect(repeated.endTurnEconomy?.upkeep).toEqual({ shipCount: 100, dueCredits: 100, paidCredits: 20, shortfallCredits: 80 });
+          expect(current().treasuries[side]).toEqual({ credits: 0, minerals: 25 });
+          expect(current().production.orders.find(order => order.id === 105)?.remainingTurns).toBe(3);
+          expect(current().ships.filter(ship => ship.factionId === side)).toEqual(settled.ships.filter(ship => ship.factionId === side));
+          expect(f.load).not.toHaveBeenCalled();
+        } finally { f.events.emit('shutdown'); }
+      });
+
+      it.each([
+        { side: 'blue', resource: 'credits' }, { side: 'red', resource: 'credits' },
+        { side: 'blue', resource: 'minerals' }, { side: 'red', resource: 'minerals' }
+      ] as const)('rejects gross $resource cap atomically for $side and recovers through real refuelling', ({ side, resource }) => {
+        const { f, current, execute, assertAdvance, home, ownIds } = integrated(side);
+        try {
+          const fields = successFields.map(name => f.find(name));
+          // Explicit diagnostic boundary, not earned funds. Gross exceeds cap by one;
+          // for credits the hypothetical post-upkeep balance would fit, but must still fail.
+          current().treasuries[side] = { credits: 100, minerals: 50 };
+          current().treasuries[side][resource] = domain.MAX_RESOURCE - (resource === 'credits' ? 19 : 9);
+          runtime(f).render(); expectProjection(f, currentView(f, side));
+          expect(currentView(f, side).economyForecast).toEqual({ ok: false, code: 'RESOURCE_LIMIT' });
+          expect(fields.every(node => node.destroyed)).toBe(true);
+          const input = freeze(current()), before = structuredClone(input), calls = f.commands.mock.calls.length;
+          const oldEnd = capture(f, 'campaign-end-turn');
+          f.click('campaign-end-turn'); oldEnd();
+          expect(f.commands).toHaveBeenCalledTimes(calls + 1);
+          const failure = f.commands.mock.results[calls].value as domain.SessionResult;
+          expect(failure).toMatchObject({ ok: false, code: 'RESOURCE_LIMIT' });
+          expect(failure).not.toHaveProperty('state'); expect(failure).not.toHaveProperty('endTurnEconomy');
+          expect(current()).toBe(input); expect(input).toEqual(before); expectExclusiveBudget(f);
+          expectProjection(f, currentView(f, side)); expect(f.message()).toContain('Доход превысит предел');
+          // A stationary fourth ship can spend 15/6 without touching the already sent three.
+          execute({ kind: 'refuelShip', factionId: side, expectedTurn: before.turn, systemId: home, shipId: ownIds[3] });
+          expect(current().treasuries[side]).toEqual({ credits: before.treasuries[side].credits - 15, minerals: before.treasuries[side].minerals - 6 });
+          expect(current().ships).toEqual(before.ships.map(ship => ship.id === ownIds[3] ? { ...ship, fuel: 3 } : ship));
+          expect(current().production).toEqual(before.production); expect(current().fleets).toEqual(before.fleets);
+          expect(current().turn).toBe(before.turn);
+          const forecast = expectBudgetOracle(f, current(), side, 100, 2), recovered = structuredClone(current());
+          expect(forecast.upkeep.paidCredits).toBe(100);
+          expect(forecast.treasuryAfter).toEqual(resource === 'credits'
+            ? { credits: domain.MAX_RESOURCE - 114, minerals: 54 } : { credits: 5, minerals: domain.MAX_RESOURCE - 5 });
+          const result = execute({ kind: 'endTurn', factionId: side, expectedTurn: recovered.turn });
+          const { ok: _ok, ...predicted } = forecast;
+          expect(result.endTurnEconomy).toEqual({ ...predicted, factionId: side, turn: recovered.turn });
+          expect(current().treasuries[side]).toEqual(forecast.treasuryAfter); assertAdvance(recovered);
+          // A successful receipt must not be replaced by the following (possibly failing) forecast.
+          expectProjection(f, currentView(f, side));
+          expect(currentView(f, side).economyForecast.ok).toBe(resource === 'credits');
+          const receipt = 'Ход передан. Доход: +20 кр. / +10 мин. Содержание: 100/100 кр. Дефицит: 0 кр. (без долга).';
+          expect(f.message()).toBe(receipt);
+          f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+          f.click('campaign-budget'); expect(f.message()).toBe(receipt);
+          expect(f.load).not.toHaveBeenCalled();
+        } finally { f.events.emit('shutdown'); }
+      });
+    });
 
     it('starts on the map and toggles an exclusive budget without commands or catalog loading', () => {
       const f = budgetFixture(), before = structuredClone(f.state), message = f.message();
