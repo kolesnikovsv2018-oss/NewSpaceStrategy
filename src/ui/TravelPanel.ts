@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import type { SystemId } from '../domain/campaign';
 import type { CampaignSessionView } from '../domain/campaignSession';
-import { isShipAtColony, MAX_CAMPAIGN_SHIPS } from '../domain/campaignShips';
+import { CAMPAIGN_FUEL_CAPACITY, getRefuelQuote, isShipAtColony, MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST } from '../domain/campaignShips';
 
 export interface TravelPanelState {
   destinationIndex: number;
@@ -13,6 +13,7 @@ export interface TravelPanelActions {
   transitPage: (page: number) => void;
   shipsPage: (page: number) => void;
   send: (shipId: number, destinationId: SystemId) => void;
+  refuel: (shipId: number) => void;
 }
 
 /** Own projected ships and public projected lanes only; no full state or map definition. */
@@ -36,22 +37,28 @@ export class TravelPanel {
     this.button(650, 256, '‹', 'travel-ships-prev', () => actions.shipsPage(shipPage - 1), shipPage === 0);
     this.button(697, 256, '›', 'travel-ships-next', () => actions.shipsPage(shipPage + 1), shipPage >= ships.length - 1);
     this.label(46, 306, ship ? `${shipPage + 1}/${ships.length} · #${ship.id} ${ship.design.name}` : 'Нет кораблей для отправки.', 'travel-ship');
-    this.label(46, 355, destination ? `Цель ${destPage + 1}/${destinations.length}: ${destination.name}`
+    const quote = ship ? getRefuelQuote(ship.fuel) : undefined;
+    this.label(46, 336, ship ? `Топливо: ${ship.fuel}/${CAMPAIGN_FUEL_CAPACITY} · ${ship.fuel === 0 ? 'Бак пуст' : quote?.amount === 0 ? 'Бак полон' : 'Стратегический запас'}`
+      : 'Топливо: нет выбранного корабля', 'travel-fuel');
+    this.label(46, 364, quote ? `До полного: +${quote.amount} · Цена: ${quote.cost.credits} кр. / ${quote.cost.minerals} мин.`
+      : 'Заправка недоступна без корабля в колонии.', 'travel-refuel-quote', 570);
+    this.button(650, 356, 'Заправить', 'travel-refuel', () => { if (ship) actions.refuel(ship.id); }, !quote?.amount);
+    this.label(46, 410, destination ? `Цель ${destPage + 1}/${destinations.length}: ${destination.name}`
       : 'Нет соседних собственных колоний.', 'travel-destination', 400);
-    this.button(490, 346, '‹', 'travel-destination-prev', () => actions.destination(destPage - 1), destPage === 0);
-    this.button(535, 346, '›', 'travel-destination-next', () => actions.destination(destPage + 1), destPage >= destinations.length - 1);
-    this.button(650, 346, 'Отправить', 'travel-send', () => {
+    this.button(490, 401, '‹', 'travel-destination-prev', () => actions.destination(destPage - 1), destPage === 0);
+    this.button(535, 401, '›', 'travel-destination-next', () => actions.destination(destPage + 1), destPage >= destinations.length - 1);
+    this.button(650, 401, 'Отправить', 'travel-send', () => {
       if (ship && destination) actions.send(ship.id, destination.id);
     }, !ship || !destination);
-    this.label(46, 401, 'Бесплатно · Прибытие при завершении своего хода · Без перенаправления', 'travel-rule');
-    this.label(46, 456, `В ПУТИ У СТОРОНЫ: ${trips.length}`, 'travel-transit-title');
-    this.button(650, 447, '‹', 'travel-transit-prev', () => actions.transitPage(tripPage - 1), tripPage === 0);
-    this.button(697, 447, '›', 'travel-transit-next', () => actions.transitPage(tripPage + 1), tripPage >= trips.length - 1);
-    this.label(46, 500, trip ? `${tripPage + 1}/${trips.length} · #${trip.id} ${trip.design.name}` : 'Кораблей в пути нет.', 'travel-transit');
+    this.label(46, 449, `Расход: ${TRAVEL_FUEL_COST} топливо · Прибытие в конце своего хода`, 'travel-rule');
+    this.label(46, 490, `В ПУТИ У СТОРОНЫ: ${trips.length}`, 'travel-transit-title');
+    this.button(650, 481, '‹', 'travel-transit-prev', () => actions.transitPage(tripPage - 1), tripPage === 0);
+    this.button(697, 481, '›', 'travel-transit-next', () => actions.transitPage(tripPage + 1), tripPage >= trips.length - 1);
+    this.label(46, 530, trip ? `${tripPage + 1}/${trips.length} · #${trip.id} ${trip.design.name}` : 'Кораблей в пути нет.', 'travel-transit');
     const name = (id: SystemId) => view.galaxy.systems.find(system => system.id === id)!.name;
-    this.label(46, 537, trip?.transit ? `${name(trip.systemId)} → ${name(trip.transit.destinationId)} · Осталось: 1 свой ход` : '', 'travel-route');
-    this.label(46, 588, `Всего кораблей: ${view.ships.length}/${MAX_CAMPAIGN_SHIPS} · В пути тоже занимают место.`, 'travel-count');
-    this.label(46, 624, 'Только соседние свои колонии. Топливо и бой пока не реализованы.', 'travel-limit');
+    this.label(46, 563, trip?.transit ? `${name(trip.systemId)} → ${name(trip.transit.destinationId)} · Осталось: 1 свой ход` : '', 'travel-route');
+    this.label(46, 598, `Всего кораблей: ${view.ships.length}/${MAX_CAMPAIGN_SHIPS} · В пути тоже занимают место.`, 'travel-count');
+    this.label(46, 628, 'Заправка: только в своей колонии, без смены хода. Боя нет.', 'travel-limit');
   }
 
   private label(x: number, y: number, value: string, name: string, width = 745): void {

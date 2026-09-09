@@ -41,15 +41,15 @@ function freeze(value: object) {
 describe('strategic deployment', () => {
   it('starts with independent empty ship lists', () => {
     const a = createCampaignSession(), b = createCampaignSession();
-    a.ships.push(ready().production.completed[0]); expect(b.ships).toEqual([]);
+    a.ships.push({ ...ready().production.completed[0], fuel: 3 }); expect(b.ships).toEqual([]);
     expect(campaignShipsSchema.parse([])).toEqual([]);
   });
   it('moves exactly the completed record, retaining ID/project/colony without cost or turn change', () => {
     const state = ready(); freeze(state); freeze(deploy);
     const next = apply(state, deploy);
-    expect(next).toEqual({ ...state, ships: [state.production.completed[0]],
+    expect(next).toEqual({ ...state, ships: [{ ...state.production.completed[0], fuel: 3 }],
       production: { ...state.production, completed: [state.production.completed[1]] } });
-    expect(Object.keys(next.ships[0]).sort()).toEqual(['design', 'factionId', 'id', 'systemId']);
+    expect(Object.keys(next.ships[0]).sort()).toEqual(['design', 'factionId', 'fuel', 'id', 'systemId']);
     expect(validateDesign(next.ships[0].design, 'battle').length).toBeGreaterThan(0);
   });
   it('uses an independent nested snapshot rather than a reference to completed or another ship', () => {
@@ -115,23 +115,23 @@ describe('strategic deployment', () => {
   });
   it('accepts exactly 100 own ships and rejects overflow without consuming completed', () => {
     const state = ready(); state.production.lastOrderId = 102;
-    state.ships = Array.from({ length: MAX_CAMPAIGN_SHIPS - 1 }, (_, i) => ({ ...state.production.completed[0], id: i + 3 }));
+    state.ships = Array.from({ length: MAX_CAMPAIGN_SHIPS - 1 }, (_, i) => ({ ...state.production.completed[0], fuel: 3, id: i + 3 }));
     const next = apply(state, deploy); expect(next.ships).toHaveLength(MAX_CAMPAIGN_SHIPS);
     next.production.completed.push({ ...state.production.completed[0], id: 102 });
     reject(next, { ...deploy, orderId: 102 }, 'SHIP_LIMIT');
   });
   it('does not count enemy ships toward own capacity', () => {
     const state = ready(); state.production.lastOrderId = 102;
-    state.ships = Array.from({ length: MAX_CAMPAIGN_SHIPS }, (_, i) => ({ ...state.production.completed[1], id: i + 3 }));
+    state.ships = Array.from({ length: MAX_CAMPAIGN_SHIPS }, (_, i) => ({ ...state.production.completed[1], fuel: 3, id: i + 3 }));
     expect(apply(state, deploy).ships).toHaveLength(101);
   });
   it('accepts 100 ships of each side but rejects a ship ID also present in the pending queue', () => {
     const state = ready(); state.production.lastOrderId = 202;
     state.ships = [0, 1].flatMap(side => Array.from({ length: 100 }, (_, i) => ({
-      ...state.production.completed[side], id: 3 + side * 100 + i
+      ...state.production.completed[side], fuel: 3, id: 3 + side * 100 + i
     })));
     expect(campaignSessionSchema.safeParse(state).success).toBe(true);
-    state.production.orders.push({ ...state.ships[0], remainingTurns: 1 });
+    state.production.orders.push({ ...state.production.completed[0], id: state.ships[0].id, remainingTurns: 1 });
     reject(state, deploy, 'INVALID_STATE');
   });
   it('deploys at another own colony and can deploy completed records out of issuance order', () => {
@@ -168,14 +168,14 @@ describe('strategic deployment', () => {
   });
   it.each([
     (s: CampaignSession) => { delete (s as Partial<CampaignSession>).ships; },
-    (s: CampaignSession) => { s.ships.push({ ...s.production.completed[0] }); },
-    (s: CampaignSession) => { s.ships.push({ ...s.production.completed[0], id: 3 }); },
-    (s: CampaignSession) => { s.ships = [{ ...s.production.completed[0], systemId: 'vega' }]; s.production.completed.shift(); },
-    (s: CampaignSession) => { const ship = s.production.completed.shift()!; s.ships = [ship, structuredClone(ship)]; },
-    (s: CampaignSession) => { const ship = s.production.completed.shift()!; s.ships = [ship]; ship.design.slots.forEach(slot => { slot.component = null; }); },
-    (s: CampaignSession) => { const ship = s.production.completed.shift()!; s.ships = [ship]; Object.assign(ship, { hp: 100 }); },
-    (s: CampaignSession) => { const ship = s.production.completed.shift()!; s.ships = [ship]; ship.id = 0; },
-    (s: CampaignSession) => { s.production.lastOrderId = 104; s.ships = Array.from({ length: 101 }, (_, i) => ({ ...s.production.completed[0], id: i + 3 })); }
+    (s: CampaignSession) => { s.ships.push({ ...s.production.completed[0], fuel: 3 }); },
+    (s: CampaignSession) => { s.ships.push({ ...s.production.completed[0], fuel: 3, id: 3 }); },
+    (s: CampaignSession) => { s.ships = [{ ...s.production.completed[0], fuel: 3, systemId: 'vega' }]; s.production.completed.shift(); },
+    (s: CampaignSession) => { const ship = { ...s.production.completed.shift()!, fuel: 3 }; s.ships = [ship, structuredClone(ship)]; },
+    (s: CampaignSession) => { const ship = { ...s.production.completed.shift()!, fuel: 3 }; s.ships = [ship]; ship.design.slots.forEach(slot => { slot.component = null; }); },
+    (s: CampaignSession) => { const ship = { ...s.production.completed.shift()!, fuel: 3 }; s.ships = [ship]; Object.assign(ship, { hp: 100 }); },
+    (s: CampaignSession) => { const ship = { ...s.production.completed.shift()!, fuel: 3 }; s.ships = [ship]; ship.id = 0; },
+    (s: CampaignSession) => { s.production.lastOrderId = 104; s.ships = Array.from({ length: 101 }, (_, i) => ({ ...s.production.completed[0], fuel: 3, id: i + 3 })); }
   ])('rejects malformed ship state %# atomically and query throws', mutate => {
     const state = ready(); mutate(state); reject(state, deploy, 'INVALID_STATE');
     expect(() => getCampaignSessionView(state, 'blue')).toThrow();

@@ -4,7 +4,8 @@ import { campaignCommandSchema, campaignStateSchema, createCampaignState, execut
   type CampaignState, type CampaignView } from './campaign';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { designSchema, validateDesign } from './shipDesign';
-import { advanceShipTravel, campaignShipsSchema, MAX_CAMPAIGN_SHIPS, type CampaignShip } from './campaignShips';
+import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
+  MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
 import { advanceProduction, createProductionState, getProductionQuote, getProductionRefund,
   MAX_COLONY_QUEUE, MAX_ORDER_ID, MAX_PRODUCTION_RECORDS, orderIdSchema, productionStateSchema,
   type ProductionView } from './production';
@@ -61,12 +62,14 @@ export const sessionCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('deployProduction'), factionId: factionIdSchema, expectedTurn: turnSchema,
     systemId: systemIdSchema, orderId: orderIdSchema }).strict(),
   z.object({ kind: z.literal('sendShip'), factionId: factionIdSchema, expectedTurn: turnSchema,
-    systemId: systemIdSchema, shipId: orderIdSchema, destinationId: systemIdSchema }).strict()
+    systemId: systemIdSchema, shipId: orderIdSchema, destinationId: systemIdSchema }).strict(),
+  z.object({ kind: z.literal('refuelShip'), factionId: factionIdSchema, expectedTurn: turnSchema,
+    systemId: systemIdSchema, shipId: orderIdSchema }).strict()
 ]);
 export type SessionCommand = z.infer<typeof sessionCommandSchema>;
 export type SessionErrorCode = CampaignErrorCode | 'STALE_TURN' | 'NOT_ACTIVE_FACTION' | 'RESOURCE_LIMIT' | 'TURN_LIMIT' |
   'NOT_OWN_COLONY' | 'INVALID_DESIGN' | 'INSUFFICIENT_RESOURCES' | 'QUEUE_FULL' | 'PRODUCTION_LIMIT' | 'ORDER_NOT_FOUND' | 'ORDER_ID_LIMIT' |
-  'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE';
+  'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE' | 'INSUFFICIENT_FUEL' | 'FUEL_FULL';
 export type SessionResult = { ok: true; state: CampaignSession } |
   { ok: false; code: SessionErrorCode; message: string };
 
@@ -92,19 +95,33 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   if (command.factionId !== activeFaction(state.turn)) {
     return { ok: false, code: 'NOT_ACTIVE_FACTION', message: 'Сейчас ход другой стороны' };
   }
-  if (command.kind === 'sendShip') {
+  if (command.kind === 'sendShip' || command.kind === 'refuelShip') {
     if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
-      return { ok: false, code: 'NOT_OWN_COLONY', message: 'Отправка доступна только из своей колонии' };
+      return { ok: false, code: 'NOT_OWN_COLONY', message: 'Операция корабля доступна только в своей колонии' };
     }
     const ship = state.ships.find(item => item.id === command.shipId && item.factionId === command.factionId && item.systemId === command.systemId);
     if (!ship) return { ok: false, code: 'SHIP_NOT_FOUND', message: 'Свой корабль не найден в указанной системе' };
     if (ship.transit) return { ok: false, code: 'SHIP_IN_TRANSIT', message: 'Корабль уже в пути' };
+    if (command.kind === 'refuelShip') {
+      const quote = getRefuelQuote(ship.fuel), treasury = state.treasuries[command.factionId];
+      if (quote.amount === 0) return { ok: false, code: 'FUEL_FULL', message: 'Топливный бак уже полон' };
+      if (treasury.credits < quote.cost.credits || treasury.minerals < quote.cost.minerals) {
+        return { ok: false, code: 'INSUFFICIENT_RESOURCES', message: 'Недостаточно ресурсов для полной заправки' };
+      }
+      treasury.credits -= quote.cost.credits; treasury.minerals -= quote.cost.minerals;
+      ship.fuel = CAMPAIGN_FUEL_CAPACITY;
+      return { ok: true, state };
+    }
     if (state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
     }
     if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
       return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
     }
+    if (ship.fuel < TRAVEL_FUEL_COST) {
+      return { ok: false, code: 'INSUFFICIENT_FUEL', message: 'Недостаточно стратегического топлива; нужна заправка' };
+    }
+    ship.fuel -= TRAVEL_FUEL_COST;
     ship.transit = { destinationId: command.destinationId, remainingTurns: 1 };
     return { ok: true, state };
   }
@@ -120,7 +137,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
     }
     // parsedState is detached; transfer exactly once, retaining the original ID/design/location.
     const [completed] = state.production.completed.splice(index, 1);
-    state.ships.push(completed);
+    state.ships.push({ ...completed, fuel: CAMPAIGN_FUEL_CAPACITY });
     return { ok: true, state };
   }
   if (command.kind === 'enqueueProduction' || command.kind === 'cancelProduction') {

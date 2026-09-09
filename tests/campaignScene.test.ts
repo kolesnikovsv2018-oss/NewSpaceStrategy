@@ -132,13 +132,13 @@ describe('campaign scene and projection renderer', () => {
         click('travel-send'); const count = spy.mock.calls.length; oldSend(); expect(spy).toHaveBeenCalledTimes(count);
         expect(current().turn).toBe(turn); expect(current().treasuries).toEqual(treasury);
         expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: faction, systemId: home,
-          design: snapshots[id - 1], transit: { destinationId: target, remainingTurns: 1 } });
+          fuel: 2, design: snapshots[id - 1], transit: { destinationId: target, remainingTurns: 1 } });
         expect(f.find('travel-send').interactive).toBe(false);
         click('campaign-production'); click(`system-${target}`); click('campaign-production'); click('production-travel');
         expect(f.find('travel-ship').text).toBe('Нет кораблей для отправки.');
         click('campaign-end-turn');
         expect(f.find('travel-ship').text).toContain(`#${id}`); expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
-        expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: faction, systemId: target, design: snapshots[id - 1] });
+        expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: faction, systemId: target, fuel: 2, design: snapshots[id - 1] });
         click('travel-send', 'NOT_ACTIVE_FACTION');
         click('campaign-production'); click('campaign-side-switch');
       }
@@ -573,7 +573,7 @@ describe('campaign scene and projection renderer', () => {
 
   it('shows SHIP_LIMIT without removing completed and paginates 100 existing ships', () => {
     const f = deploymentFixture(1); f.state.production.lastOrderId = 101;
-    f.state.ships = Array.from({ length: 100 }, (_, i) => ({ ...structuredClone(f.state.production.completed[0]), id: i + 2 }));
+    f.state.ships = Array.from({ length: 100 }, (_, i) => ({ ...structuredClone(f.state.production.completed[0]), fuel: 3, id: i + 2 }));
     f.click('production-refresh'); expect(f.find('production-deploy-hint').text).toContain('100/100');
     f.click('production-deploy'); expect(f.message()).toBe('Достигнут предел стратегических кораблей стороны');
     expect(f.find('production-completed').text).toContain('#1');
@@ -594,7 +594,7 @@ describe('campaign scene and projection renderer', () => {
 
   it('hides enemy records and resets ship pages on perspective or colony change', () => {
     const f = deploymentFixture(3);
-    f.state.ships = f.state.production.completed.splice(0);
+    f.state.ships = f.state.production.completed.splice(0).map(record => ({ ...record, fuel: 3 }));
     const eden = f.state.galaxy.systems.find(s => s.id === 'eden')!; eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
     f.state.production.lastOrderId = 4;
     f.state.ships.push({ ...structuredClone(f.state.ships[0]), id: 4, systemId: 'eden', design: { ...f.choices[0].design, name: 'Эдемский' } });
@@ -663,7 +663,7 @@ describe('campaign scene and projection renderer', () => {
   it('excludes an in-transit ship from both colony lists but counts it in the faction cap', () => {
     const f = deploymentFixture(1), eden = f.state.galaxy.systems.find(s => s.id === 'eden')!;
     eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
-    f.state.ships = [{ ...f.state.production.completed[0], transit: { destinationId: 'eden', remainingTurns: 1 } }];
+    f.state.ships = [{ ...f.state.production.completed[0], fuel: 2, transit: { destinationId: 'eden', remainingTurns: 1 } }];
     f.state.production.completed = [];
     f.click('production-refresh'); f.click('production-toggle-ships');
     expect(f.find('production-ship').text).toBe('Размещённых кораблей пока нет.');
@@ -675,7 +675,7 @@ describe('campaign scene and projection renderer', () => {
 
   function travelFixture(count = 3) {
     const f = deploymentFixture(count);
-    f.state.ships = f.state.production.completed.splice(0);
+    f.state.ships = f.state.production.completed.splice(0).map(record => ({ ...record, fuel: 3 }));
     const eden = f.state.galaxy.systems.find(s => s.id === 'eden')!;
     eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
     f.click('production-travel'); return f;
@@ -689,6 +689,150 @@ describe('campaign scene and projection renderer', () => {
     expect(f.find('travel-count').text).toContain('3/100');
     f.click('production-travel'); f.click('production-travel');
     expect(f.load).toHaveBeenCalledTimes(reads); expect(f.spy).not.toHaveBeenCalled(); expect(f.state).toEqual(before);
+  });
+
+  it('shows empty-tank refusal without changing ships, and labels the colony refuel boundary', () => {
+    const f = travelFixture(1); f.state.ships[0].fuel = 0;
+    const before = structuredClone(f.state);
+    expect(f.find('travel-rule').text).toContain('Расход: 1 топливо');
+    expect(f.find('travel-limit').text).toContain('только в своей колонии');
+    f.click('travel-send');
+    expect(f.message()).toContain('Недостаточно стратегического топлива');
+    expect(f.state).toEqual(before); expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+    expect(f.find('travel-ship').text).toContain('#1');
+  });
+
+  function refuelFixture(count = 3) {
+    const f = travelFixture(count);
+    f.state.ships.forEach((ship, i) => { ship.fuel = i % 3; });
+    f.click('production-travel'); f.click('production-travel');
+    return f;
+  }
+
+  it('shows each stationed tank and full price, including a disabled full tank', () => {
+    const f = refuelFixture();
+    for (const [fuel, price] of [[0, '15 кр. / 6 мин.'], [1, '10 кр. / 4 мин.'], [2, '5 кр. / 2 мин.']] as const) {
+      expect(f.find('travel-fuel').text).toContain(`Топливо: ${fuel}/3`);
+      expect(f.find('travel-refuel-quote').text).toContain(price);
+      expect(f.find('travel-refuel').interactive).toBe(true);
+      if (fuel < 2) f.click('travel-ships-next');
+    }
+    f.click('travel-refuel');
+    expect(f.find('travel-fuel').text).toContain('3/3 · Бак полон');
+    expect(f.find('travel-refuel-quote').text).toContain('+0 · Цена: 0 кр. / 0 мин.');
+    expect(f.find('travel-refuel').interactive).toBe(false);
+    f.click('travel-refuel'); expect(f.spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuels the captured displayed ID once, preserving page, snapshot, turn and catalog', () => {
+    const f = refuelFixture(), reads = f.load.mock.calls.length;
+    f.click('travel-ships-next');
+    const old = f.find('travel-refuel').listeners('pointerdown')[0] as () => void;
+    const before = structuredClone(f.state);
+    old(); old(); expect(f.spy).toHaveBeenCalledTimes(1);
+    expect(f.spy.mock.calls[0][1]).toEqual({ kind: 'refuelShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 2 });
+    const next = f.spy.mock.results[0].value.state as domain.CampaignSession;
+    expect(next).toEqual({ ...before, ships: before.ships.map(ship => ship.id === 2 ? { ...ship, fuel: 3 } : ship),
+      treasuries: { ...before.treasuries, blue: { credits: before.treasuries.blue.credits - 10, minerals: before.treasuries.blue.minerals - 4 } } });
+    expect(f.find('travel-ship').text).toContain('2/3 · #2');
+    expect(f.find('campaign-treasury').text).toContain(`Кредиты: ${next.treasuries.blue.credits}`);
+    expect(f.message()).toBe('Корабль заправлен. Ресурсы списаны.'); expect(f.load).toHaveBeenCalledTimes(reads);
+    expect(f.state).toEqual(before);
+  });
+
+  it.each(['credits', 'minerals'] as const)('keeps an affordable-looking refuel atomic when %s is insufficient', resource => {
+    const f = refuelFixture(1); f.state.treasuries.blue[resource] = 0;
+    const before = structuredClone(f.state); f.click('travel-refuel');
+    expect(f.message()).toBe('Недостаточно ресурсов для полной заправки');
+    expect(f.state).toEqual(before); expect(f.find('travel-fuel').text).toContain('0/3');
+    expect(f.find('travel-refuel-quote').text).toContain('15 кр. / 6 мин.');
+  });
+
+  it('refuels even without an adjacent destination, but not without a stationed ship', () => {
+    const f = refuelFixture(1); f.state.galaxy.systems.find(s => s.id === 'eden')!.ownerId = null;
+    f.click('production-travel'); f.click('production-travel');
+    expect(f.find('travel-send').interactive).toBe(false); expect(f.find('travel-refuel').interactive).toBe(true);
+    f.click('travel-refuel'); expect(f.find('travel-fuel').text).toContain('3/3');
+  });
+
+  it('never offers refuel for a travelling ship and refreshes fuel on arrival at the target', () => {
+    const f = refuelFixture(1); f.click('travel-refuel'); f.click('travel-send');
+    expect(f.find('travel-refuel').interactive).toBe(false);
+    expect(f.find('travel-fuel').text).toBe('Топливо: нет выбранного корабля');
+    expect(f.find('travel-refuel-quote').text).toContain('недоступна');
+    f.click('travel-refuel'); expect(f.spy).toHaveBeenCalledTimes(2);
+    f.click('campaign-end-turn'); f.click('campaign-production'); f.click('system-eden');
+    f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-fuel').text).toContain('2/3');
+    expect(f.find('travel-refuel-quote').text).toContain('5 кр. / 2 мин.');
+    f.click('travel-refuel'); expect(f.message()).toBe('Сейчас ход другой стороны');
+    f.click('campaign-side-switch'); f.click('campaign-end-turn'); f.click('campaign-side-switch'); f.click('production-travel');
+    f.click('travel-refuel');
+    expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toEqual({ kind: 'refuelShip', factionId: 'blue', expectedTurn: 3, systemId: 'eden', shipId: 1 });
+    expect(f.find('travel-fuel').text).toContain('3/3');
+  });
+
+  it.each(['stale', 'vanished', 'moved', 'transit', 'full'] as const)('rejects a changed captured ship: %s, never refuels a replacement', change => {
+    const f = refuelFixture();
+    if (change === 'stale') f.state.turn = 3;
+    if (change === 'vanished') f.state.ships.shift();
+    if (change === 'moved') f.state.ships[0].systemId = 'eden';
+    if (change === 'transit') f.state.ships[0].transit = { destinationId: 'eden', remainingTurns: 1 };
+    if (change === 'full') f.state.ships[0].fuel = 3;
+    const before = structuredClone(f.state); f.click('travel-refuel');
+    expect(f.spy.mock.calls[0][1]).toMatchObject({ expectedTurn: 1, shipId: 1, systemId: 'sol' });
+    expect(f.spy.mock.results[0].value).toMatchObject({ ok: false, code: change === 'stale' ? 'STALE_TURN'
+      : change === 'full' ? 'FUEL_FULL' : change === 'transit' ? 'SHIP_IN_TRANSIT' : 'SHIP_NOT_FOUND' });
+    expect(f.state).toEqual(before);
+  });
+
+  it('switches to red fuel/price and refuels red without exposing blue ships', () => {
+    const f = refuelFixture(1); f.state.production.lastOrderId = 2;
+    f.state.ships.push({ ...structuredClone(f.state.ships[0]), id: 2, factionId: 'red', systemId: 'vega', fuel: 2,
+      design: { ...f.choices[0].design, name: 'Красный бак' } });
+    f.click('campaign-end-turn'); f.click('campaign-side-switch');
+    expect(f.nodes.filter(n => !n.destroyed && n.name === 'travel-refuel')).toHaveLength(0);
+    f.click('campaign-production'); f.click('system-vega'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-fuel').text).toContain('2/3'); expect(f.find('travel-refuel-quote').text).toContain('5 кр. / 2 мин.');
+    f.click('travel-refuel'); expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toEqual({ kind: 'refuelShip', factionId: 'red', expectedTurn: 2, systemId: 'vega', shipId: 2 });
+    const next = f.spy.mock.results[f.spy.mock.results.length - 1].value.state as domain.CampaignSession;
+    expect(next.ships[0].fuel).toBe(0); expect(next.ships[1].fuel).toBe(3);
+    expect(next.treasuries.red).toEqual({ credits: f.state.treasuries.red.credits - 5, minerals: f.state.treasuries.red.minerals - 2 });
+    f.click('campaign-side-switch'); f.click('campaign-production'); f.click('system-sol'); f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-fuel').text).toContain('0/3');
+    expect(f.nodes.some(n => !n.destroyed && n.text.includes('Красный бак'))).toBe(false);
+  });
+
+  it.each(['travel-ships-next', 'production-travel', 'campaign-production', 'campaign-side-switch', 'campaign-new'])('old refuel is inert after %s', action => {
+    const f = refuelFixture(), old = f.find('travel-refuel').listeners('pointerdown')[0] as () => void;
+    f.click(action); old(); expect(f.spy).not.toHaveBeenCalled();
+  });
+
+  it('blocks refuel during confirmations and destroys it on ESC, reset, exit and reentry', () => {
+    const f = refuelFixture(), old = f.find('travel-refuel').listeners('pointerdown')[0] as () => void;
+    f.click('campaign-new'); expect(f.find('travel-refuel').interactive).toBe(false);
+    f.click('travel-refuel'); old(); expect(f.spy).not.toHaveBeenCalled();
+    f.keyboard.emit('keydown-ESC'); expect(f.find('travel-refuel').interactive).toBe(true);
+    const closing = f.find('travel-refuel').listeners('pointerdown')[0] as () => void;
+    f.keyboard.emit('keydown-ESC'); closing(); expect(f.spy).not.toHaveBeenCalled();
+    f.click('production-travel'); f.click('campaign-new'); f.click('campaign-confirm');
+    f.click('campaign-production'); f.click('production-travel');
+    expect(f.find('travel-refuel').interactive).toBe(false); expect(f.find('travel-fuel').text).toContain('нет выбранного');
+    f.click('campaign-menu'); f.click('campaign-confirm'); old(); closing();
+    expect(f.nodes.every(n => n.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+    f.scene.create(); f.click('campaign-production'); f.click('production-travel'); old();
+    expect(f.find('travel-refuel').interactive).toBe(false); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    expect(f.nodes.filter(n => !n.destroyed && n.name === 'travel-panel')).toHaveLength(1);
+  });
+
+  it('keeps fuel/price independent of a long name and clamps after the selected ship disappears', () => {
+    const f = refuelFixture(), name = 'Ш'.repeat(80);
+    f.state.ships[2].design.name = name; f.click('travel-ships-next'); f.click('travel-ships-next');
+    expect(f.find('travel-ship').width).toBeLessThanOrEqual(745);
+    expect(f.find('travel-fuel').text).toContain('2/3'); expect(f.find('travel-refuel-quote').width).toBeLessThanOrEqual(570);
+    f.click('travel-refuel'); expect(f.spy.mock.results[0].value.state.ships[2].design.name).toBe(name);
+    f.click('travel-send'); expect(f.find('travel-ship').text).toContain('2/2 · #2');
+    expect(f.find('travel-fuel').text).toContain('1/3'); expect(f.find('travel-refuel-quote').text).toContain('10 кр. / 4 мин.');
   });
 
   it('sends exactly the displayed ship and destination with captured turn without charging', () => {

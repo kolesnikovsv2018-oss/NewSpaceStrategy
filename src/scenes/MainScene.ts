@@ -118,7 +118,8 @@ export class MainScene extends Phaser.Scene {
           shipsPage: page => { if (this.pending) return; this.shipsPage = page; this.destinationIndex = 0; this.render(); },
           destination: index => { if (this.pending) return; this.destinationIndex = index; this.render(); },
           transitPage: page => { if (this.pending) return; this.transitPage = page; this.render(); },
-          send: (shipId, destinationId) => this.execute({ kind: 'sendShip', factionId, expectedTurn, systemId, shipId, destinationId })
+          send: (shipId, destinationId) => this.execute({ kind: 'sendShip', factionId, expectedTurn, systemId, shipId, destinationId }),
+          refuel: shipId => this.execute({ kind: 'refuelShip', factionId, expectedTurn, systemId, shipId })
         }
       },
       request: action => { if (this.pending) return; this.pending = action; this.render(); },
@@ -149,6 +150,7 @@ export class MainScene extends Phaser.Scene {
         : command.kind === 'explore' ? 'Система разведана.' : command.kind === 'colonize' ? 'Колония основана.'
         : command.kind === 'enqueueProduction' ? 'Заказ оплачен и добавлен в очередь.'
         : command.kind === 'cancelProduction' ? 'Заказ отменён. Возврат за оставшиеся ходы начислен.'
+        : command.kind === 'refuelShip' ? 'Корабль заправлен. Ресурсы списаны.'
         : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
     } else this.message = result.message;
     this.render();

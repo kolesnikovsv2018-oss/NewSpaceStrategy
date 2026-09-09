@@ -19,8 +19,8 @@ function own(state: CampaignSession, systemId: SystemId, factionId: CampaignFact
 function fixture() {
   const state = createCampaignSession(); own(state, 'eden', 'blue'); own(state, 'nexus', 'red');
   state.production.lastOrderId = 2;
-  state.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', design: design() },
-    { id: 2, factionId: 'red', systemId: 'vega', design: design() }];
+  state.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design: design() },
+    { id: 2, factionId: 'red', systemId: 'vega', fuel: 3, design: design() }];
   return state;
 }
 const send = { kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 1, destinationId: 'eden' } as const;
@@ -53,17 +53,17 @@ describe('one-own-turn strategic travel', () => {
     expect(areSystemsAdjacent('sol', 'eden')).toBe(true);
     expect(areSystemsAdjacent('sol', 'sol')).toBe(false); expect(areSystemsAdjacent('sol', 'nexus')).toBe(false);
   });
-  it('adds only a detached transit, with no cost/turn/ID/design or production change', () => {
+  it('adds a detached transit and spends one fuel, without treasury/turn/ID/design or production change', () => {
     const state = fixture(); freeze(state); freeze(send);
     const next = apply(state, send);
-    expect(next).toEqual({ ...state, ships: [{ ...state.ships[0], transit: { destinationId: 'eden', remainingTurns: 1 } }, state.ships[1]] });
+    expect(next).toEqual({ ...state, ships: [{ ...state.ships[0], fuel: 2, transit: { destinationId: 'eden', remainingTurns: 1 } }, state.ships[1]] });
     next.ships[0].design.name = 'Edited'; next.ships[0].transit!.destinationId = 'nexus';
     expect(state.ships[0].design).toEqual(design()); expect(state.ships[0]).not.toHaveProperty('transit');
   });
   it('arrives once on own endTurn and retains the original snapshot and ID', () => {
     const travelling = apply(fixture(), send); freeze(travelling);
     const arrived = apply(travelling, end(travelling));
-    expect(arrived.ships[0]).toEqual({ ...fixture().ships[0], systemId: 'eden' });
+    expect(arrived.ships[0]).toEqual({ ...fixture().ships[0], fuel: 2, systemId: 'eden' });
     expect(arrived.treasuries.blue).toEqual({ credits: 120, minerals: 60 }); expect(arrived.turn).toBe(2);
     reject(arrived, end(travelling), 'STALE_TURN');
     const next = apply(arrived, end(arrived)); expect(next.ships).toEqual(arrived.ships);
