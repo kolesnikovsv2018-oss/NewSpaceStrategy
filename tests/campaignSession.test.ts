@@ -28,7 +28,7 @@ describe('campaign session economy and turn', () => {
     const state = createCampaignSession();
     expect(state).toEqual({ galaxy: createCampaignState(), turn: 1,
       treasuries: { blue: { credits: 100, minerals: 50 }, red: { credits: 100, minerals: 50 } },
-      production: { lastOrderId: 0, orders: [], completed: [] }, ships: [] });
+      production: { lastOrderId: 0, orders: [], completed: [] }, ships: [], fleets: { lastFleetId: 0, items: [] } });
     expect(state.treasuries.blue).not.toBe(state.treasuries.red);
     expect(getCampaignSessionView(state, 'blue')).toMatchObject({ turn: 1, activeFactionId: 'blue', income: { credits: 10, minerals: 5 } });
   });
@@ -196,7 +196,7 @@ describe('session input boundaries and view', () => {
   it.each(['blue', 'red'] as const)('exposes only %s treasury/income with the matching galaxy projection', faction => {
     const state = createCampaignSession(); state.treasuries.red = { credits: 9876, minerals: 5432 };
     const view = getCampaignSessionView(state, faction);
-    expect(Object.keys(view).sort()).toEqual(['activeFactionId', 'galaxy', 'income', 'production', 'ships', 'treasury', 'turn']);
+    expect(Object.keys(view).sort()).toEqual(['activeFactionId', 'fleets', 'galaxy', 'income', 'production', 'ships', 'treasury', 'turn']);
     expect(view.treasury).toEqual(state.treasuries[faction]);
     expect(view.galaxy).toEqual(getCampaignView(state.galaxy, faction));
     const before = getCampaignSessionView(state, faction);

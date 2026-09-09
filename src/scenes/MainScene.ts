@@ -151,6 +151,8 @@ export class MainScene extends Phaser.Scene {
         : command.kind === 'enqueueProduction' ? 'Заказ оплачен и добавлен в очередь.'
         : command.kind === 'cancelProduction' ? 'Заказ отменён. Возврат за оставшиеся ходы начислен.'
         : command.kind === 'refuelShip' ? 'Корабль заправлен. Ресурсы списаны.'
+        : command.kind === 'createFleet' ? 'Группа кораблей создана.'
+        : command.kind === 'disbandFleet' ? 'Группа расформирована. Корабли остаются в колонии.'
         : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
     } else this.message = result.message;
     this.render();

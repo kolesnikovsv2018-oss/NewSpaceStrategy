@@ -6,6 +6,8 @@ import { treasurySchema, type Treasury } from './campaignEconomy';
 import { designSchema, validateDesign } from './shipDesign';
 import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
   MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
+import { campaignFleetsSchema, createCampaignFleets, fleetIdSchema, fleetShipIdsSchema, isShipInFleet,
+  MAX_CAMPAIGN_FLEETS, MAX_FLEET_ID, type CampaignFleet } from './campaignFleets';
 import { advanceProduction, createProductionState, getProductionQuote, getProductionRefund,
   MAX_COLONY_QUEUE, MAX_ORDER_ID, MAX_PRODUCTION_RECORDS, orderIdSchema, productionStateSchema,
   type ProductionView } from './production';
@@ -23,7 +25,8 @@ export const campaignSessionSchema = z.object({
   turn: turnSchema,
   treasuries: z.object({ blue: treasurySchema, red: treasurySchema }).strict(),
   production: productionStateSchema,
-  ships: campaignShipsSchema
+  ships: campaignShipsSchema,
+  fleets: campaignFleetsSchema
 }).strict().superRefine((state, ctx) => {
   for (const record of [...state.production.orders, ...state.production.completed]) {
     if (state.galaxy.systems.find(system => system.id === record.systemId)?.ownerId !== record.factionId) {
@@ -31,6 +34,18 @@ export const campaignSessionSchema = z.object({
     }
   }
   const productionIds = new Set([...state.production.orders, ...state.production.completed].map(record => record.id));
+  const shipsById = new Map(state.ships.map(ship => [ship.id, ship]));
+  for (const fleet of state.fleets.items) {
+    if (state.galaxy.systems.find(system => system.id === fleet.systemId)?.ownerId !== fleet.factionId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Группа требует собственную колонию' });
+    }
+    for (const id of fleet.shipIds) {
+      const ship = shipsById.get(id);
+      if (!ship || ship.factionId !== fleet.factionId || ship.systemId !== fleet.systemId || ship.transit) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Все участники группы должны стоять в одной собственной колонии' });
+      }
+    }
+  }
   for (const ship of state.ships) {
     if (productionIds.has(ship.id) || ship.id > state.production.lastOrderId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль требует отдельный ранее выданный идентификатор производства' });
@@ -48,7 +63,8 @@ export type CampaignSession = z.infer<typeof campaignSessionSchema>;
 
 export function createCampaignSession(): CampaignSession {
   return { galaxy: createCampaignState(), turn: 1,
-    treasuries: { blue: { ...initialTreasury }, red: { ...initialTreasury } }, production: createProductionState(), ships: [] };
+    treasuries: { blue: { ...initialTreasury }, red: { ...initialTreasury } }, production: createProductionState(), ships: [],
+    fleets: createCampaignFleets() };
 }
 
 export const sessionCommandSchema = z.discriminatedUnion('kind', [
@@ -64,12 +80,17 @@ export const sessionCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('sendShip'), factionId: factionIdSchema, expectedTurn: turnSchema,
     systemId: systemIdSchema, shipId: orderIdSchema, destinationId: systemIdSchema }).strict(),
   z.object({ kind: z.literal('refuelShip'), factionId: factionIdSchema, expectedTurn: turnSchema,
-    systemId: systemIdSchema, shipId: orderIdSchema }).strict()
+    systemId: systemIdSchema, shipId: orderIdSchema }).strict(),
+  z.object({ kind: z.literal('createFleet'), factionId: factionIdSchema, expectedTurn: turnSchema,
+    systemId: systemIdSchema, shipIds: fleetShipIdsSchema }).strict(),
+  z.object({ kind: z.literal('disbandFleet'), factionId: factionIdSchema, expectedTurn: turnSchema,
+    systemId: systemIdSchema, fleetId: fleetIdSchema }).strict()
 ]);
 export type SessionCommand = z.infer<typeof sessionCommandSchema>;
 export type SessionErrorCode = CampaignErrorCode | 'STALE_TURN' | 'NOT_ACTIVE_FACTION' | 'RESOURCE_LIMIT' | 'TURN_LIMIT' |
   'NOT_OWN_COLONY' | 'INVALID_DESIGN' | 'INSUFFICIENT_RESOURCES' | 'QUEUE_FULL' | 'PRODUCTION_LIMIT' | 'ORDER_NOT_FOUND' | 'ORDER_ID_LIMIT' |
-  'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE' | 'INSUFFICIENT_FUEL' | 'FUEL_FULL';
+  'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE' | 'INSUFFICIENT_FUEL' | 'FUEL_FULL' |
+  'SHIP_IN_FLEET' | 'FLEET_LIMIT' | 'FLEET_ID_LIMIT' | 'FLEET_NOT_FOUND';
 export type SessionResult = { ok: true; state: CampaignSession } |
   { ok: false; code: SessionErrorCode; message: string };
 
@@ -95,6 +116,36 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   if (command.factionId !== activeFaction(state.turn)) {
     return { ok: false, code: 'NOT_ACTIVE_FACTION', message: 'Сейчас ход другой стороны' };
   }
+  if (command.kind === 'createFleet' || command.kind === 'disbandFleet') {
+    if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
+      return { ok: false, code: 'NOT_OWN_COLONY', message: 'Группировка доступна только в своей колонии' };
+    }
+    if (command.kind === 'disbandFleet') {
+      const index = state.fleets.items.findIndex(fleet => fleet.id === command.fleetId &&
+        fleet.factionId === command.factionId && fleet.systemId === command.systemId);
+      if (index < 0) return { ok: false, code: 'FLEET_NOT_FOUND', message: 'Своя группа не найдена в указанной колонии' };
+      state.fleets.items.splice(index, 1);
+      return { ok: true, state };
+    }
+    // Validate every member before allocating an ID or publishing membership.
+    for (const id of command.shipIds) {
+      const ship = state.ships.find(item => item.id === id && item.factionId === command.factionId && item.systemId === command.systemId);
+      if (!ship) return { ok: false, code: 'SHIP_NOT_FOUND', message: 'Свой корабль не найден в указанной системе' };
+      if (ship.transit) return { ok: false, code: 'SHIP_IN_TRANSIT', message: 'Корабль уже в пути' };
+      if (isShipInFleet(state.fleets.items, id)) {
+        return { ok: false, code: 'SHIP_IN_FLEET', message: 'Корабль входит в группу; сначала расформируйте её' };
+      }
+    }
+    if (state.fleets.items.filter(fleet => fleet.factionId === command.factionId).length >= MAX_CAMPAIGN_FLEETS) {
+      return { ok: false, code: 'FLEET_LIMIT', message: 'Достигнут предел групп стороны' };
+    }
+    if (state.fleets.lastFleetId === MAX_FLEET_ID) {
+      return { ok: false, code: 'FLEET_ID_LIMIT', message: 'Достигнут предел идентификаторов групп' };
+    }
+    state.fleets.items.push({ id: ++state.fleets.lastFleetId, factionId: command.factionId,
+      systemId: command.systemId, shipIds: command.shipIds });
+    return { ok: true, state };
+  }
   if (command.kind === 'sendShip' || command.kind === 'refuelShip') {
     if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Операция корабля доступна только в своей колонии' };
@@ -111,6 +162,9 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
       treasury.credits -= quote.cost.credits; treasury.minerals -= quote.cost.minerals;
       ship.fuel = CAMPAIGN_FUEL_CAPACITY;
       return { ok: true, state };
+    }
+    if (isShipInFleet(state.fleets.items, ship.id)) {
+      return { ok: false, code: 'SHIP_IN_FLEET', message: 'Корабль входит в группу; сначала расформируйте её' };
     }
     if (state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
@@ -203,6 +257,7 @@ export interface CampaignSessionView {
   income: Treasury;
   production: ProductionView;
   ships: CampaignShip[];
+  fleets: CampaignFleet[];
 }
 
 /** Detached faction view: no opponent treasury/income, even if its colonies are explored.
@@ -216,5 +271,6 @@ export function getCampaignSessionView(inputState: CampaignSession, factionId: C
     income: incomeFor(state.galaxy, faction), production: {
       orders: state.production.orders.filter(order => order.factionId === faction),
       completed: state.production.completed.filter(record => record.factionId === faction)
-    }, ships: state.ships.filter(ship => ship.factionId === faction) };
+    }, ships: state.ships.filter(ship => ship.factionId === faction),
+    fleets: state.fleets.items.filter(fleet => fleet.factionId === faction) };
 }

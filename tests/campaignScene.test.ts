@@ -709,6 +709,22 @@ describe('campaign scene and projection renderer', () => {
     return f;
   }
 
+  it('keeps grouped ships visible and individually refuelable, but shows the grouped-send refusal', () => {
+    const f = refuelFixture(2);
+    f.state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 2] }] };
+    const before = structuredClone(f.state);
+    f.click('travel-send'); expect(f.message()).toContain('сначала расформируйте');
+    expect(f.state).toEqual(before); expect(f.find('travel-ship').text).toContain('#1');
+    expect(f.find('travel-count').text).toContain('2/100');
+    f.click('travel-refuel'); expect(f.find('travel-fuel').text).toContain('3/3');
+    expect(f.spy.mock.results[f.spy.mock.results.length - 1].value.state.fleets).toEqual(before.fleets);
+    f.click('travel-send'); expect(f.message()).toContain('сначала расформируйте');
+    expect(f.find('travel-transit').text).toBe('Кораблей в пути нет.');
+    f.click('campaign-new'); f.click('campaign-confirm');
+    f.click('campaign-end-turn');
+    expect(f.spy.mock.results[f.spy.mock.results.length - 1].value.state.fleets).toEqual({ lastFleetId: 0, items: [] });
+  });
+
   it('shows each stationed tank and full price, including a disabled full tank', () => {
     const f = refuelFixture();
     for (const [fuel, price] of [[0, '15 кр. / 6 мин.'], [1, '10 кр. / 4 мин.'], [2, '5 кр. / 2 мин.']] as const) {
