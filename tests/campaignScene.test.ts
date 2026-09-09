@@ -5,7 +5,7 @@ import * as catalog from '../src/utils/ProductionCatalog';
 import { createDesign, createComponent, installComponent } from '../src/domain/shipDesign';
 import { getProductionQuote } from '../src/domain/production';
 import { createCombatDesign } from '../src/domain/combatPresets';
-import { ShipDesignManager } from '../src/utils/ShipDesignManager';
+import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
@@ -156,6 +156,308 @@ describe('campaign scene and projection renderer', () => {
       click('campaign-menu'); click('campaign-confirm');
       expect(f.nodes.every(node => node.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
     } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['preset', 'library'] as const)('accepts both factions through paid FIFO fleets, empty tanks, refuelling and return using %s', source => {
+    // Only environment boundaries are replaced: no injected campaign state or catalog responses.
+    const saved = createCombatDesign('fighter'); saved.name = 'Приёмочный групповой fighter';
+    const raw = JSON.stringify({ schemaVersion: 2, designs: [saved], components: [] });
+    const contents = new Map(source === 'library' ? [[ShipDesignManager.STORAGE_KEY, raw]] : []);
+    const storage = {
+      getItem: vi.fn((key: string) => contents.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { contents.set(key, value); })
+    } satisfies StoragePort;
+    const originalContents = [...contents];
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    vi.stubGlobal('localStorage', storage);
+    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    const load = vi.spyOn(catalog, 'loadProductionCatalog');
+    const repositoryLoad = vi.spyOn(ShipDesignManager.prototype, 'load');
+    const f = fixture();
+    try {
+      // Read-only observation of the scene, also valid after reset (unlike the last command result).
+      const current = () => (f.scene as unknown as { campaign: domain.CampaignSession }).campaign;
+      expect(current()).toEqual(domain.createCampaignSession());
+      const sides = [
+        { faction: 'blue', home: 'sol', neighbor: 'eden', ids: [1, 2], fleetId: 1 },
+        { faction: 'red', home: 'vega', neighbor: 'nexus', ids: [3, 4], fleetId: 2 }
+      ] as const;
+      const snapshots = new Map<number, domain.CampaignSession['ships'][number]['design']>();
+      const oldCallbacks: (() => void)[] = [];
+      const commandButtons: Record<string, domain.SessionCommand['kind']> = {
+        'campaign-explore': 'explore', 'campaign-colonize': 'colonize', 'campaign-end-turn': 'endTurn',
+        'production-enqueue': 'enqueueProduction', 'production-deploy': 'deployProduction',
+        'fleet-create': 'createFleet', 'fleet-disband': 'disbandFleet',
+        'fleet-travel-send': 'sendFleet', 'travel-refuel': 'refuelShip', 'travel-send': 'sendShip'
+      };
+      const click = (name: string, failure?: domain.SessionErrorCode) => {
+        const before = structuredClone(current()), calls = spy.mock.calls.length;
+        expect(f.find(name).interactive, name).toBe(true);
+        f.click(name);
+        const kind = commandButtons[name];
+        expect(spy.mock.calls.length, name).toBe(calls + (kind ? 1 : 0));
+        if (!kind) {
+          if (name !== 'campaign-confirm') expect(current()).toEqual(before);
+          return;
+        }
+        expect(spy.mock.calls[calls][0]).toEqual(before); // Commands must not mutate their input.
+        const command = spy.mock.calls[calls][1] as domain.SessionCommand;
+        expect(command).toMatchObject({ kind, expectedTurn: before.turn });
+        const result = spy.mock.results[calls].value as domain.SessionResult;
+        if (failure) {
+          expect(result).toMatchObject({ ok: false, code: failure });
+          expect(current()).toBe(spy.mock.calls[calls][0]);
+          expect(current()).toEqual(before);
+        } else {
+          expect(result.ok).toBe(true);
+          if (!result.ok) throw Error(result.message);
+          expect(current()).toBe(result.state);
+          expect(domain.campaignSessionSchema.safeParse(current()).success).toBe(true);
+        }
+        const enemy = command.factionId === 'blue' ? 'red' : 'blue';
+        const enemyBefore = domain.getCampaignSessionView(before, enemy);
+        expect(domain.getCampaignSessionView(current(), enemy)).toEqual(!failure && kind === 'endTurn'
+          ? { ...enemyBefore, turn: before.turn + 1, activeFactionId: enemy } : enemyBefore);
+        if (kind !== 'endTurn') expect(current().turn).toBe(before.turn);
+        if (!['endTurn', 'enqueueProduction', 'refuelShip'].includes(kind)) expect(current().treasuries).toEqual(before.treasuries);
+        for (const record of [...current().production.orders, ...current().production.completed, ...current().ships]) {
+          if (snapshots.has(record.id)) expect(record.design).toEqual(snapshots.get(record.id));
+        }
+        expect(storage.setItem).not.toHaveBeenCalled();
+      };
+      const capture = (name: string) => {
+        const callback = f.find(name).listeners('pointerdown')[0] as () => void;
+        expect(callback).toBeTypeOf('function'); oldCallbacks.push(callback); return callback;
+      };
+      const inert = (callback: () => void) => {
+        const before = structuredClone(current()), calls = spy.mock.calls.length;
+        callback(); expect(spy).toHaveBeenCalledTimes(calls); expect(current()).toEqual(before);
+      };
+      const choose = () => {
+        if (source === 'library') for (let i = 0; i < 7; i++) click('production-next');
+        expect(f.find('production-quote').text).toContain('185 кр. / 11 мин.');
+      };
+      const end = () => {
+        const before = structuredClone(current()), faction = before.turn % 2 ? 'blue' : 'red';
+        const old = capture('campaign-end-turn');
+        click('campaign-end-turn'); inert(old);
+        expect(current().turn).toBe(before.turn + 1);
+        expect(current().treasuries[faction]).toEqual({
+          credits: before.treasuries[faction].credits + 20, minerals: before.treasuries[faction].minerals + 10
+        });
+        // Independent FIFO oracle: one head per own colony, no spillover into the second order.
+        const heads = new Set<string>(), finished: number[] = [];
+        const orders = before.production.orders.flatMap(order => {
+          if (order.factionId !== faction || heads.has(order.systemId)) return [order];
+          heads.add(order.systemId);
+          if (order.remainingTurns > 1) return [{ ...order, remainingTurns: order.remainingTurns - 1 }];
+          finished.push(order.id); return [];
+        });
+        expect(current().production).toEqual({ lastOrderId: before.production.lastOrderId, orders,
+          completed: [...before.production.completed, ...before.production.orders.filter(order => finished.includes(order.id))
+            .map(({ remainingTurns: _remaining, ...record }) => record)] });
+        expect(current().ships).toEqual(before.ships.map(ship => {
+          if (ship.factionId !== faction || !ship.transit) return ship;
+          const { transit, ...stationary } = ship;
+          return { ...stationary, systemId: transit.destinationId };
+        }));
+        expect(current().fleets).toEqual({ ...before.fleets, items: before.fleets.items.map(fleet => {
+          const trip = before.ships.find(ship => ship.id === fleet.shipIds[0])?.transit;
+          return fleet.factionId === faction && trip ? { ...fleet, systemId: trip.destinationId } : fleet;
+        }) });
+        click('campaign-end-turn', 'NOT_ACTIVE_FACTION'); // No second payment/arrival while observing the old side.
+        click('campaign-side-switch');
+      };
+      const ownShips = (faction: 'blue' | 'red') => current().ships.filter(ship => ship.factionId === faction);
+      const checkShips = (side: typeof sides[number], systemId: typeof side.home | typeof side.neighbor,
+        fuel: readonly number[], destinationId?: typeof systemId) => {
+        expect(ownShips(side.faction)).toEqual(side.ids.map((id, index) => ({ id, factionId: side.faction,
+          systemId, fuel: fuel[index], design: snapshots.get(id),
+          ...(destinationId ? { transit: { destinationId, remainingTurns: 1 } } : {}) })));
+        expect(current().fleets.items.find(fleet => fleet.id === side.fleetId)).toEqual({
+          id: side.fleetId, factionId: side.faction, systemId, shipIds: [...side.ids]
+        });
+        const view = domain.getCampaignSessionView(current(), side.faction);
+        expect(view.ships).toEqual(ownShips(side.faction));
+        expect(view.fleets).toEqual([current().fleets.items.find(fleet => fleet.id === side.fleetId)]);
+        expect(view).not.toHaveProperty('treasuries'); expect(view.production).not.toHaveProperty('lastOrderId');
+        expect(view).not.toHaveProperty('lastFleetId');
+      };
+      // Real exploration, colonization, rejection and fourteen own incomes fund two fighters each.
+      for (const side of sides) {
+        click(`system-${side.neighbor}`); click('campaign-explore'); click('campaign-colonize');
+        expect(f.find('campaign-income').text).toContain('+20 кредитов · +10 минералов');
+        click(`system-${side.home}`); click('campaign-production'); choose();
+        click('production-enqueue', 'INSUFFICIENT_RESOURCES'); click('campaign-production'); end();
+      }
+      for (let i = 0; i < 26; i++) end();
+      expect(current().turn).toBe(29);
+      expect(current().treasuries).toEqual({ blue: { credits: 380, minerals: 190 }, red: { credits: 380, minerals: 190 } });
+      for (const side of sides) {
+        click(`system-${side.home}`); click('campaign-production'); choose();
+        for (const [index, id] of side.ids.entries()) {
+          const old = capture('production-enqueue'); click('production-enqueue'); inert(old);
+          const order = current().production.orders.find(item => item.id === id)!;
+          expect(order).toMatchObject({ id, factionId: side.faction, systemId: side.home, remainingTurns: 4 });
+          expect(order.design.hullId).toBe('fighter');
+          if (source === 'library') expect(order.design).toEqual(saved);
+          snapshots.set(id, structuredClone(order.design));
+          expect(current().treasuries[side.faction]).toEqual({ credits: 380 - 185 * (index + 1), minerals: 190 - 11 * (index + 1) });
+        }
+        const paid = structuredClone(current()); click('production-refresh'); expect(current()).toEqual(paid);
+        click('campaign-production'); end();
+      }
+      for (let i = 0; i < 6; i++) end();
+      expect(current().turn).toBe(37);
+      expect(current().production.completed.map(record => record.id)).toEqual([1, 3]);
+      expect(current().production.orders.map(order => [order.id, order.remainingTurns])).toEqual([[2, 4], [4, 4]]);
+      for (let i = 0; i < 8; i++) end();
+      expect(current().turn).toBe(45); expect(current().production.orders).toEqual([]);
+      expect(current().production.completed.map(record => record.id)).toEqual([1, 3, 2, 4]);
+      expect(current().treasuries).toEqual({ blue: { credits: 170, minerals: 248 }, red: { credits: 170, minerals: 248 } });
+      for (const side of sides) {
+        click(`system-${side.home}`); click('campaign-production');
+        for (const id of side.ids) {
+          expect(f.find('production-completed').text).toContain(`#${id}`);
+          const old = capture('production-deploy'); click('production-deploy'); inert(old);
+          expect(current().ships.find(ship => ship.id === id)).toEqual({ id, factionId: side.faction,
+            systemId: side.home, fuel: 3, design: snapshots.get(id) });
+          expect(current().production.completed.some(record => record.id === id)).toBe(false);
+        }
+        click('production-fleets');
+        expect(f.find('fleet-candidates-title').text).toBe('СВОБОДНЫЕ КОРАБЛИ: 2');
+        click('fleet-select'); click('fleet-candidate-next'); click('fleet-select');
+        const before = structuredClone(current()), old = capture('fleet-create'); click('fleet-create'); inert(old);
+        expect(spy.mock.calls[spy.mock.calls.length - 1][1]).toEqual({ kind: 'createFleet', factionId: side.faction,
+          expectedTurn: before.turn, systemId: side.home, shipIds: [...side.ids] });
+        expect(current().ships).toEqual(before.ships); expect(current().production).toEqual(before.production);
+        expect(current().fleets.lastFleetId).toBe(side.fleetId);
+        checkShips(side, side.home, [3, 3]);
+        expect(f.find('fleet-candidates-title').text).toBe('СВОБОДНЫЕ КОРАБЛИ: 0');
+        for (const id of side.ids) {
+          expect(f.find('fleet-member').text).toContain(`#${id}`);
+          if (id === side.ids[0]) click('fleet-member-next');
+        }
+        click('production-travel'); click('travel-send', 'SHIP_IN_FLEET');
+        click('campaign-production'); end();
+      }
+      expect(current().turn).toBe(47);
+      expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
+      const reads = load.mock.calls.length;
+      // Three real flight legs exhaust both tanks; the fourth returns each group home.
+      for (let leg = 1; leg <= 4; leg++) {
+        for (const side of sides) {
+          const from = leg % 2 ? side.home : side.neighbor, to = leg % 2 ? side.neighbor : side.home;
+          click(`system-${from}`); click('campaign-production'); click('production-fleets'); click('fleet-travel');
+          expect(f.find('fleet-travel-current').text).toContain(`Группа #${side.fleetId}`);
+          if (leg === 4) {
+            checkShips(side, from, [0, 0]);
+            expect(f.find('fleet-travel-fuel').text).toContain('0/3 · Без топлива: 2/2');
+            click('fleet-travel-send', 'INSUFFICIENT_FUEL');
+            const empty = structuredClone(current());
+            for (const [index, id] of side.ids.entries()) {
+              click('production-travel'); if (index) click('travel-ships-next');
+              expect(f.find('travel-ship').text).toContain(`#${id}`);
+              expect(f.find('travel-refuel-quote').text).toContain('+3 · Цена: 15 кр. / 6 мин.');
+              const before = structuredClone(current()), old = capture('travel-refuel'); click('travel-refuel'); inert(old);
+              expect(spy.mock.calls[spy.mock.calls.length - 1][1]).toEqual({ kind: 'refuelShip', factionId: side.faction,
+                expectedTurn: before.turn, systemId: from, shipId: id });
+              expect(current()).toEqual({ ...before,
+                treasuries: { ...before.treasuries, [side.faction]: {
+                  credits: before.treasuries[side.faction].credits - 15, minerals: before.treasuries[side.faction].minerals - 6 } },
+                ships: before.ships.map(ship => ship.id === id ? { ...ship, fuel: 3 } : ship) });
+              expect(f.find('travel-refuel').interactive).toBe(false);
+              checkShips(side, from, index ? [3, 3] : [3, 0]);
+              click('production-fleets'); click('fleet-travel');
+              if (!index) {
+                expect(f.find('fleet-travel-fuel').text).toContain('0/3 · Без топлива: 1/2');
+                click('fleet-travel-send', 'INSUFFICIENT_FUEL'); checkShips(side, from, [3, 0]);
+              }
+            }
+            expect(current().treasuries[side.faction]).toEqual({
+              credits: empty.treasuries[side.faction].credits - 30, minerals: empty.treasuries[side.faction].minerals - 12 });
+          }
+          const before = structuredClone(current()), old = capture('fleet-travel-send');
+          click('fleet-travel-send'); inert(old);
+          expect(spy.mock.calls[spy.mock.calls.length - 1][1]).toEqual({ kind: 'sendFleet', factionId: side.faction,
+            expectedTurn: before.turn, systemId: from, fleetId: side.fleetId, destinationId: to });
+          const fuel = leg === 4 ? 2 : 3 - leg;
+          checkShips(side, from, [fuel, fuel], to);
+          expect(current().production).toEqual(before.production); expect(current().fleets).toEqual(before.fleets);
+          expect(f.find('fleet-travel-title').text).toContain(': 0');
+          expect(f.find('fleet-travel-send').interactive).toBe(false);
+          expect(f.find('fleet-travel-transit').text).toContain(`1/1 · Группа #${side.fleetId}`);
+          // Target and source both exclude travelling members; total own counts still include them.
+          click('campaign-production'); click(`system-${to}`); click('campaign-production'); click('production-fleets');
+          expect(f.find('fleet-candidates-title').text).toBe('СВОБОДНЫЕ КОРАБЛИ: 0');
+          expect(f.find('fleet-disband').interactive).toBe(false);
+          click('fleet-travel'); expect(f.find('fleet-travel-title').text).toContain(': 0');
+          expect(f.find('fleet-travel-count').text).toContain('1/20');
+          click('production-travel'); expect(f.find('travel-ship').text).toBe('Нет кораблей для отправки.');
+          expect(f.find('travel-transit-title').text).toContain(': 2');
+          click('production-fleets'); click('fleet-travel');
+          end(); checkShips(side, to, [fuel, fuel]);
+          click('campaign-side-switch'); // Observe arrival without granting another action window.
+          click('production-fleets'); click('fleet-travel');
+          expect(f.find('fleet-travel-transit').text).toBe('Групп в пути нет.');
+          expect(f.find('fleet-travel-current').text).toContain(`Группа #${side.fleetId}`);
+          click('fleet-travel-send', 'NOT_ACTIVE_FACTION');
+          click('campaign-production'); click('campaign-side-switch');
+        }
+      }
+      expect(current().turn).toBe(55);
+      expect(current().treasuries).toEqual({ blue: { credits: 240, minerals: 286 }, red: { credits: 240, minerals: 286 } });
+      for (const side of sides) {
+        checkShips(side, side.home, [2, 2]);
+        click(`system-${side.home}`); click('campaign-production'); click('production-fleets');
+        const before = structuredClone(current()), old = capture('fleet-disband'); click('fleet-disband'); inert(old);
+        expect(current()).toEqual({ ...before, fleets: { lastFleetId: 2,
+          items: before.fleets.items.filter(fleet => fleet.id !== side.fleetId) } });
+        expect(f.find('fleet-candidates-title').text).toBe('СВОБОДНЫЕ КОРАБЛИ: 2');
+        expect(f.find('fleet-disband').interactive).toBe(false);
+        click('production-travel');
+        for (const id of side.ids) {
+          expect(f.find('travel-ship').text).toContain(`#${id}`);
+          expect(f.find('travel-fuel').text).toContain('2/3'); expect(f.find('travel-send').interactive).toBe(true);
+          expect(f.find('travel-limit').text).not.toContain('Группа #');
+          if (id === side.ids[0]) click('travel-ships-next');
+        }
+        click('campaign-production'); end();
+      }
+      expect(current().turn).toBe(57); expect(current().fleets).toEqual({ lastFleetId: 2, items: [] });
+      expect(current().treasuries).toEqual({ blue: { credits: 260, minerals: 296 }, red: { credits: 260, minerals: 296 } });
+      expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
+      expect(current().ships.map(ship => [ship.id, ship.systemId, ship.fuel])).toEqual([[1, 'sol', 2], [2, 'sol', 2], [3, 'vega', 2], [4, 'vega', 2]]);
+      expect(load).toHaveBeenCalledTimes(reads); expect(repositoryLoad).toHaveBeenCalledTimes(reads);
+      expect(repositoryLoad).toHaveBeenCalled(); expect(storage.getItem).toHaveBeenCalled();
+      expect([...contents]).toEqual(originalContents); expect(storage.setItem).not.toHaveBeenCalled();
+      oldCallbacks.forEach(inert);
+      click('system-sol'); click('campaign-production'); click('production-fleets'); click('fleet-travel');
+      const oldPanel = f.find('fleet-travel-panel');
+      click('campaign-new'); click('campaign-cancel');
+      expect(current().ships).toHaveLength(4); oldCallbacks.forEach(inert);
+      click('campaign-new'); click('campaign-confirm'); oldCallbacks.forEach(inert);
+      expect(oldPanel.destroyed).toBe(true); expect(current()).toEqual(domain.createCampaignSession());
+      expect(f.find('campaign-system-name').text).toBe('Сол');
+      expect(f.find('campaign-turn').text).toBe('Ход 1 · Синий союз');
+      click('campaign-production'); click('production-fleets');
+      expect(f.find('fleet-selection-count').text).toContain('Выбрано: 0/10');
+      click('fleet-travel'); expect(f.find('fleet-travel-count').text).toContain('0/20');
+      expect(f.find('fleet-travel-send').interactive).toBe(false);
+      click('campaign-menu'); const confirm = capture('campaign-confirm'); click('campaign-confirm');
+      expect(f.start).toHaveBeenCalledExactlyOnceWith('MenuScene');
+      expect(f.nodes.every(node => node.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+      f.scene.create(); inert(confirm); oldCallbacks.forEach(inert);
+      expect(current()).toEqual(domain.createCampaignSession());
+      expect(f.nodes.filter(node => !node.destroyed && node.name === 'campaign-panel')).toHaveLength(1);
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+      expect([...contents]).toEqual(originalContents); expect(storage.setItem).not.toHaveBeenCalled();
+    } finally {
+      f.events.emit('shutdown'); vi.unstubAllGlobals();
+      expect(f.nodes.every(node => node.destroyed)).toBe(true);
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+      expect(Object.getOwnPropertyDescriptor(globalThis, 'localStorage')).toEqual(originalStorage);
+    }
   });
 
   it('starts with one panel, six systems and a blue home', () => {
