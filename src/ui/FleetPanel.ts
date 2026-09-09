@@ -3,12 +3,14 @@ import type { SystemId } from '../domain/campaign';
 import type { CampaignSessionView } from '../domain/campaignSession';
 import { CAMPAIGN_FUEL_CAPACITY, isShipAtColony } from '../domain/campaignShips';
 import { isFleetAtColony, isShipInFleet, MAX_CAMPAIGN_FLEETS, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
+import { FleetTravelPanel, type FleetTravelPanelState, type FleetTravelPanelActions } from './FleetTravelPanel';
 
 export interface FleetPanelState {
   selectedShipIds: number[];
   candidatePage: number;
   fleetPage: number;
   memberPage: number;
+  travel?: FleetTravelPanelState;
 }
 export interface FleetPanelActions {
   candidatePage: (page: number) => void;
@@ -18,16 +20,24 @@ export interface FleetPanelActions {
   clear: () => void;
   create: (shipIds: number[]) => void;
   disband: (fleetId: number) => void;
+  toggleTravel: () => void;
+  travel: FleetTravelPanelActions;
 }
 
 /** Own colony projection only. Selection is a UI draft, never membership in the model. */
 export class FleetPanel {
   private readonly root: Phaser.GameObjects.Container;
   private disposed = false;
+  private travel?: FleetTravelPanel;
 
   constructor(private readonly scene: Phaser.Scene, view: CampaignSessionView, source: SystemId,
     state: FleetPanelState, actions: FleetPanelActions, private readonly blocked: boolean) {
     this.root = scene.add.container(0, 0).setName('fleet-panel');
+    this.button(650, 216, state.travel ? '← Группы' : 'Маршруты', 'fleet-travel', actions.toggleTravel);
+    if (state.travel) {
+      this.travel = new FleetTravelPanel(scene, view, source, state.travel, actions.travel, blocked);
+      return;
+    }
     const candidates = view.ships.filter(ship => isShipAtColony(ship, source) && !isShipInFleet(view.fleets, ship.id));
     const fleets = view.fleets.filter(fleet => isFleetAtColony(fleet, view.ships, source));
     const candidatePage = Math.max(0, Math.min(state.candidatePage, candidates.length - 1));
@@ -59,7 +69,7 @@ export class FleetPanel {
     this.button(697, 523, '›', 'fleet-member-next', () => actions.memberPage(memberPage + 1), !fleet || memberPage >= fleet.shipIds.length - 1);
     this.label(46, 565, member ? `Топливо: ${member.fuel}/${CAMPAIGN_FUEL_CAPACITY} · Заправка — во вкладке «Перелёты».` : '', 'fleet-member-fuel');
     this.label(46, 601, 'Для одиночной отправки сначала расформируйте группу.', 'fleet-send-hint');
-    this.label(46, 628, 'Отправка группы пока через API; состав не редактируется.', 'fleet-limit');
+    this.label(46, 628, 'Отправка группы — «Маршруты» сверху. Состав не редактируется.', 'fleet-limit');
   }
 
   private label(x: number, y: number, value: string, name: string, width = 745): void {
@@ -75,5 +85,5 @@ export class FleetPanel {
     this.root.add(text);
     if (!disabled && !this.blocked) text.setInteractive({ useHandCursor: true }).on('pointerdown', () => { if (!this.disposed) action(); });
   }
-  destroy(): void { if (!this.disposed) { this.disposed = true; this.root.destroy(); } }
+  destroy(): void { if (!this.disposed) { this.disposed = true; this.travel?.destroy(); this.root.destroy(); } }
 }

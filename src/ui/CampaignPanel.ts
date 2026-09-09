@@ -38,7 +38,7 @@ export class CampaignPanel {
     graphics.fillStyle(0x101e32).fillRoundedRect(868, 104, 388, 554, 18);
     graphics.lineStyle(1, 0x29455e).strokeRoundedRect(868, 104, 388, 554, 18);
     this.label(28, 22, 'ORION / ГАЛАКТИКА', 26, '#b4f1ff');
-    this.label(28, 60, 'Локальная пошаговая партия · S3.15 · 6 систем', 14, '#859bb6');
+    this.label(28, 60, 'Локальная пошаговая партия · S3.17 · 6 систем', 14, '#859bb6');
     this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), !!state.pending);
     this.button(1075, 24, '← Меню · ESC', 'campaign-menu', () => actions.request('menu'), !!state.pending);
     this.label(46, 126, 'КАРТА ПЕРЕХОДОВ', 13, '#859bb6');

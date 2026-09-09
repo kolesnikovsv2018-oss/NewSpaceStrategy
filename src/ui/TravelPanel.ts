@@ -59,7 +59,7 @@ export class TravelPanel {
     this.label(46, 563, trip?.transit ? `${name(trip.systemId)} → ${name(trip.transit.destinationId)} · Осталось: 1 свой ход` : '', 'travel-route');
     this.label(46, 598, `Всего кораблей: ${view.ships.length}/${MAX_CAMPAIGN_SHIPS} · В пути тоже занимают место.`, 'travel-count');
     const fleet = ship ? view.fleets.find(item => item.shipIds.includes(ship.id)) : undefined;
-    this.label(46, 628, fleet ? `Группа #${fleet.id}: перед отправкой расформируйте во вкладке «Группы».`
+    this.label(46, 628, fleet ? `Группа #${fleet.id}: для одиночного вылета расформируйте в «Группы».`
       : 'Заправка: только в своей колонии, без смены хода. Боя нет.', 'travel-limit');
   }
 

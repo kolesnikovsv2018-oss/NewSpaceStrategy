@@ -716,10 +716,176 @@ describe('campaign scene and projection renderer', () => {
     return { ...f, selectTwo };
   }
 
+  function fleetTravelFixture(count = 4) {
+    const f = fleetFixture(count);
+    for (let i = 0; i < Math.min(20, Math.floor(count / 2)); i++) {
+      f.click('fleet-candidate-prev'); f.selectTwo(); f.click('fleet-create');
+    }
+    f.click('fleet-travel');
+    const current = () => (f.scene as unknown as { campaign: domain.CampaignSession }).campaign;
+    return { ...f, current };
+  }
+
+  it('opens exclusive fleet routes, preserves selected group and captures one send without rereading catalog', () => {
+    const f = fleetTravelFixture(), before = structuredClone(f.current()), reads = f.load.mock.calls.length;
+    expect(f.find('fleet-travel-current').text).toContain('2/2 · Группа #2');
+    expect(f.find('fleet-travel-destination').text).toBe('Цель 1/1: Эдем');
+    expect(f.find('fleet-travel-fuel').text).toContain('3/3');
+    expect(f.nodes.some(n => !n.destroyed && ['fleet-create', 'fleet-disband', 'travel-panel', 'production-enqueue'].includes(n.name))).toBe(false);
+    const old = f.find('fleet-travel-send').listeners('pointerdown')[0] as () => void;
+    const calls = f.spy.mock.calls.length; old(); old();
+    expect(f.spy).toHaveBeenCalledTimes(calls + 1);
+    expect(f.spy.mock.calls[calls][1]).toEqual({ kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 2, destinationId: 'eden' });
+    expect(f.current().treasuries).toEqual(before.treasuries); expect(f.current().turn).toBe(before.turn);
+    expect(f.current().ships.map(s => s.design)).toEqual(before.ships.map(s => s.design));
+    expect(f.current().ships.map(s => s.fuel)).toEqual([3, 3, 2, 2]);
+    expect(f.find('fleet-travel-current').text).toContain('1/1 · Группа #1');
+    expect(f.find('fleet-travel-transit').text).toContain('1/1 · Группа #2');
+    expect(f.find('fleet-travel-route').text).toContain('Сол → Эдем');
+    expect(f.find('fleet-travel-count').text).toContain('2/20');
+    expect(f.load).toHaveBeenCalledTimes(reads);
+  });
+
+  it('pages all own trips and clamps them on arrival, even when viewing the destination', () => {
+    const f = fleetTravelFixture(6);
+    f.click('fleet-travel-prev'); f.click('fleet-travel-send');
+    f.click('fleet-travel-send'); f.click('fleet-travel-send');
+    expect(f.find('fleet-travel-transit').text).toContain('1/3 · Группа #1');
+    f.click('fleet-travel-transit-next'); expect(f.find('fleet-travel-transit').text).toContain('Группа #2');
+    f.click('fleet-travel-transit-next'); expect(f.find('fleet-travel-transit').text).toContain('3/3 · Группа #3');
+    expect(f.find('fleet-travel-send').interactive).toBe(false);
+    f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-fleets'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-title').text).toContain(': 0'); expect(f.find('fleet-travel-transit-title').text).toContain(': 3');
+    f.click('campaign-end-turn');
+    expect(f.find('fleet-travel-transit').text).toBe('Групп в пути нет.');
+    expect(f.find('fleet-travel-current').text).toContain('1/3 · Группа #1');
+    expect(f.find('fleet-travel-fuel').text).toContain('2/3');
+    expect(f.find('fleet-travel-destination').text).toBe('Цель 1/1: Сол');
+    const before = structuredClone(f.current()); f.click('fleet-travel-send');
+    expect(f.message()).toBe('Сейчас ход другой стороны'); expect(f.current()).toEqual(before);
+    f.click('fleet-travel'); expect(f.find('fleet-member-fuel').text).toContain('2/3');
+  });
+
+  it.each([0, 1])('keeps send clickable for an empty member %i and refuels through existing individual UI', emptyIndex => {
+    const f = fleetTravelFixture(2); f.current().ships[emptyIndex].fuel = 0;
+    f.click('fleet-travel'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-fuel').text).toContain('0/3 · Без топлива: 1/2');
+    const before = structuredClone(f.current()); f.click('fleet-travel-send');
+    expect(f.message()).toContain('Недостаточно топлива'); expect(f.current()).toEqual(before);
+    f.click('production-travel'); if (emptyIndex) f.click('travel-ships-next'); f.click('travel-refuel');
+    f.click('production-fleets'); f.click('fleet-travel'); f.click('fleet-travel-send');
+    expect(f.current().ships.map(s => s.fuel)).toEqual([2, 2]);
+    expect(f.current().treasuries.blue).toEqual({ credits: before.treasuries.blue.credits - 15, minerals: before.treasuries.blue.minerals - 6 });
+  });
+
+  it.each(['empty', 'no-target'] as const)('disables fleet send for %s without issuing a command', reason => {
+    const f = fleetTravelFixture(reason === 'empty' ? 0 : 2);
+    if (reason === 'no-target') { f.current().galaxy.systems.find(s => s.id === 'eden')!.ownerId = null; f.click('fleet-travel'); f.click('fleet-travel'); }
+    const before = structuredClone(f.current()), calls = f.spy.mock.calls.length;
+    expect(f.find('fleet-travel-send').interactive).toBe(false); f.click('fleet-travel-send');
+    expect(f.spy).toHaveBeenCalledTimes(calls); expect(f.current()).toEqual(before);
+    expect(f.find(reason === 'empty' ? 'fleet-travel-current' : 'fleet-travel-destination').text).toContain(reason === 'empty' ? 'Нет групп' : 'Нет соседних');
+  });
+
+  it('offers only own adjacent targets and sends the captured second destination from Eden', () => {
+    const f = fleetTravelFixture();
+    f.current().ships.forEach(s => { s.systemId = 'eden'; });
+    f.current().fleets.items.forEach(g => { g.systemId = 'eden'; });
+    const nexus = f.current().galaxy.systems.find(s => s.id === 'nexus')!;
+    nexus.ownerId = 'blue'; nexus.exploredBy = ['blue'];
+    f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-fleets'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-destination').text).toBe('Цель 1/2: Сол');
+    f.click('fleet-travel-destination-next'); expect(f.find('fleet-travel-destination').text).toContain('2/2:');
+    f.click('fleet-travel-next'); expect(f.find('fleet-travel-destination').text).toBe('Цель 1/2: Сол');
+    f.click('fleet-travel-destination-next'); f.click('fleet-travel-send');
+    expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toEqual({ kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'eden', fleetId: 2, destinationId: 'nexus' });
+    expect(f.find('fleet-travel-destination').text).toBe('Цель 1/2: Сол');
+  });
+
+  it.each(['stale', 'missing', 'moving', 'target-lost', 'source-moved'] as const)('rejects captured fleet send after %s without UI-side state mutation', reason => {
+    const f = fleetTravelFixture(2), state = f.current();
+    const expected = { stale: 'STALE_TURN', missing: 'FLEET_NOT_FOUND', moving: 'FLEET_IN_TRANSIT', 'target-lost': 'NOT_OWN_COLONY', 'source-moved': 'FLEET_NOT_FOUND' };
+    if (reason === 'stale') state.turn = 3;
+    if (reason === 'missing') state.fleets.items = [];
+    if (reason === 'moving') state.ships.forEach(s => { s.transit = { destinationId: 'eden', remainingTurns: 1 }; });
+    if (reason === 'target-lost') state.galaxy.systems.find(s => s.id === 'eden')!.ownerId = null;
+    if (reason === 'source-moved') { state.fleets.items[0].systemId = 'eden'; state.ships.forEach(s => { s.systemId = 'eden'; }); }
+    const before = structuredClone(state); f.click('fleet-travel-send');
+    expect(f.spy.mock.results[f.spy.mock.results.length - 1].value).toMatchObject({ ok: false, code: expected[reason] });
+    expect(f.current()).toEqual(before);
+  });
+
+  it('keeps routes on failed endTurn and hides enemy groups and routes for the other observer', () => {
+    const f = fleetTravelFixture(2); f.click('fleet-travel-send');
+    f.current().treasuries.blue.credits = domain.MAX_RESOURCE;
+    const before = structuredClone(f.current()); f.click('campaign-end-turn'); expect(f.current()).toEqual(before);
+    expect(f.find('fleet-travel-transit-title').text).toContain(': 1');
+    f.click('campaign-side-switch');
+    f.click('campaign-production'); f.click('system-vega'); f.click('campaign-production'); f.click('production-fleets'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-count').text).toContain('0/20'); expect(f.find('fleet-travel-transit-title').text).toContain(': 0');
+    expect(f.nodes.filter(n => !n.destroyed).map(n => n.text).join(' ')).not.toContain('Группа #1');
+  });
+
+  it('sends a red group through the same controls and never advances it on blue endTurn', () => {
+    const f = fleetTravelFixture(2), state = f.current();
+    state.ships.forEach(s => { s.factionId = 'red'; s.systemId = 'vega'; });
+    Object.assign(state.fleets.items[0], { factionId: 'red', systemId: 'vega' });
+    Object.assign(state.galaxy.systems.find(s => s.id === 'nexus')!, { ownerId: 'red', exploredBy: ['red'] });
+    state.turn = 2;
+    f.click('campaign-side-switch'); f.click('campaign-production'); f.click('system-vega'); f.click('campaign-production'); f.click('production-fleets'); f.click('fleet-travel');
+    f.click('fleet-travel-send'); expect(f.current().ships.every(s => s.transit?.destinationId === 'nexus' && s.fuel === 2)).toBe(true);
+    // A valid pending red trip may coexist with an active blue turn.
+    f.current().turn = 3; f.click('campaign-side-switch'); f.click('campaign-end-turn');
+    expect(f.current().ships.every(s => s.transit)).toBe(true);
+    f.click('campaign-side-switch'); f.click('production-fleets'); f.click('fleet-travel'); f.click('campaign-end-turn');
+    expect(f.current().ships.every(s => s.systemId === 'nexus' && !s.transit)).toBe(true);
+  });
+
+  it('blocks route controls during pending, invalidates old handlers and unwinds ESC one view at a time', () => {
+    const f = fleetTravelFixture(4), old = f.find('fleet-travel-send').listeners('pointerdown')[0] as () => void;
+    f.click('campaign-new'); const calls = f.spy.mock.calls.length;
+    for (const name of ['fleet-travel', 'fleet-travel-send', 'fleet-travel-prev', 'fleet-travel-destination-next', 'fleet-travel-transit-next']) {
+      expect(f.find(name).interactive).toBe(false); f.click(name);
+    }
+    old(); expect(f.spy).toHaveBeenCalledTimes(calls);
+    f.keyboard.emit('keydown-ESC'); expect(f.find('fleet-travel-current').text).toContain('Группа #2');
+    f.keyboard.emit('keydown-ESC'); expect(f.find('fleet-current').text).toContain('Группа #2');
+    f.keyboard.emit('keydown-ESC'); expect(f.find('production-enqueue')).toBeDefined();
+    f.keyboard.emit('keydown-ESC'); expect(f.find('system-sol')).toBeDefined();
+    f.keyboard.emit('keydown-ESC'); expect(f.find('campaign-confirm')).toBeDefined();
+  });
+
+  it('clears group draft on routes, destroys nested panels on reset and reenters with no route state', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-travel'); f.click('fleet-travel');
+    expect(f.find('fleet-selection-count').text).toContain('Выбрано: 0/10');
+    f.selectTwo(); f.click('fleet-create'); f.click('fleet-travel'); f.click('fleet-travel-send');
+    const old = f.find('fleet-travel-transit-prev');
+    f.click('campaign-new'); f.click('campaign-confirm'); expect(old.destroyed).toBe(true);
+    f.click('campaign-production'); f.click('production-fleets'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-count').text).toContain('0/20');
+    f.click('campaign-menu'); f.click('campaign-confirm'); expect(f.nodes.every(n => n.destroyed)).toBe(true);
+    expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0); f.scene.create();
+    expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    expect(f.scene).toMatchObject({ fleetTravelOpen: false, fleetDestinationIndex: 0, fleetTransitPage: 0 });
+  });
+
+  it('browses twenty own groups at the ship cap and safely displays the maximum fleet ID', () => {
+    const f = fleetTravelFixture(100), state = f.current();
+    // Keep the domain cap and exercise the largest valid fleet ID.
+    state.fleets.items[state.fleets.items.length - 1].id = 1_000_000_000; state.fleets.lastFleetId = 1_000_000_000;
+    f.click('fleet-travel'); f.click('fleet-travel');
+    expect(f.find('fleet-travel-count').text).toContain('20/20');
+    expect(f.find('fleet-travel-count').text).toContain('100/100');
+    expect(f.find('fleet-travel-current').text).toContain('#1000000000');
+    expect(f.find('fleet-travel-current').width).toBeLessThanOrEqual(745);
+    f.click('fleet-travel-send'); expect(f.find('fleet-travel-transit').text).toContain('#1000000000');
+    expect(f.current().fleets.items).toHaveLength(20);
+  });
+
   it('hides an API-sent group at both endpoints, preserves total cap and shows it after arrival', () => {
     const f = fleetFixture(2); f.selectTwo(); f.click('fleet-create');
     const old = f.find('fleet-disband').listeners('pointerdown')[0] as () => void;
-    // Group send has no UI yet; exercise the real scene command boundary directly.
+    // Preserve coverage of the direct scene boundary independently of the send UI.
     (f.scene as unknown as { execute: (command: domain.SessionCommand) => void }).execute({
       kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 1, destinationId: 'eden'
     });
@@ -727,7 +893,7 @@ describe('campaign scene and projection renderer', () => {
     expect(f.message()).toContain('Группа отправлена');
     expect(f.find('fleet-count').text).toContain('КОЛОНИИ: 0 · У стороны: 1/20');
     expect(f.find('fleet-disband').interactive).toBe(false); expect(f.find('fleet-candidates-title').text).toContain(': 0');
-    expect(f.find('fleet-limit').text).toContain('через API');
+    expect(f.find('fleet-limit').text).toContain('Маршруты');
     f.click('production-travel'); expect(f.find('travel-transit-title').text).toContain(': 2');
     expect(f.find('travel-count').text).toContain('2/100');
     f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-fleets');
