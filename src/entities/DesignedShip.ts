@@ -1,30 +1,31 @@
-import { CombatShip } from './CombatShip';
-import type { IAttackResult } from './interfaces/CombatSystem';
-import type { IEquipment } from './interfaces/ShipComponents';
+import { TacticalShip } from './TacticalShip';
+import type { IAttackResult, ICombatant } from './interfaces/CombatSystem';
+import { DesignCompatibilityViews } from '../legacy/DesignCompatibilityViews';
+import { legacyCargoLot, legacyCargoView } from '../legacy/cargoCompatibility';
+import { noDamageResult } from './interfaces/CombatSystem';
+import { positiveFinite } from '../domain/runtimeNumbers';
+import { formatFlightEstimate } from '../domain/flightEstimate';
 import { createDesignState, type WeaponState } from '../domain/shipState';
 import { cargoTotals, type CargoLimits } from '../domain/cargo';
-import { calculateShipStats, designSchema, HULLS, newId, validateDesign,
+import { calculateShipStats, designSchema, HULLS, newId, validateDesign, componentStatus, isServiceComponent,
   type ShipDesign, type ShipStats } from '../domain/shipDesign';
 
-/** Runtime instance of an immutable design snapshot. The legacy base is only a compatibility boundary for scenes/AI. */
-export class DesignedShip extends CombatShip {
+/** Runtime instance of an immutable design snapshot, independent of legacy combat rules. */
+export class DesignedShip extends TacticalShip {
   private readonly design: ShipDesign;
   private readonly stats: ShipStats;
+  private readonly compatibility: DesignCompatibilityViews;
 
   constructor(input: ShipDesign, factionId: string, mode: 'flight' | 'battle' = 'battle') {
     const issues = validateDesign(input, mode);
     if (issues.length) throw new Error(issues.map(issue => issue.message).join('\n'));
     const design = designSchema.parse(input);
     const stats = calculateShipStats(design);
-    super(newId('ship'), design.name,
-      { name: 'Энергосистема проекта', cost: 0, weight: 0, energyCapacity: stats.energyCapacity,
-        currentEnergy: stats.energyCapacity, energyOutput: stats.powerGeneration },
-      { name: 'Двигатель проекта', cost: 0, weight: 0, thrust: stats.thrust,
-        maxSpeed: stats.speed, energyConsumption: stats.movementPower },
-      { name: HULLS[design.hullId].name, cost: stats.cost, weight: stats.mass,
-        capacity: stats.cargoVolume, usedSpace: 0, maxWeight: stats.cargoMassLimit, currentWeight: 0 }, factionId);
+    super(newId('ship'), design.name, createDesignState(stats));
+    this.factionId = factionId;
     this.design = design;
     this.stats = stats;
+    this.compatibility = new DesignCompatibilityViews(design, stats, this.state);
     this.combatStats = { maxHull: stats.hitPoints, currentHull: stats.hitPoints,
       maxShield: stats.shield, currentShield: stats.shield, shieldRegenRate: stats.shieldRegen,
       armor: stats.armor, evasion: stats.evasion };
@@ -33,8 +34,25 @@ export class DesignedShip extends CombatShip {
       range: Math.max(0, ...stats.weapons.map(item => item.definition.range)),
       fireRate: stats.weapons.reduce((sum, item) => sum + item.definition.fireRate, 0),
       accuracy: 0, energyCost: 0, cooldown: 0, currentCooldown: 0 };
-    Object.assign(this.state, createDesignState(stats));
   }
+
+  // Deprecated outbound views; operations below use state/stats, never these projections.
+  get powerSource() { return this.compatibility.powerSource; }
+  set powerSource(source: DesignCompatibilityViews['powerSource']) { this.compatibility.replacePowerSource(source); }
+  get engine() { return this.compatibility.engine; }
+  get cargoHold() { return this.compatibility.cargoHold; }
+  get equipment(): never[] { return []; }
+  get cargo() { return legacyCargoView(this.state.cargo); }
+  loadCargo(item: Parameters<typeof legacyCargoLot>[0]): boolean {
+    if (!item || typeof item !== 'object') return this.applyCargoResult({ ok: false, message: 'Недопустимый груз' });
+    return this.loadCargoLot(legacyCargoLot(item));
+  }
+
+  getEnergyCapacity(): number { return this.stats.energyCapacity; }
+  getEnergyGeneration(): number { return this.stats.powerGeneration; }
+  getMovementPower(): number { return this.stats.movementPower; }
+  /** @deprecated Battery-only compatibility estimate, not strategic range. Use getFlightEstimate. */
+  getMaxRange(): number { return this.getEnergy() / this.stats.movementPower * this.stats.speed; }
 
   override getDesign(): ShipDesign { return designSchema.parse(this.design); }
   override getTotalCost(): number { return this.stats.cost; }
@@ -45,12 +63,12 @@ export class DesignedShip extends CombatShip {
       (this.stats.thrust + this.stats.mass * 0.1) / (this.stats.thrust + (this.stats.mass + mass) * 0.1);
   }
   override getCargoLimits(): CargoLimits { return { mass: this.stats.cargoMassLimit, volume: this.stats.cargoVolume }; }
-  override getAvailableCargoSlots(): number { return this.design.slots.length; }
+  getAvailableCargoSlots(): number { return this.design.slots.length; }
   override getInstalledModuleNames(): string[] { return this.design.slots.flatMap(slot => slot.component ? [slot.component.name] : []); }
 
   // Refitting belongs to the design editor, not a mutable legacy equipment array.
-  override installEquipment(_equipment: IEquipment): boolean { return false; }
-  override uninstallEquipment(_equipmentId: string): boolean { return false; }
+  installEquipment(_equipment: unknown): boolean { return false; }
+  uninstallEquipment(_equipmentId: string): boolean { return false; }
 
   getWeaponState(): WeaponState[] {
     return this.state.weapons.map(weapon => ({ ...weapon }));
@@ -58,7 +76,7 @@ export class DesignedShip extends CombatShip {
 
   override getAttackAttemptsPerStep(): number { return this.state.weapons.length; }
 
-  override attack(target: CombatShip): IAttackResult | null {
+  override attack(target: ICombatant): IAttackResult | null {
     if (this.isDestroyed || target.isDestroyed) return null;
     for (let index = 0; index < this.state.weapons.length; index++) {
       const state = this.state.weapons[index];
@@ -76,6 +94,7 @@ export class DesignedShip extends CombatShip {
   }
 
   override takeDamage(damage: number, critical = false, damageType: 'beam' | 'projectile' = 'beam'): IAttackResult {
+    if (!positiveFinite(damage) || this.isDestroyed) return noDamageResult();
     let remaining = damage;
     let shieldDamage = 0;
     this.state.shieldDelayRemaining = this.stats.shieldDelay;
@@ -93,18 +112,13 @@ export class DesignedShip extends CombatShip {
   }
 
   override update(deltaTime: number): void {
-    if (this.isDestroyed || !Number.isFinite(deltaTime) || deltaTime <= 0) return;
+    if (this.isDestroyed || !positiveFinite(deltaTime)) return;
     this.rechargeEnergy(deltaTime);
-    if (this.isMoving) {
-      if (this.consumeEnergy(this.stats.movementPower * deltaTime)) {
-        this.position.x += this.velocity.x * deltaTime;
-        this.position.y += this.velocity.y * deltaTime;
-      } else this.stopMoving();
-    }
+    this.advanceMovement(deltaTime, true);
     const regenTime = Math.max(0, deltaTime - this.state.shieldDelayRemaining);
     this.state.shieldDelayRemaining = Math.max(0, this.state.shieldDelayRemaining - deltaTime);
     const restored = Math.min(this.stats.shieldRegen * regenTime,
-      this.combatStats.maxShield - this.combatStats.currentShield, this.powerSource.currentEnergy / 3);
+      this.combatStats.maxShield - this.combatStats.currentShield, this.getEnergy() / 3);
     this.consumeEnergy(restored * 3);
     this.combatStats.currentShield += restored;
     this.state.weapons.forEach(state => { state.cooldown = Math.max(0, state.cooldown - deltaTime); });
@@ -113,10 +127,14 @@ export class DesignedShip extends CombatShip {
   override getInfo(): string {
     return `${this.name}\nПроект: ${this.design.id}\nКорпус: ${HULLS[this.design.hullId].name}\n` +
       `Масса: ${this.getTotalWeight().toFixed(1)} т | Стоимость: ${this.stats.cost}\n` +
-      `Скорость: ${this.getCurrentMaxSpeed().toFixed(1)} | DPS без критов/защиты: ${this.stats.dps.toFixed(1)}\n` +
-      `Энергия: ${this.powerSource.currentEnergy.toFixed(0)}/${this.stats.energyCapacity}\n` +
+      `Скорость: ${this.getCurrentMaxSpeed().toFixed(1)} такт. ед/с | DPS без критов/защиты: ${this.stats.dps.toFixed(1)}\n` +
+      `Энергия: ${this.getEnergy().toFixed(0)}/${this.stats.energyCapacity} ЭЕ\n` +
+      `Генерация / движение: ${this.getEnergyGeneration()}/${this.getMovementPower()} ЭЕ/с\n` +
+      `Полёт (только движение): ${formatFlightEstimate(this.getFlightEstimate())}\n` +
       `Груз: ${cargoTotals(this.state.cargo).mass.toFixed(1)}/${this.stats.cargoMassLimit.toFixed(1)} т, ` +
       `${cargoTotals(this.state.cargo).volume.toFixed(1)}/${this.stats.cargoVolume} м³\n` +
-      `Оборудование: ${this.getInstalledModuleNames().join(', ')}`;
+      `Оборудование: ${this.getInstalledModuleNames().join(', ')}` +
+      this.design.slots.flatMap(slot => slot.component && isServiceComponent(slot.component)
+        ? [`\n${slot.component.name}: ${componentStatus(slot.component)}`] : []).join('');
   }
 }

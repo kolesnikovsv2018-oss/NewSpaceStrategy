@@ -1,45 +1,137 @@
+import Phaser from 'phaser';
+import type { CampaignFactionId, SystemId } from '../domain/campaign';
+import { createCampaignSession, executeSessionCommand, getCampaignSessionView,
+  type CampaignSession, type SessionCommand } from '../domain/campaignSession';
+import { CampaignPanel } from '../ui/CampaignPanel';
+import { designSchema } from '../domain/shipDesign';
+import { isShipAtColony } from '../domain/campaignShips';
+import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
+
+/** Owns the turn-based session; observation never changes the active faction. */
 export class MainScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'MainScene' });
+  private campaign?: CampaignSession;
+  private factionId: CampaignFactionId = 'blue';
+  private selectedId: SystemId = 'sol';
+  private panel?: CampaignPanel;
+  private message = '';
+  private error = false;
+  private pending?: 'new' | 'menu';
+  private productionOpen = false;
+  private catalog?: ProductionCatalog;
+  private choiceIndex = 0;
+  private completedPage = 0;
+  private shipsPage = 0;
+  private showShips = false;
+
+  constructor() { super({ key: 'MainScene' }); }
+
+  create(): void {
+    this.cameras.main.setBackgroundColor('#070f1e');
+    this.resetCampaign();
+    this.input.keyboard?.on('keydown-ESC', this.onEscape);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ESC', this.onEscape);
+      this.panel?.destroy(); this.panel = undefined;
+      this.campaign = undefined; this.pending = undefined;
+      this.message = ''; this.error = false;
+      this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
+      this.shipsPage = 0; this.showShips = false;
+    });
   }
 
-  create() {
-    // Initialize game objects and variables
-    this.initializeGameObjects();
+  private resetCampaign(): void {
+    this.campaign = createCampaignSession();
+    this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
+    this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
+    this.shipsPage = 0; this.showShips = false;
+    this.message = 'Выберите соседнюю систему и отправьте разведку.'; this.error = false;
+    this.render();
   }
 
-  update() {
-    // Game loop update logic
-    this.updateGameObjects();
-  }
-
-  private initializeGameObjects() {
-    // Create star background
-    for (let i = 0; i < 100; i++) {
-      const x = Phaser.Math.Between(0, this.cameras.main.width);
-      const y = Phaser.Math.Between(0, this.cameras.main.height);
-      const scale = Phaser.Math.FloatBetween(0.1, 1);
-      const alpha = Phaser.Math.FloatBetween(0.3, 1);
-      
-      this.add.circle(x, y, 1, 0xffffff, 1)
-        .setScale(scale)
-        .setAlpha(alpha);
-    }
-
-    // Add temporary game title
-    this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY,
-      'Space Strategy Game\nUnder Development',
-      {
-        align: 'center',
-        fontSize: '32px',
-        color: '#ffffff'
+  private render(): void {
+    if (!this.campaign) return;
+    this.panel?.destroy();
+    // Capture what this panel displayed, not mutable scene fields at invocation time.
+    const expectedTurn = this.campaign.turn, factionId = this.factionId, systemId = this.selectedId;
+    const choice = this.catalog?.choices[this.choiceIndex];
+    const design = choice?.quote ? designSchema.parse(choice.design) : undefined;
+    const view = getCampaignSessionView(this.campaign, factionId);
+    this.completedPage = Math.max(0, Math.min(this.completedPage, view.production.completed.filter(record => record.systemId === systemId).length - 1));
+    this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
+    this.panel = new CampaignPanel(this, view, {
+      selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
+      production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
+        completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips } : undefined
+    }, {
+      select: id => {
+        if (this.pending) return;
+        this.selectedId = id; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+        this.message = ''; this.error = false; this.render();
+      },
+      switchSide: () => {
+        if (this.pending) return;
+        this.factionId = this.factionId === 'blue' ? 'red' : 'blue';
+        this.choiceIndex = 0; this.completedPage = 0;
+        this.shipsPage = 0; this.showShips = false;
+        this.message = ''; this.error = false; this.render();
+      },
+      command: kind => this.execute(kind === 'endTurn'
+        ? { kind, factionId, expectedTurn } : { kind, factionId, systemId, expectedTurn }),
+      toggleProduction: () => {
+        if (this.pending) return;
+        this.productionOpen = !this.productionOpen;
+        if (this.productionOpen && !this.catalog) this.catalog = loadProductionCatalog();
+        this.message = ''; this.error = false; this.render();
+      },
+      production: {
+        choose: index => {
+          if (this.pending || !this.catalog || index < 0 || index >= this.catalog.choices.length) return;
+          this.choiceIndex = index; this.message = ''; this.error = false; this.render();
+        },
+        refresh: () => {
+          if (this.pending) return;
+          this.catalog = loadProductionCatalog(); this.choiceIndex = 0;
+          this.message = ''; this.error = false; this.render();
+        },
+        enqueue: () => { if (design) this.execute({ kind: 'enqueueProduction', factionId, systemId, expectedTurn, design }); },
+        cancelOrder: orderId => this.execute({ kind: 'cancelProduction', factionId, systemId, expectedTurn, orderId }),
+        completedPage: page => { if (this.pending) return; this.completedPage = page; this.render(); },
+        shipsPage: page => { if (this.pending) return; this.shipsPage = page; this.render(); },
+        toggleShips: () => { if (this.pending) return; this.showShips = !this.showShips; this.render(); },
+        deploy: orderId => this.execute({ kind: 'deployProduction', factionId, systemId, expectedTurn, orderId })
+      },
+      request: action => { if (this.pending) return; this.pending = action; this.render(); },
+      cancel: () => { this.pending = undefined; this.render(); },
+      confirm: () => {
+        const action = this.pending; this.pending = undefined;
+        if (action === 'new') this.resetCampaign();
+        else if (action === 'menu') this.scene.start('MenuScene');
       }
-    ).setOrigin(0.5);
+    });
   }
 
-  private updateGameObjects() {
-    // Add game update logic here
+  private execute(command: SessionCommand): void {
+    if (!this.campaign || this.pending) return;
+    const result = executeSessionCommand(this.campaign, command);
+    this.error = !result.ok;
+    if (result.ok) {
+      this.campaign = result.state;
+      if (command.kind === 'deployProduction') {
+        this.shipsPage = result.state.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
+      }
+      this.message = command.kind === 'endTurn' ? 'Доход начислен. Ход передан другой стороне.'
+        : command.kind === 'explore' ? 'Система разведана.' : command.kind === 'colonize' ? 'Колония основана.'
+        : command.kind === 'enqueueProduction' ? 'Заказ оплачен и добавлен в очередь.'
+        : command.kind === 'cancelProduction' ? 'Заказ отменён. Возврат за оставшиеся ходы начислен.'
+        : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
+    } else this.message = result.message;
+    this.render();
   }
+
+  private onEscape = (): void => {
+    if (!this.campaign) return;
+    if (!this.pending && this.productionOpen) { this.productionOpen = false; this.render(); return; }
+    this.pending = this.pending ? undefined : 'menu';
+    this.render();
+  };
 }

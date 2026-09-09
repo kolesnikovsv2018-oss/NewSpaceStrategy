@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { openShipyardModal } from './ShipyardModal';
 
 export function text(scene: Phaser.Scene, parent: Phaser.GameObjects.Container, x: number, y: number,
   value: string, size = 13, color = '#c8d9ed'): Phaser.GameObjects.Text {
@@ -25,10 +26,11 @@ export function panelBackground(scene: Phaser.Scene, parent: Phaser.GameObjects.
 }
 
 export function chooseItem<T>(scene: Phaser.Scene, title: string, items: Array<{ label: string; value: T }>, select: (value: T) => void): void {
+  const modal = openShipyardModal(scene);
+  if (!modal) return;
+  const { overlay, close } = modal;
   const width = scene.cameras.main.width;
   const height = scene.cameras.main.height;
-  const overlay = scene.add.container(0, 0).setDepth(1000);
-  overlay.add(scene.add.rectangle(width / 2, height / 2, width, height, 0x020913, 0.85).setInteractive());
   const content = scene.add.container(width / 2 - 250, height / 2 - 235);
   overlay.add(content);
   let page = 0;
@@ -39,13 +41,29 @@ export function chooseItem<T>(scene: Phaser.Scene, title: string, items: Array<{
     const rows = items.slice(page * 8, page * 8 + 8);
     if (!rows.length) text(scene, content, 20, 75, 'Список пуст');
     rows.forEach((item, index) => {
-      button(scene, content, 20, 65 + index * 40, item.label, () => { overlay.destroy(); select(item.value); }, `choice-${page * 8 + index}`)
+      button(scene, content, 20, 65 + index * 40, item.label, () => { if (close()) select(item.value); }, `choice-${page * 8 + index}`)
         .setFixedSize(460, 32);
     });
     button(scene, content, 20, 420, '←', () => { page = Math.max(0, page - 1); render(); });
     text(scene, content, 70, 430, `${page + 1} / ${Math.max(1, Math.ceil(items.length / 8))}`);
     button(scene, content, 150, 420, '→', () => { page = Math.min(Math.max(0, Math.ceil(items.length / 8) - 1), page + 1); render(); });
-    button(scene, content, 385, 420, 'Закрыть', () => overlay.destroy());
+    button(scene, content, 385, 420, 'Закрыть', close, 'close-choice');
   };
   render();
+}
+
+export function confirmDiscard(scene: Phaser.Scene, action: () => void): void {
+  const modal = openShipyardModal(scene);
+  if (!modal) return;
+  const { overlay, close } = modal;
+  const content = scene.add.container(scene.cameras.main.width / 2 - 270, scene.cameras.main.height / 2 - 130);
+  overlay.add(content);
+  panelBackground(scene, content, 540, 260);
+  text(scene, content, 24, 24, 'Проект не сохранён', 22, '#ffc880');
+  text(scene, content, 24, 72,
+    'Продолжить без сохранения текущего проекта?\nОтмените действие, чтобы вернуться и сохранить его.\nБиблиотека сохранённых проектов не изменится.', 15)
+    .setWordWrapWidth(492).setLineSpacing(6);
+  button(scene, content, 24, 200, 'Отмена · ESC', close, 'discard-cancel');
+  button(scene, content, 236, 200, 'Продолжить без сохранения', () => { if (close()) action(); }, 'discard-confirm')
+    .setBackgroundColor('#754431');
 }

@@ -1,11 +1,11 @@
-import { Ship } from '../Ship';
+import type { ShipView } from '../interfaces/ShipView';
 import { drawBlueprint } from '../../ui/ShipBlueprint';
 
 /**
  * Визуальное представление корабля в Phaser
  */
 export class ShipSprite extends Phaser.GameObjects.Container {
-  private ship: Ship;
+  private ship: ShipView;
   private shipBody: Phaser.GameObjects.Graphics;
   private engineGlow: Phaser.GameObjects.Graphics;
   private energyBar: Phaser.GameObjects.Graphics;
@@ -13,7 +13,7 @@ export class ShipSprite extends Phaser.GameObjects.Container {
   private selectionCircle: Phaser.GameObjects.Graphics;
   private isSelected: boolean = false;
 
-  constructor(scene: Phaser.Scene, ship: Ship, private readonly hullColor?: number) {
+  constructor(scene: Phaser.Scene, ship: ShipView, private readonly hullColor?: number) {
     super(scene, ship.position.x, ship.position.y);
     this.ship = ship;
 
@@ -78,8 +78,9 @@ export class ShipSprite extends Phaser.GameObjects.Container {
     this.shipBody.fillRect(-cargoSize / 2, 0, cargoSize, 10);
 
     // Оборудование (отображаем как точки)
-    this.ship.equipment.forEach((_, index) => {
-      const angle = (index / this.ship.equipment.length) * Math.PI * 2;
+    const modules = this.ship.getInstalledModuleNames();
+    modules.forEach((_, index) => {
+      const angle = (index / modules.length) * Math.PI * 2;
       const x = Math.cos(angle) * 18;
       const y = Math.sin(angle) * 18;
       this.shipBody.fillStyle(0xff00ff, 1);
@@ -216,7 +217,7 @@ export class ShipSprite extends Phaser.GameObjects.Container {
   /**
    * Получить модель корабля
    */
-  getShip(): Ship {
+  getShip(): ShipView {
     return this.ship;
   }
 }

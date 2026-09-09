@@ -10,11 +10,11 @@ export interface WeaponState {
 
 /** Mutable tactical state only: no components, derived stats, Phaser objects or target references. */
 export interface ShipState {
-  position: ShipPosition;
-  velocity: ShipPosition;
+  position: ShipPosition; // Тактические координаты; не световые годы.
+  velocity: ShipPosition; // Тактические единицы / с симуляции.
   isMoving: boolean;
   isDestroyed: boolean;
-  energy: number;
+  energy: number; // ЭЕ, текущая энергия батареи.
   hull: number;
   shield: number;
   shieldDelayRemaining: number;

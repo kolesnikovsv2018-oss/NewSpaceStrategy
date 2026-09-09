@@ -60,8 +60,8 @@ describe('versioned design repository', () => {
     const repository = new ShipDesignManager(store);
     const saved = repository.saveDesign(createDesign('corvette', true));
     const before = store.getItem(ShipDesignManager.STORAGE_KEY);
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 1, designs: [{ ...saved, name: 'Conflict' }], components: [] }))).toThrow('уже существует');
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 1, designs: [{ ...saved, hullId: 'fake' }], components: [] }))).toThrow();
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 2, designs: [{ ...saved, name: 'Conflict' }], components: [] }))).toThrow('уже существует');
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 2, designs: [{ ...saved, hullId: 'fake' }], components: [] }))).toThrow();
     expect(store.getItem(ShipDesignManager.STORAGE_KEY)).toBe(before);
   });
 

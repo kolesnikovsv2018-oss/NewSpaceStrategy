@@ -5,6 +5,7 @@ import { ShipDesignManager } from '../utils/ShipDesignManager';
 import { componentSchema, COMPONENT_NAMES, createComponent, designSchema, validateDesign,
   type ComponentKind, type ShipDesign } from '../domain/shipDesign';
 import { button, text } from '../ui/ShipyardWidgets';
+import { isShipyardModalOpen } from '../ui/ShipyardModal';
 
 export class ShipyardScene extends Phaser.Scene {
   private componentPanel?: ComponentBuilderPanel;
@@ -37,7 +38,10 @@ export class ShipyardScene extends Phaser.Scene {
       (Object.keys(COMPONENT_NAMES) as ComponentKind[]).map(createComponent);
     const latest = library?.designs.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
     this.componentPanel = new ComponentBuilderPanel(this, 20, 100, components);
-    this.shipPanel = new ShipBuilderPanel(this, width - 720, 100, this.repository, this.initial ?? latest);
+    const initial = this.initial ?? latest;
+    // Returning from a trial must compare with the stored version, not mark the incoming draft as saved.
+    this.shipPanel = new ShipBuilderPanel(this, width - 720, 100, this.repository, initial,
+      library?.designs.find(design => design.id === initial?.id));
     this.shipPanel.setAvailableComponents(components);
     if (loadError) this.shipPanel.showMessage(loadError, true);
     this.componentPanel.setOnComponentsChanged(items => {
@@ -62,6 +66,7 @@ export class ShipyardScene extends Phaser.Scene {
   }
 
   private startTrial(mode: 'flight' | 'battle'): void {
+    if (isShipyardModalOpen(this)) return;
     const design = this.shipPanel?.getConfiguration();
     if (!design) return;
     const issues = validateDesign(design, mode);
@@ -70,5 +75,9 @@ export class ShipyardScene extends Phaser.Scene {
     this.scene.start(mode === 'flight' ? 'ShipTestScene' : 'BattleScene', { design });
   }
 
-  private returnToMenu = (): void => { this.scene.start('MenuScene'); };
+  private returnToMenu = (): void => {
+    // The modal's own ESC handler cancels it; the same key must not also leave the scene.
+    if (isShipyardModalOpen(this)) return;
+    this.shipPanel?.requestDiscard(() => this.scene.start('MenuScene'));
+  };
 }

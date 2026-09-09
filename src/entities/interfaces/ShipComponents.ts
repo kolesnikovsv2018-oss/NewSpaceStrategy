@@ -5,15 +5,15 @@ export interface IShipComponent {
 }
 
 export interface IPowerSource extends IShipComponent {
-  energyCapacity: number;    // Максимальный запас энергии
-  energyOutput: number;      // Выработка энергии в единицу времени
-  currentEnergy: number;     // Текущий запас энергии
+  energyCapacity: number;    // Ёмкость батареи, ЭЕ (не стратегическое топливо)
+  energyOutput: number;      // Генерация, ЭЕ/с симуляции
+  currentEnergy: number;     // Текущий запас, ЭЕ
 }
 
 export interface IEngine extends IShipComponent {
   thrust: number;           // Тяга двигателя
-  energyConsumption: number; // Потребление энергии
-  maxSpeed: number;         // Максимальная скорость
+  energyConsumption: number; // Мощность движения, ЭЕ/с симуляции
+  maxSpeed: number;         // Тактические единицы расстояния / с
 }
 
 export interface ICargo extends IShipComponent {

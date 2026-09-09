@@ -21,13 +21,13 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Start button
-    const startButton = this.add.text(width / 2, height / 2, 'Start Game', {
+    const startButton = this.add.text(width / 2, height / 2, 'Галактика', {
       fontSize: '32px',
       color: '#ffffff',
       backgroundColor: '#444444',
       padding: { x: 20, y: 10 }
     })
-    .setOrigin(0.5)
+    .setName('start-campaign').setOrigin(0.5)
     .setInteractive({ useHandCursor: true });
 
     // Ship Test button

@@ -1,4 +1,3 @@
-import { CombatShip } from '../entities/CombatShip';
 import { CombatShipFactory } from '../entities/CombatShipFactory';
 import { BattleManager } from '../entities/BattleManager';
 import { IFaction, IBattleConfig, IBattlePosition } from '../entities/interfaces/CombatSystem';
@@ -143,7 +142,7 @@ export class BattleScene extends Phaser.Scene {
   private createShipVisuals(): void {
     const allShips = this.battleManager?.getAllShips() || [];
     
-    allShips.forEach((ship: CombatShip) => {
+    allShips.forEach(ship => {
       const sprite = new ShipSprite(this, ship, ship.factionId === 'blue' ? 0x4488ff : 0xff6655);
       this.shipSprites.set(ship.id, sprite);
 

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { componentSchema, designSchema, createDesign, validateDesign,
+import { componentSchema, designSchema, createDesign, validateDesign, v1ComponentSchema, v1DesignSchema, migrateV1Design,
   type ComponentDefinition, type ShipDesign } from '../domain/shipDesign';
 
 const workspaceSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   designs: z.array(designSchema).max(100),
   components: z.array(componentSchema).max(200)
 }).strict().superRefine((state, ctx) => {
@@ -14,6 +14,9 @@ const workspaceSchema = z.object({
   }
 });
 export type ShipyardLibrary = z.infer<typeof workspaceSchema>;
+const v1WorkspaceSchema = z.object({ schemaVersion: z.literal(1),
+  designs: z.array(v1DesignSchema).max(100), components: z.array(v1ComponentSchema).max(200)
+}).strict();
 export interface StoragePort {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -71,17 +74,20 @@ export function migrateLegacyDesign(input: unknown): ShipDesign {
 
 /** One versioned document makes each save atomic. Corrupt data is never overwritten with defaults. */
 export class ShipDesignManager {
-  static readonly STORAGE_KEY = 'orion_shipyard_v1';
+  static readonly STORAGE_KEY = 'orion_shipyard_v2';
+  static readonly V1_STORAGE_KEY = 'orion_shipyard_v1';
   constructor(private readonly providedStorage?: StoragePort) {}
   private get storage(): StoragePort { return this.providedStorage ?? globalThis.localStorage; }
 
   load(): ShipyardLibrary {
     const raw = this.storage.getItem(ShipDesignManager.STORAGE_KEY);
     if (raw !== null) return this.decode(raw);
+    const v1 = this.storage.getItem(ShipDesignManager.V1_STORAGE_KEY);
+    if (v1 !== null) return this.decode(v1);
     const oldDesigns = this.storage.getItem('orion_ship_configs');
     const oldComponents = this.storage.getItem('orion_components');
     // Retain old keys unchanged even after the first successful new save.
-    return this.check({ schemaVersion: 1,
+    return this.check({ schemaVersion: 2,
       designs: oldDesigns === null ? [] : z.array(z.unknown()).max(100).parse(JSON.parse(oldDesigns)).map(migrateLegacyDesign),
       components: oldComponents === null ? [] : z.array(z.unknown()).max(200).parse(JSON.parse(oldComponents)).map(migrateLegacyComponent)
     });
@@ -95,7 +101,13 @@ export class ShipDesignManager {
 
   decode(json: string): ShipyardLibrary {
     if (json.length > 5_000_000) throw new Error('Файл библиотеки превышает 5 МБ');
-    return this.check(JSON.parse(json));
+    const input: unknown = JSON.parse(json);
+    const version = z.object({ schemaVersion: z.number() }).parse(input).schemaVersion;
+    if (version === 1) {
+      const old = v1WorkspaceSchema.parse(input);
+      return this.check({ ...old, schemaVersion: 2, designs: old.designs.map(migrateV1Design) });
+    }
+    return this.check(input);
   }
 
   saveDesign(input: ShipDesign): ShipDesign {

@@ -1,5 +1,4 @@
-import { CombatShip } from './CombatShip';
-import { IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } from './interfaces/CombatSystem';
+import type { ICombatant, IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } from './interfaces/CombatSystem';
 
 /**
  * Менеджер боевой системы
@@ -7,7 +6,7 @@ import { IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } fro
 export class BattleManager {
   private config: IBattleConfig;
   private stats: IBattleStats;
-  private allShips: CombatShip[] = [];
+  private allShips: ICombatant[] = [];
   private isActive: boolean = false;
   private isFinished: boolean = false;
   private events: BattleEvent[] = [];
@@ -107,7 +106,7 @@ export class BattleManager {
   /**
    * Обновить поведение корабля
    */
-  private updateShipBehavior(ship: CombatShip): void {
+  private updateShipBehavior(ship: ICombatant): void {
     // Если нет цели или цель уничтожена, ищем новую
     if (!ship.target || ship.target.isDestroyed) {
       const enemies = this.getEnemies(ship.factionId);
@@ -140,7 +139,7 @@ export class BattleManager {
   /**
    * Обработать результат атаки
    */
-  private processAttack(attacker: CombatShip, target: CombatShip, result: IAttackResult): void {
+  private processAttack(attacker: ICombatant, target: ICombatant, result: IAttackResult): void {
     if (!result.hit) return;
 
     // Обновляем статистику
@@ -183,7 +182,7 @@ export class BattleManager {
   /**
    * Получить вражеские корабли для фракции
    */
-  private getEnemies(factionId: string): CombatShip[] {
+  private getEnemies(factionId: string): ICombatant[] {
     return this.allShips.filter(ship => {
       if (this.config.friendlyFire) {
         return ship.factionId !== factionId;
@@ -232,28 +231,28 @@ export class BattleManager {
   /**
    * Получить все корабли
    */
-  getAllShips(): CombatShip[] {
+  getAllShips(): ICombatant[] {
     return this.allShips;
   }
 
   /**
    * Получить корабли фракции
    */
-  getFactionShips(factionId: string): CombatShip[] {
+  getFactionShips(factionId: string): ICombatant[] {
     return this.allShips.filter(ship => ship.factionId === factionId);
   }
 
   /**
    * Получить живые корабли
    */
-  getAliveShips(): CombatShip[] {
+  getAliveShips(): ICombatant[] {
     return this.allShips.filter(ship => !ship.isDestroyed);
   }
 
   /**
    * Получить уничтоженные корабли
    */
-  getDestroyedShips(): CombatShip[] {
+  getDestroyedShips(): ICombatant[] {
     return this.allShips.filter(ship => ship.isDestroyed);
   }
 

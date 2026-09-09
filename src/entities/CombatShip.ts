@@ -1,45 +1,14 @@
+import { withTactics } from './TacticalShip';
 import { Ship } from './Ship';
-import { ICombatStats, IWeaponStats, IAttackResult } from './interfaces/CombatSystem';
+import { noDamageResult } from './interfaces/CombatSystem';
+import { positiveFinite } from '../domain/runtimeNumbers';
+import type { ICombatStats, IWeaponStats, IAttackResult, ICombatant } from './interfaces/CombatSystem';
 import { IPowerSource, IEngine, ICargo, IEquipment, EquipmentType } from './interfaces/ShipComponents';
 
 /**
  * Боевой корабль с возможностью сражаться
  */
-export class CombatShip extends Ship {
-  private combatStatsView!: ICombatStats;
-  private weaponStatsView!: IWeaponStats;
-
-  // Compatibility views: current values live only in ShipState, maxima/configuration stay here.
-  get combatStats(): ICombatStats { return this.combatStatsView; }
-  set combatStats(stats: ICombatStats) {
-    const ship = this;
-    const { currentHull, currentShield, ...configuration } = stats;
-    this.state.hull = currentHull;
-    this.state.shield = currentShield;
-    this.combatStatsView = { ...configuration,
-      get currentHull() { return ship.state.hull; },
-      set currentHull(value: number) { ship.state.hull = value; },
-      get currentShield() { return ship.state.shield; },
-      set currentShield(value: number) { ship.state.shield = value; }
-    };
-  }
-
-  get weaponStats(): IWeaponStats { return this.weaponStatsView; }
-  set weaponStats(stats: IWeaponStats) {
-    const ship = this;
-    const { currentCooldown, ...configuration } = stats;
-    this.state.weapons.forEach(weapon => { weapon.cooldown = currentCooldown; });
-    this.weaponStatsView = { ...configuration,
-      // Legacy has one entry; designed ships expose the slowest remaining cooldown in this summary.
-      get currentCooldown() { return Math.max(0, ...ship.state.weapons.map(weapon => weapon.cooldown)); },
-      set currentCooldown(value: number) { ship.state.weapons.forEach(weapon => { weapon.cooldown = value; }); }
-    };
-  }
-  factionId: string;
-  target?: CombatShip;
-  get isDestroyed(): boolean { return this.state.isDestroyed; }
-  set isDestroyed(value: boolean) { this.state.isDestroyed = value; }
-
+export class CombatShip extends withTactics(Ship) {
   constructor(
     id: string,
     name: string,
@@ -141,7 +110,7 @@ export class CombatShip extends Ship {
    */
   getAttackAttemptsPerStep(): number { return 1; }
 
-  attack(target: CombatShip): IAttackResult | null {
+  attack(target: ICombatant): IAttackResult | null {
     // Проверяем, можем ли атаковать
     if (this.isDestroyed || target.isDestroyed) {
       return null;
@@ -198,6 +167,7 @@ export class CombatShip extends Ship {
    * Получить урон
    */
   takeDamage(damage: number, critical: boolean = false, _damageType?: 'beam' | 'projectile'): IAttackResult {
+    if (!positiveFinite(damage) || this.isDestroyed) return noDamageResult();
     let remainingDamage = damage;
     let shieldDamage = 0;
     let hullDamage = 0;
@@ -234,65 +204,10 @@ export class CombatShip extends Ship {
   }
 
   /**
-   * Получить расстояние до цели
-   */
-  getDistanceTo(target: CombatShip): number {
-    const dx = target.position.x - this.position.x;
-    const dy = target.position.y - this.position.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  /**
-   * Выбрать ближайшую вражескую цель
-   */
-  findNearestEnemy(enemies: CombatShip[]): CombatShip | undefined {
-    let nearest: CombatShip | undefined;
-    let minDistance = Infinity;
-
-    enemies.forEach(enemy => {
-      if (!enemy.isDestroyed && enemy.factionId !== this.factionId) {
-        const distance = this.getDistanceTo(enemy);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearest = enemy;
-        }
-      }
-    });
-
-    return nearest;
-  }
-
-  /**
-   * Двигаться к цели
-   */
-  moveToTarget(target: CombatShip, optimalRange: number = 0.8): void {
-    const distance = this.getDistanceTo(target);
-    const targetDistance = this.weaponStats.range * optimalRange;
-
-    // Если слишком далеко - приближаемся
-    if (distance > targetDistance) {
-      this.startMoving(target.position.x, target.position.y);
-    }
-    // Если слишком близко - отходим
-    else if (distance < this.weaponStats.range * 0.5) {
-      const dx = this.position.x - target.position.x;
-      const dy = this.position.y - target.position.y;
-      const angle = Math.atan2(dy, dx);
-      const retreatX = this.position.x + Math.cos(angle) * 50;
-      const retreatY = this.position.y + Math.sin(angle) * 50;
-      this.startMoving(retreatX, retreatY);
-    }
-    // Оптимальная дистанция - останавливаемся
-    else {
-      this.stopMoving();
-    }
-  }
-
-  /**
    * Обновление боевого корабля
    */
   update(deltaTime: number): void {
-    if (this.isDestroyed) return;
+    if (this.isDestroyed || !positiveFinite(deltaTime)) return;
     super.update(deltaTime);
 
     // Восстанавливаем щит
@@ -309,32 +224,4 @@ export class CombatShip extends Ship {
     }
   }
 
-  /**
-   * Получить прочность корпуса в процентах
-   */
-  getHullPercent(): number {
-    return (this.combatStats.currentHull / this.combatStats.maxHull) * 100;
-  }
-
-  /**
-   * Получить прочность щита в процентах
-   */
-  getShieldPercent(): number {
-    return this.combatStats.maxShield > 0 ? (this.combatStats.currentShield / this.combatStats.maxShield) * 100 : 0;
-  }
-
-  /**
-   * Получить боевую информацию
-   */
-  getCombatInfo(): string {
-    return `
-${this.name} [${this.factionId}]
-Корпус: ${this.combatStats.currentHull.toFixed(0)}/${this.combatStats.maxHull} (${this.getHullPercent().toFixed(0)}%)
-Щит: ${this.combatStats.currentShield.toFixed(0)}/${this.combatStats.maxShield} (${this.getShieldPercent().toFixed(0)}%)
-Броня: ${this.combatStats.armor.toFixed(1)}
-Урон: ${this.weaponStats.damage}
-Дальность: ${this.weaponStats.range}
-Статус: ${this.isDestroyed ? '💀 Уничтожен' : '✓ Активен'}
-    `.trim();
-  }
 }

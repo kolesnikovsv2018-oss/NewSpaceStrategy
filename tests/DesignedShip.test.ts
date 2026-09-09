@@ -77,7 +77,8 @@ describe('design to runtime', () => {
     ship.takeDamage(100);
     const shield = ship.combatStats.currentShield;
     ship.powerSource.currentEnergy = 0;
-    ship.powerSource.energyOutput = 0;
+    // Disable generation explicitly for this energy-limited scenario; design projections are immutable.
+    vi.spyOn(ship, 'getEnergyGeneration').mockReturnValue(0);
     ship.update(4);
     expect(ship.combatStats.currentShield).toBe(shield);
     ship.powerSource.currentEnergy = 60;

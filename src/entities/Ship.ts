@@ -6,29 +6,28 @@ import {
   ICargoItem 
 } from './interfaces/ShipComponents';
 import type { ShipDesign } from '../domain/shipDesign';
-import { createShipState, snapshotShipState, type ShipPosition, type ShipState } from '../domain/shipState';
-import { cargoTotals, loadCargo, unloadCargo, type CargoLimits, type CargoResult } from '../domain/cargo';
+import { cargoTotals, type CargoLimits } from '../domain/cargo';
+import { ShipRuntime } from './ShipRuntime';
+import { legacyCargoLot, legacyCargoView } from '../legacy/cargoCompatibility';
+import { positiveFinite, writeEnergy } from '../domain/runtimeNumbers';
+import { formatFlightEstimate } from '../domain/flightEstimate';
 
 /**
  * Основной класс космического корабля
  */
-export class Ship {
-  protected readonly state = createShipState();
-  getState(): ShipState { return snapshotShipState(this.state); }
+export class Ship extends ShipRuntime {
   getDesign(): ShipDesign | undefined { return undefined; }
   getInstalledModuleNames(): string[] { return this.equipment.map(item => item.name); }
-  id: string;
-  name: string;
   
   // Компоненты корабля
   private powerSourceView!: IPowerSource;
   get powerSource(): IPowerSource { return this.powerSourceView; }
   set powerSource(source: IPowerSource) {
     const ship = this;
-    this.state.energy = source.currentEnergy;
+    writeEnergy(this.state, source.currentEnergy, source.energyCapacity);
     this.powerSourceView = { ...source,
       get currentEnergy() { return ship.state.energy; },
-      set currentEnergy(value: number) { ship.state.energy = value; }
+      set currentEnergy(value: number) { writeEnergy(ship.state, value, ship.powerSource.energyCapacity); }
     };
   }
   engine: IEngine;
@@ -39,22 +38,13 @@ export class Ship {
   
   // Груз
   get cargo(): ICargoItem[] {
-    return this.state.cargo.map(({ mass, ...item }) => ({ ...item, weight: mass }));
+    return legacyCargoView(this.state.cargo);
   }
-  private cargoMessage = '';
-  getCargoMessage(): string { return this.cargoMessage; }
   getCargoLimits(): CargoLimits {
     return { mass: Math.max(0, this.cargoHold.maxWeight - this.equipment.reduce((sum, item) => sum + item.weight, 0)),
       volume: this.cargoHold.capacity };
   }
   
-  // Позиция и состояние
-  get position(): ShipPosition { return this.state.position; }
-  set position(value: ShipPosition) { this.state.position = { ...value }; }
-  get velocity(): ShipPosition { return this.state.velocity; }
-  set velocity(value: ShipPosition) { this.state.velocity = { ...value }; }
-  get isMoving(): boolean { return this.state.isMoving; }
-  set isMoving(value: boolean) { this.state.isMoving = value; }
   
   constructor(
     id: string,
@@ -63,8 +53,7 @@ export class Ship {
     engine: IEngine,
     cargoHold: ICargo
   ) {
-    this.id = id;
-    this.name = name;
+    super(id, name);
     this.powerSource = powerSource;
     this.engine = engine;
     const ship = this;
@@ -110,7 +99,7 @@ export class Ship {
   }
   
   /**
-   * Получить максимальную дальность полета
+    * @deprecated Historical battery-only estimate using unloaded engine speed; use getFlightEstimate.
    */
   getMaxRange(): number {
     const energyForFlight = this.powerSource.currentEnergy;
@@ -174,32 +163,9 @@ export class Ship {
    */
   loadCargo(item: ICargoItem): boolean {
     if (!item || typeof item !== 'object') return this.applyCargoResult({ ok: false, message: 'Недопустимый груз' });
-    return this.applyCargoResult(loadCargo(this.state.cargo, { resourceType: item.resourceType,
-      amount: item.amount, mass: item.weight, volume: item.volume }, this.getCargoLimits()));
+    return this.loadCargoLot(legacyCargoLot(item));
   }
   
-  /**
-   * Выгрузить груз
-   */
-  unloadCargo(resourceType: string, amount: number): boolean {
-    return this.applyCargoResult(unloadCargo(this.state.cargo, resourceType, amount));
-  }
-
-  private applyCargoResult(result: CargoResult): boolean {
-    if (!result.ok) { this.cargoMessage = result.message; return false; }
-    this.state.cargo = result.cargo;
-    this.cargoMessage = 'Грузовая операция выполнена';
-    this.refreshVelocityForMass();
-    return true;
-  }
-
-  protected refreshVelocityForMass(): void {
-    if (!this.isMoving) return;
-    const length = Math.hypot(this.velocity.x, this.velocity.y);
-    if (length === 0) return;
-    const speed = this.getCurrentMaxSpeed();
-    this.velocity = { x: this.velocity.x / length * speed, y: this.velocity.y / length * speed };
-  }
   
   /**
    * Получить количество доступных слотов для оборудования
@@ -209,77 +175,21 @@ export class Ship {
     return Math.floor(this.cargoHold.capacity / 10);
   }
   
-  /**
-   * Потребить энергию
-   */
-  consumeEnergy(amount: number): boolean {
-    if (this.powerSource.currentEnergy < amount) {
-      return false;
-    }
-    
-    this.powerSource.currentEnergy -= amount;
-    return true;
-  }
-  
-  /**
-   * Восстановить энергию
-   */
-  rechargeEnergy(deltaTime: number): void {
-    const rechargeAmount = this.powerSource.energyOutput * deltaTime;
-    this.powerSource.currentEnergy = Math.min(
-      this.powerSource.currentEnergy + rechargeAmount,
-      this.powerSource.energyCapacity
-    );
-  }
+  getEnergyCapacity(): number { return this.powerSource.energyCapacity; }
+  getEnergyGeneration(): number { return this.powerSource.energyOutput; }
+  getMovementPower(): number { return this.engine.energyConsumption; }
   
   /**
    * Обновление состояния корабля
    */
   update(deltaTime: number): void {
+    if (!positiveFinite(deltaTime)) return;
     // Восстанавливаем энергию
     this.rechargeEnergy(deltaTime);
     
-    // Обновляем позицию при движении
-    if (this.isMoving) {
-      this.position.x += this.velocity.x * deltaTime;
-      this.position.y += this.velocity.y * deltaTime;
-      
-      // Потребляем энергию при движении
-      const energyConsumption = this.engine.energyConsumption * deltaTime;
-      if (!this.consumeEnergy(energyConsumption)) {
-        this.stopMoving();
-      }
-    }
+    this.advanceMovement(deltaTime, false);
   }
   
-  /**
-   * Начать движение в направлении
-   */
-  startMoving(targetX: number, targetY: number): boolean {
-    const dx = targetX - this.position.x;
-    const dy = targetY - this.position.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    if (distance === 0) {
-      return false;
-    }
-    
-    const maxSpeed = this.getCurrentMaxSpeed();
-    this.velocity.x = (dx / distance) * maxSpeed;
-    this.velocity.y = (dy / distance) * maxSpeed;
-    this.isMoving = true;
-    
-    return true;
-  }
-  
-  /**
-   * Остановить движение
-   */
-  stopMoving(): void {
-    this.velocity.x = 0;
-    this.velocity.y = 0;
-    this.isMoving = false;
-  }
   
   /**
    * Получить информацию о корабле
@@ -289,9 +199,10 @@ export class Ship {
 Корабль: ${this.name}
 Стоимость: ${this.getTotalCost()} кредитов
 Вес: ${this.getTotalWeight().toFixed(2)} т
-Макс. скорость: ${this.getCurrentMaxSpeed().toFixed(2)} ед/с
-Дальность: ${this.getMaxRange().toFixed(2)} св. лет
-Энергия: ${this.powerSource.currentEnergy}/${this.powerSource.energyCapacity}
+Макс. скорость: ${this.getCurrentMaxSpeed().toFixed(2)} такт. ед/с
+Полёт (только движение): ${formatFlightEstimate(this.getFlightEstimate())}
+Энергия: ${this.powerSource.currentEnergy}/${this.powerSource.energyCapacity} ЭЕ
+Генерация / движение: ${this.getEnergyGeneration()}/${this.getMovementPower()} ЭЕ/с
 Груз: ${this.cargoHold.usedSpace}/${this.cargoHold.capacity} м³
 Оборудование: ${this.equipment.length} шт.
     `.trim();

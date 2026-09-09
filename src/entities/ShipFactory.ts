@@ -1,35 +1,35 @@
-import { Ship } from './Ship';
+import type { Ship } from './Ship';
 import { DesignedShip } from './DesignedShip';
-import { ShipComponentFactory } from './ShipComponentFactory';
-import { PowerSourceType, EngineType, CargoType, EquipmentType } from './interfaces/ShipComponents';
+import type { PowerSourceType, EngineType, CargoType } from './interfaces/ShipComponents';
+import { LegacyShipFactory } from '../legacy/LegacyShipFactory';
 import { createCivilianDesign } from '../domain/civilianPresets';
 import { createCombatDesign } from '../domain/combatPresets';
-import { newId } from '../domain/shipDesign';
+import type { ShipDesign } from '../domain/shipDesign';
 
 export class ShipFactory {
+  /** Canonical flight construction; unarmed designs are allowed, invalid designs are not. */
+  static createFromDesign(design: ShipDesign, factionId = 'neutral'): DesignedShip {
+    return new DesignedShip(design, factionId, 'flight');
+  }
+
   static createScout(): DesignedShip {
-    return new DesignedShip(createCivilianDesign('scout'), 'neutral', 'flight');
+    return this.createFromDesign(createCivilianDesign('scout'));
   }
 
   static createFreighter(): DesignedShip {
-    return new DesignedShip(createCivilianDesign('freighter'), 'neutral', 'flight');
+    return this.createFromDesign(createCivilianDesign('freighter'));
   }
 
   static createWarship(): DesignedShip {
     return new DesignedShip(createCombatDesign('cruiser'), 'neutral');
   }
 
-  // Mining is not yet represented by the canonical component schema. Keep it explicit, not silently dropped.
-  static createMiner(): Ship {
-    const ship = ShipFactory.createCustomShip('Добытчик', PowerSourceType.NUCLEAR, EngineType.ION, CargoType.REINFORCED);
-    const module = ShipComponentFactory.createEquipment(EquipmentType.MINING, 1);
-    if (!ship.installEquipment(module)) throw new Error('Недопустимая комплектация добытчика');
-    return ship;
+  static createMiner(): DesignedShip {
+    return this.createFromDesign(createCivilianDesign('miner'));
   }
 
-  /** Legacy custom component API until service modules and component catalogues are migrated. */
+  /** @deprecated Legacy-only compatibility API. Use createFromDesign for canonical projects, or LegacyShipFactory explicitly. */
   static createCustomShip(name: string, powerSourceType: PowerSourceType, engineType: EngineType, cargoType: CargoType): Ship {
-    return new Ship(newId('custom'), name, ShipComponentFactory.createPowerSource(powerSourceType),
-      ShipComponentFactory.createEngine(engineType), ShipComponentFactory.createCargoHold(cargoType));
+    return LegacyShipFactory.createCustomShip(name, powerSourceType, engineType, cargoType);
   }
 }

@@ -1,4 +1,4 @@
-import type { CombatShip } from '../CombatShip';
+import type { ShipView } from './ShipView';
 
 /**
  * Боевые характеристики корабля
@@ -18,12 +18,12 @@ export interface ICombatStats {
  */
 export interface IWeaponStats {
   damage: number;            // Базовый урон
-  range: number;             // Дальность атаки
+  range: number;             // Дальность атаки, тактические единицы
   fireRate: number;          // Скорострельность (атак в секунду)
   accuracy: number;          // Точность (0-1)
-  energyCost: number;        // Стоимость выстрела в энергии
-  cooldown: number;          // Перезарядка
-  currentCooldown: number;   // Текущее время до следующего выстрела
+  energyCost: number;        // Энергия одного выстрела, ЭЕ
+  cooldown: number;          // Перезарядка, секунды симуляции
+  currentCooldown: number;   // Остаток перезарядки, секунды симуляции
 }
 
 /**
@@ -38,14 +38,34 @@ export interface IAttackResult {
   evaded: boolean;           // Уклонение
 }
 
+/** Rejected/zero damage is neither a hit nor an evasion and must not alter combat state. */
+export function noDamageResult(): IAttackResult {
+  return { hit: false, damage: 0, shieldDamage: 0, hullDamage: 0, critical: false, evaded: false };
+}
+
 /**
  * Сторона конфликта
  */
+export interface ICombatant extends ShipView {
+  factionId: string;
+  target?: ICombatant;
+  isDestroyed: boolean;
+  combatStats: ICombatStats;
+  weaponStats: IWeaponStats;
+  getCombatInfo(): string;
+  update(deltaTime: number): void;
+  getAttackAttemptsPerStep(): number;
+  attack(target: ICombatant): IAttackResult | null;
+  takeDamage(damage: number, critical?: boolean, damageType?: 'beam' | 'projectile'): IAttackResult;
+  findNearestEnemy(enemies: readonly ICombatant[]): ICombatant | undefined;
+  moveToTarget(target: ICombatant, optimalRange?: number): void;
+}
+
 export interface IFaction {
   id: string;
   name: string;
   color: number;             // Цвет для визуализации
-  ships: CombatShip[];       // Корабли фракции
+  ships: ICombatant[];       // Любые реализации боевого контракта, не конкретный класс
 }
 
 /**

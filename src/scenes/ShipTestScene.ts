@@ -1,15 +1,14 @@
-import { Ship } from '../entities/Ship';
+import type { FlightShip } from '../entities/interfaces/FlightShip';
 import { ShipFactory } from '../entities/ShipFactory';
 import { ShipSprite } from '../entities/visuals/ShipSprite';
 import { ShipInfoPanel } from '../ui/ShipInfoPanel';
-import { DesignedShip } from '../entities/DesignedShip';
 import { designSchema, type ShipDesign } from '../domain/shipDesign';
 
 /**
  * Демонстрационная сцена для тестирования кораблей
  */
 export class ShipTestScene extends Phaser.Scene {
-  private ships: Ship[] = [];
+  private ships: FlightShip[] = [];
   private shipSprites: ShipSprite[] = [];
   private infoPanel?: ShipInfoPanel;
   private selectedShip?: ShipSprite;
@@ -40,11 +39,11 @@ export class ShipTestScene extends Phaser.Scene {
     this.createStarfield();
     
     if (this.trialDesign) {
-      const ship = new DesignedShip(this.trialDesign, 'blue', 'flight');
+      const ship = ShipFactory.createFromDesign(this.trialDesign, 'blue');
       ship.position = { x: 480, y: 320 };
       this.ships.push(ship);
     } else {
-    // Три проектных пресета и legacy-добытчик со служебным модулем.
+    // Все четыре демонстрационных пресета создаются из проверенных проектов.
     const scout = ShipFactory.createScout();
     const freighter = ShipFactory.createFreighter();
     const warship = ShipFactory.createWarship();
@@ -87,7 +86,7 @@ export class ShipTestScene extends Phaser.Scene {
       const message = this.add.text(800, 205, 'Тест трюма: груз не сохраняется в проекте', { fontSize: '13px', color: '#b5d8ef', wordWrap: { width: 430 } });
       this.add.text(800, 125, '+ Руда: 10 ед. / 20 т / 10 м³', { fontSize: '16px', color: '#8de1f2', backgroundColor: '#233e58', padding: { x: 10, y: 5 } })
         .setName('load-test-cargo').setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-          const ok = ship.loadCargo({ resourceType: 'ore', amount: 10, weight: 20, volume: 10 });
+          const ok = ship.loadCargoLot({ resourceType: 'ore', amount: 10, mass: 20, volume: 10 });
           message.setText(ship.getCargoMessage()).setColor(ok ? '#8af5bd' : '#ff9292');
         });
       this.add.text(800, 165, '− Выгрузить 10 ед. руды', { fontSize: '16px', color: '#8de1f2', backgroundColor: '#233e58', padding: { x: 10, y: 5 } })

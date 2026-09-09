@@ -1,4 +1,5 @@
-import { Ship } from '../entities/Ship';
+import type { ShipView } from '../entities/interfaces/ShipView';
+import { formatFlightEstimate } from '../domain/flightEstimate';
 
 /**
  * Панель информации о корабле
@@ -8,7 +9,7 @@ export class ShipInfoPanel extends Phaser.GameObjects.Container {
   private titleText: Phaser.GameObjects.Text;
   private infoText: Phaser.GameObjects.Text;
   private componentIcons: Phaser.GameObjects.Graphics[] = [];
-  private ship?: Ship;
+  private ship?: ShipView;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y);
@@ -47,7 +48,7 @@ export class ShipInfoPanel extends Phaser.GameObjects.Container {
   /**
    * Показать информацию о корабле
    */
-  showShipInfo(ship: Ship): void {
+  showShipInfo(ship: ShipView): void {
     this.ship = ship;
     this.updateInfo();
     this.drawComponentVisuals();
@@ -69,6 +70,7 @@ export class ShipInfoPanel extends Phaser.GameObjects.Container {
     if (!this.ship) return;
     if (this.ship.getDesign()) {
       this.infoText.setText(this.ship.getInfo());
+      this.fitInfo(false);
       return;
     }
 
@@ -81,18 +83,18 @@ export class ShipInfoPanel extends Phaser.GameObjects.Container {
 ━━━ ХАРАКТЕРИСТИКИ ━━━
 Стоимость: ${this.ship.getTotalCost()} кр.
 Вес: ${this.ship.getTotalWeight().toFixed(1)} т
-Скорость: ${this.ship.getCurrentMaxSpeed().toFixed(1)} ед/с
-Дальность: ${this.ship.getMaxRange().toFixed(1)} св.л.
+Скорость: ${this.ship.getCurrentMaxSpeed().toFixed(1)} такт. ед/с
+Полёт (только движение): ${formatFlightEstimate(this.ship.getFlightEstimate())}
 
 ━━━ ЭНЕРГИЯ ━━━
 ${this.ship.powerSource.name}
-Запас: ${this.ship.powerSource.currentEnergy}/${this.ship.powerSource.energyCapacity} (${energyPercent}%)
-Генерация: ${this.ship.powerSource.energyOutput}/с
+Запас: ${this.ship.powerSource.currentEnergy}/${this.ship.powerSource.energyCapacity} ЭЕ (${energyPercent}%)
+Генерация: ${this.ship.powerSource.energyOutput} ЭЕ/с
 
 ━━━ ДВИГАТЕЛЬ ━━━
 ${this.ship.engine.name}
 Тяга: ${this.ship.engine.thrust}
-Потребление: ${this.ship.engine.energyConsumption}/с
+Потребление: ${this.ship.engine.energyConsumption} ЭЕ/с
 
 ━━━ ГРУЗОВОЙ ОТСЕК ━━━
 ${this.ship.cargoHold.name}
@@ -100,11 +102,27 @@ ${this.ship.cargoHold.name}
 Вес: ${this.ship.cargoHold.currentWeight}/${this.ship.cargoHold.maxWeight} т
 
 ━━━ ОБОРУДОВАНИЕ ━━━
-Установлено: ${this.ship.equipment.length} ед.
+Установлено: ${this.ship.getInstalledModuleNames().length} ед.
 ${this.ship.getInstalledModuleNames().map(name => `• ${name}`).join('\n')}
     `.trim();
 
     this.infoText.setText(info);
+    this.fitInfo(true);
+  }
+
+  /** Fit both model branches, reserving room below the text for legacy icons. */
+  private fitInfo(includeIcons: boolean): void {
+    const availableHeight = Math.max(100, this.scene.cameras.main.height - this.y - 40);
+    const padding = includeIcons ? 134 : 84;
+    this.infoText.setScale(Math.min(1, 270 / Math.max(1, this.infoText.width),
+      Math.max(1, availableHeight - padding) / Math.max(1, this.infoText.height)));
+    const height = Math.min(availableHeight, Math.max(260, padding + this.infoText.displayHeight));
+    this.background.clear();
+    this.background.fillStyle(0x000000, 0.85);
+    this.background.fillRoundedRect(0, 0, 300, height, 10);
+    this.background.lineStyle(2, 0x00ffff, 1);
+    this.background.strokeRoundedRect(0, 0, 300, height, 10);
+    if (includeIcons) this.componentIcons.forEach(icon => icon.setY(84 + this.infoText.displayHeight));
   }
 
   /**
@@ -116,14 +134,17 @@ ${this.ship.getInstalledModuleNames().map(name => `• ${name}`).join('\n')}
     // Очищаем старые иконки
     this.componentIcons.forEach(icon => icon.destroy());
     this.componentIcons = [];
+    // Canonical blueprints already show installed modules; legacy decorative icons overlap long descriptions.
+    if (this.ship.getDesign()) return;
 
     const startX = 20;
-    const startY = 350;
+    const startY = 0;
     const iconSize = 30;
     const spacing = 10;
 
     // Иконка источника энергии
     const powerIcon = new Phaser.GameObjects.Graphics(this.scene);
+    powerIcon.setY(84 + this.infoText.displayHeight);
     powerIcon.fillStyle(0xffff00, 1);
     powerIcon.fillCircle(startX + iconSize / 2, startY + iconSize / 2, iconSize / 2);
     powerIcon.lineStyle(2, 0xffffff, 1);
@@ -133,6 +154,7 @@ ${this.ship.getInstalledModuleNames().map(name => `• ${name}`).join('\n')}
 
     // Иконка двигателя
     const engineIcon = new Phaser.GameObjects.Graphics(this.scene);
+    engineIcon.setY(84 + this.infoText.displayHeight);
     engineIcon.fillStyle(0x00ffff, 1);
     engineIcon.fillTriangle(
       startX + iconSize + spacing + iconSize / 2, startY,
@@ -150,6 +172,7 @@ ${this.ship.getInstalledModuleNames().map(name => `• ${name}`).join('\n')}
 
     // Иконка грузового отсека
     const cargoIcon = new Phaser.GameObjects.Graphics(this.scene);
+    cargoIcon.setY(84 + this.infoText.displayHeight);
     cargoIcon.fillStyle(0xffaa00, 1);
     cargoIcon.fillRect(
       startX + (iconSize + spacing) * 2,

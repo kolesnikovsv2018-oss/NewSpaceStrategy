@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { cargoTotals, loadCargo, unloadCargo, type CargoItem } from '../src/domain/cargo';
 import { calculateShipStats, createComponent, createDesign, designSchema, HULLS, installComponent, validateDesign } from '../src/domain/shipDesign';
 import { createCivilianDesign } from '../src/domain/civilianPresets';
 import { DesignedShip } from '../src/entities/DesignedShip';
 import { ShipFactory } from '../src/entities/ShipFactory';
-import { ShipComponentFactory } from '../src/entities/ShipComponentFactory';
 import { CargoType, EngineType, EquipmentType, PowerSourceType } from '../src/entities/interfaces/ShipComponents';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
+import { createV1Design } from './fixtures/v1Design';
 
 const ore: CargoItem = { resourceType: 'ore', amount: 10, mass: 20, volume: 10 };
 const legacyOre = { resourceType: 'ore', amount: 10, weight: 20, volume: 10 };
@@ -130,11 +130,11 @@ describe('cargo in ship state', () => {
     expect(stats.mass).toBe(297);
     expect(stats.cargoMassLimit).toBe(53);
     const ship = new DesignedShip(design, 'blue', 'flight');
-    expect(ship.getAvailableCargoSlots()).toBe(6);
+    expect(ship.getAvailableCargoSlots()).toBe(8);
     expect(ship.loadCargo({ ...legacyOre, weight: 53 })).toBe(true);
     expect(ship.getTotalWeight()).toBe(HULLS.corvette.maxMass);
     expect(ship.loadCargo({ ...legacyOre, weight: 0.1 })).toBe(false);
-    expect(ship.getAvailableCargoSlots()).toBe(6);
+    expect(ship.getAvailableCargoSlots()).toBe(8);
   });
 
   it('keeps an empty fighter bay empty without changing its combat statistics', () => {
@@ -166,17 +166,18 @@ describe('cargo in ship state', () => {
   it('loads the original six-slot v1 schema and persists blueprints without runtime cargo', () => {
     const data = new Map<string, string>();
     const store: StoragePort = { getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value); } };
-    const oldV1 = createDesign('corvette', true);
-    store.setItem(ShipDesignManager.STORAGE_KEY, JSON.stringify({ schemaVersion: 1, designs: [oldV1], components: [] }));
+    const oldV1 = createV1Design();
+    store.setItem(ShipDesignManager.V1_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, designs: [oldV1], components: [] }));
     const repository = new ShipDesignManager(store);
     const loaded = repository.load().designs[0];
-    expect(loaded).toEqual(oldV1);
+    expect(loaded.slots.slice(0, 6)).toEqual(oldV1.slots);
+    expect(loaded.id).toBe(oldV1.id);
     const ship = new DesignedShip(loaded, 'blue');
     expect(ship.loadCargo(legacyOre)).toBe(true);
     repository.saveDesign(ship.getDesign());
     const reopened = new ShipDesignManager(store).load().designs[0];
-    expect(reopened.slots).toHaveLength(6);
-    expect(reopened.schemaVersion).toBe(1);
+    expect(reopened.slots).toHaveLength(8);
+    expect(reopened.schemaVersion).toBe(2);
     expect(designSchema.safeParse({ ...reopened, cargo: [ore] }).success).toBe(false);
     expect(repository.exportJSON()).not.toContain('cargo');
     expect(new DesignedShip(reopened, 'blue').getState().cargo).toEqual([]);
@@ -207,12 +208,15 @@ describe('civilian factory migration', () => {
     expect(ship.getInstalledModuleNames()).toHaveLength(5);
   });
 
-  it('retains the mining module explicitly until service definitions are migrated', () => {
+  it('retains the mining module in the canonical miner without claiming active extraction', () => {
     const ship = ShipFactory.createMiner();
-    expect(ship.getDesign()).toBeUndefined();
-    expect(ship.equipment.map(item => item.type)).toEqual([EquipmentType.MINING]);
-    expect(ship.cargoHold.currentWeight).toBe(ship.equipment[0].weight);
-    vi.spyOn(ShipComponentFactory, 'createEquipment').mockReturnValue({ ...ship.equipment[0], weight: 1e9 });
-    expect(() => ShipFactory.createMiner()).toThrow('комплектация');
+    expect(validateDesign(ship.getDesign(), 'flight')).toEqual([]);
+    expect(ship.getDesign().slots.find(slot => slot.id === 'service_1')?.component).toMatchObject({
+      kind: 'mining', miningSpeed: 10, efficiency: 0.8, name: 'Добывающий модуль Mk1'
+    });
+    expect(ship.getInfo()).toContain('ещё не исполняются');
+    ship.update(10);
+    expect(ship.cargoHold.currentWeight).toBe(0);
+    expect(ship.getState().cargo).toEqual([]);
   });
 });

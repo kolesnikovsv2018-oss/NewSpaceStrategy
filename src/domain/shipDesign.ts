@@ -11,7 +11,7 @@ const weapon = {
 };
 
 /** Definitions contain inputs only. Mass/cost/power are derived, never trusted from saves. */
-export const componentSchema = z.discriminatedUnion('kind', [
+export const v1ComponentSchema = z.discriminatedUnion('kind', [
   z.object({ ...identity, kind: z.literal('beam'), ...weapon }).strict(),
   z.object({ ...identity, kind: z.literal('projectile'), ...weapon,
     ammoCapacity: z.number().int().min(1).max(10000) }).strict(),
@@ -25,6 +25,24 @@ export const componentSchema = z.discriminatedUnion('kind', [
     beamResistance: ratio, projectileResistance: ratio }).strict()
 ]);
 
+export const serviceComponentSchema = z.discriminatedUnion('kind', [
+  z.object({ ...identity, kind: z.literal('mining'), miningSpeed: nonnegative, efficiency: ratio }).strict(),
+  z.object({ ...identity, kind: z.literal('repair'), repairRate: nonnegative }).strict(),
+  z.object({ ...identity, kind: z.literal('scanner'), range: nonnegative, accuracy: ratio }).strict(),
+  z.object({ ...identity, kind: z.literal('cargoExpansion'), bonusCapacity: nonnegative }).strict()
+]);
+export const componentSchema = z.discriminatedUnion('kind', [
+  ...v1ComponentSchema.options, ...serviceComponentSchema.options
+]);
+export type ServiceDefinition = z.infer<typeof serviceComponentSchema>;
+export function isServiceComponent(component: ComponentDefinition): component is ServiceDefinition {
+  return component.kind === 'mining' || component.kind === 'repair' || component.kind === 'scanner' || component.kind === 'cargoExpansion';
+}
+export function componentStatus(component: ComponentDefinition): string {
+  if (component.kind === 'cargoExpansion') return 'Расширение объёма действует; предел массы корпуса прежний';
+  return isServiceComponent(component) ? 'Параметры сохранены; добыча/ремонт/сканирование ещё не исполняются' : '';
+}
+
 export type ComponentDefinition = z.infer<typeof componentSchema>;
 export type ComponentKind = ComponentDefinition['kind'];
 export type SlotSize = 'small' | 'medium' | 'large' | 'capital';
@@ -32,7 +50,7 @@ export const hullIdSchema = z.enum(['fighter', 'corvette', 'frigate', 'destroyer
 export type HullId = z.infer<typeof hullIdSchema>;
 export interface Hardpoint {
   id: string;
-  kind: ComponentKind;
+  kind: ComponentKind | 'service';
   size: SlotSize;
   x: number;
   y: number;
@@ -56,7 +74,9 @@ function slots(size: SlotSize): Hardpoint[] {
     { id: 'projectile_1', kind: 'projectile', size, x: 0, y: -35 },
     { id: 'engine_1', kind: 'engine', size, x: 0, y: 32 },
     { id: 'shield_1', kind: 'shield', size, x: -24, y: 8 },
-    { id: 'armor_1', kind: 'armor', size, x: 24, y: 8 }
+    { id: 'armor_1', kind: 'armor', size, x: 24, y: 8 },
+    { id: 'service_1', kind: 'service', size, x: -10, y: 18 },
+    { id: 'service_2', kind: 'service', size, x: 10, y: 18 }
   ];
 }
 
@@ -69,24 +89,44 @@ export const HULLS: Record<HullId, HullDefinition> = {
   battleship: { id: 'battleship', name: 'Линкор', mass: 650, maxMass: 2400, hitPoints: 3500, cost: 25000, energyCapacity: 10000, scale: 1.7, slots: slots('capital') }
 };
 
-export const designSchema = z.object({
-  schemaVersion: z.literal(1),
+const designFields = {
   ...identity,
   hullId: hullIdSchema,
-  slots: z.array(z.object({ id: z.string().min(1).max(128), component: componentSchema.nullable() }).strict()).max(32),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
-}).strict().superRefine((design, ctx) => {
-  const expected = HULLS[design.hullId].slots.map(slot => slot.id);
+};
+function checkSlots(design: { hullId: HullId; slots: { id: string }[] }, ctx: z.RefinementCtx, services: boolean): void {
+  const expected = HULLS[design.hullId].slots.filter(slot => services || slot.kind !== 'service').map(slot => slot.id);
   const actual = design.slots.map(slot => slot.id);
   if (actual.length !== expected.length || new Set(actual).size !== actual.length || actual.some(id => !expected.includes(id))) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Слоты не соответствуют корпусу' });
   }
-});
+}
+export const v1DesignSchema = z.object({ ...designFields, schemaVersion: z.literal(1),
+  slots: z.array(z.object({ id: z.string().min(1).max(128), component: v1ComponentSchema.nullable() }).strict()).max(32)
+}).strict().superRefine((design, ctx) => checkSlots(design, ctx, false));
+export const designSchema = z.object({ ...designFields, schemaVersion: z.literal(2),
+  slots: z.array(z.object({ id: z.string().min(1).max(128), component: componentSchema.nullable() }).strict()).max(32)
+}).strict().superRefine((design, ctx) => checkSlots(design, ctx, true));
 export type ShipDesign = z.infer<typeof designSchema>;
 
+/** Explicit six-slot v1 -> eight-slot v2 upgrade; never guesses occupied service modules. */
+export function migrateV1Design(input: unknown): ShipDesign {
+  const old = v1DesignSchema.parse(input);
+  const next = designSchema.parse({ ...old, schemaVersion: 2,
+    slots: [...old.slots, { id: 'service_1', component: null }, { id: 'service_2', component: null }] });
+  const errors = validateDesign(next, 'draft');
+  if (errors.length) throw new Error(errors.map(error => error.message).join('\n'));
+  return next;
+}
+
+export function acceptsComponent(point: Hardpoint, component: ComponentDefinition): boolean {
+  return point.kind === 'service' ? isServiceComponent(component) : component.kind === point.kind;
+}
+
 export const COMPONENT_NAMES: Record<ComponentKind, string> = {
-  beam: 'Лазер', projectile: 'Пушка', engine: 'Двигатель', shield: 'Щит', armor: 'Броня'
+  beam: 'Лазер', projectile: 'Пушка', engine: 'Двигатель', shield: 'Щит', armor: 'Броня',
+  mining: 'Добыча', repair: 'Ремонт', scanner: 'Сканер', cargoExpansion: 'Трюм+'
 };
 let sequence = 0;
 export const newId = (prefix: string): string => `${prefix}_${Date.now()}_${++sequence}`;
@@ -98,15 +138,19 @@ export function createComponent(kind: ComponentKind): ComponentDefinition {
     case 'engine': return { ...identity, kind, thrust: 1000, maxSpeed: 200, maneuverability: 0.7, powerGeneration: 600 };
     case 'shield': return { ...identity, kind, capacity: 500, rechargeRate: 20, rechargeDelay: 3, beamResistance: 0.3 };
     case 'armor': return { ...identity, kind, armorPoints: 150, beamResistance: 0.2, projectileResistance: 0.3 };
+    case 'mining': return { ...identity, kind, miningSpeed: 10, efficiency: 0.8 };
+    case 'repair': return { ...identity, kind, repairRate: 5 };
+    case 'scanner': return { ...identity, kind, range: 200, accuracy: 0.85 };
+    case 'cargoExpansion': return { ...identity, kind, bonusCapacity: 50 };
   }
 }
 
 export function createDesign(hullId: HullId = 'corvette', starter = false): ShipDesign {
   const now = new Date().toISOString();
   return {
-    schemaVersion: 1, id: newId('design'), name: `${HULLS[hullId].name} — проект`, hullId,
+    schemaVersion: 2, id: newId('design'), name: `${HULLS[hullId].name} — проект`, hullId,
     slots: HULLS[hullId].slots.map(slot => ({ id: slot.id,
-      component: starter && (slot.id === 'engine_1' || slot.id === 'beam_1') ? createComponent(slot.kind) : null })),
+      component: starter && (slot.kind === 'engine' || slot.id === 'beam_1') ? createComponent(slot.kind === 'engine' ? 'engine' : 'beam') : null })),
     createdAt: now, updatedAt: now
   };
 }
@@ -114,8 +158,8 @@ export function createDesign(hullId: HullId = 'corvette', starter = false): Ship
 export interface ComponentStats {
   mass: number;
   cost: number;
-  power: number; // Energy per second at full duty; not energy per shot.
-  energyPerShot: number;
+  power: number; // ЭЕ/с при полной нагрузке, не энергия выстрела.
+  energyPerShot: number; // ЭЕ на выстрел.
   slotSize: SlotSize;
 }
 export function calculateComponent(component: ComponentDefinition): ComponentStats {
@@ -152,6 +196,26 @@ export function calculateComponent(component: ComponentDefinition): ComponentSta
       mass = component.armorPoints * 0.15;
       cost = component.armorPoints * 4 + (component.beamResistance + component.projectileResistance) * 800;
       break;
+    // Service ratings reserve peak power; active systems are not executed yet.
+    case 'mining':
+      mass = 20 + component.miningSpeed * 4;
+      cost = 1000 + component.miningSpeed * 200 + component.efficiency * 1250;
+      power = component.miningSpeed * 5;
+      break;
+    case 'repair':
+      mass = 10 + component.repairRate * 3;
+      cost = 500 + component.repairRate * 400;
+      power = component.repairRate * 10;
+      break;
+    case 'scanner':
+      mass = 5 + component.range * 0.025;
+      cost = 250 + component.range * 2 + component.accuracy * 1000;
+      power = component.range * 0.05;
+      break;
+    case 'cargoExpansion':
+      mass = 5 + component.bonusCapacity * 0.3;
+      cost = 250 + component.bonusCapacity * 15;
+      break;
   }
   return { mass, cost: Math.round(cost), power, energyPerShot,
     slotSize: mass < 25 ? 'small' : mass < 100 ? 'medium' : mass < 250 ? 'large' : 'capital' };
@@ -164,13 +228,13 @@ export interface ShipStats {
   cargoMassLimit: number; // Tonnes after accounting for installed modules and hull maxMass.
   cost: number;
   hitPoints: number;
-  speed: number;
+  speed: number; // Тактические единицы расстояния / с симуляции (без груза).
   thrust: number;
   evasion: number;
-  powerGeneration: number;
-  movementPower: number;
-  peakPower: number;
-  energyCapacity: number;
+  powerGeneration: number; // ЭЕ/с.
+  movementPower: number; // ЭЕ/с во время движения.
+  peakPower: number; // ЭЕ/с, включая номиналы пока неисполняемых служб.
+  energyCapacity: number; // ЭЕ, батарея не стратегическое топливо.
   shield: number;
   shieldRegen: number;
   shieldDelay: number;
@@ -184,6 +248,7 @@ export interface ShipStats {
 
 export function calculateShipStats(design: ShipDesign): ShipStats {
   const hull = HULLS[design.hullId];
+  let bonusVolume = 0;
   const stats: ShipStats = {
     mass: hull.mass, cargoVolume: 0, cargoMassLimit: 0, cost: hull.cost, hitPoints: hull.hitPoints, speed: 0, thrust: 0, evasion: 0,
     powerGeneration: 0, movementPower: 0, peakPower: 0, energyCapacity: hull.energyCapacity,
@@ -220,11 +285,12 @@ export function calculateShipStats(design: ShipDesign): ShipStats {
         stats.armorBeamResistance = component.beamResistance;
         stats.armorProjectileResistance = component.projectileResistance;
         break;
+      case 'cargoExpansion': bonusVolume += component.bonusCapacity; break;
     }
   }
   stats.speed *= stats.thrust / Math.max(1, stats.thrust + stats.mass * 0.1);
   const cargo = HULL_CARGO[design.hullId];
-  stats.cargoVolume = cargo.volume;
+  stats.cargoVolume = cargo.volume + bonusVolume;
   stats.cargoMassLimit = Math.max(0, Math.min(cargo.mass, hull.maxMass - stats.mass));
   return stats;
 }
@@ -248,7 +314,7 @@ export function validateDesign(input: unknown, mode: 'draft' | 'flight' | 'battl
   for (const slot of design.slots) {
     if (!slot.component) continue;
     const hardpoint = hull.slots.find(point => point.id === slot.id)!;
-    if (slot.component.kind !== hardpoint.kind) issues.push({ code: 'kind', slotId: slot.id, message: `${slot.id}: несовместимый тип компонента` });
+    if (!acceptsComponent(hardpoint, slot.component)) issues.push({ code: 'kind', slotId: slot.id, message: `${slot.id}: несовместимый тип компонента` });
     if (sizes.indexOf(calculateComponent(slot.component).slotSize) > sizes.indexOf(hardpoint.size)) {
       issues.push({ code: 'size', slotId: slot.id, message: `${slot.id}: компонент слишком велик` });
     }
@@ -257,7 +323,7 @@ export function validateDesign(input: unknown, mode: 'draft' | 'flight' | 'battl
   if (stats.mass > hull.maxMass) issues.push({ code: 'mass', message: `Перегрузка: ${stats.mass.toFixed(1)} / ${hull.maxMass} т` });
   if (mode !== 'draft') {
     if (stats.speed <= 0) issues.push({ code: 'engine', message: 'Нужен двигатель с тягой и скоростью' });
-    if (stats.powerGeneration <= 0 || stats.peakPower > stats.powerGeneration) issues.push({ code: 'power', message: `Недостаточно мощности: ${stats.peakPower.toFixed(1)} / ${stats.powerGeneration.toFixed(1)} ед/с` });
+    if (stats.powerGeneration <= 0 || stats.peakPower > stats.powerGeneration) issues.push({ code: 'power', message: `Недостаточно мощности: ${stats.peakPower.toFixed(1)} / ${stats.powerGeneration.toFixed(1)} ЭЕ/с` });
     if (mode === 'battle' && !stats.weapons.length) issues.push({ code: 'weapon', message: 'Для боя установите оружие' });
     if (stats.weapons.some(weapon => weapon.energyPerShot > stats.energyCapacity)) issues.push({ code: 'battery', message: 'Энергии батареи не хватает на один выстрел' });
   }
