@@ -64,7 +64,7 @@ describe('one-own-turn strategic travel', () => {
     const travelling = apply(fixture(), send); freeze(travelling);
     const arrived = apply(travelling, end(travelling));
     expect(arrived.ships[0]).toEqual({ ...fixture().ships[0], fuel: 2, systemId: 'eden' });
-    expect(arrived.treasuries.blue).toEqual({ credits: 120, minerals: 60 }); expect(arrived.turn).toBe(2);
+    expect(arrived.treasuries.blue).toEqual({ credits: 119, minerals: 60 }); expect(arrived.turn).toBe(2);
     reject(arrived, end(travelling), 'STALE_TURN');
     const next = apply(arrived, end(arrived)); expect(next.ships).toEqual(arrived.ships);
   });
@@ -141,7 +141,7 @@ describe('one-own-turn strategic travel', () => {
     const state = apply(fixture(), send); state.treasuries.blue = { credits: MAX_RESOURCE - 20, minerals: MAX_RESOURCE - 10 };
     state.production.lastOrderId = 3;
     state.production.orders.push({ id: 3, factionId: 'blue', systemId: 'sol', design: design(), remainingTurns: 1 });
-    const next = apply(state, end(state)); expect(next.treasuries.blue).toEqual({ credits: MAX_RESOURCE, minerals: MAX_RESOURCE });
+    const next = apply(state, end(state)); expect(next.treasuries.blue).toEqual({ credits: MAX_RESOURCE - 1, minerals: MAX_RESOURCE });
     expect(next.production.completed[0].id).toBe(3); expect(next.ships[0].systemId).toBe('eden');
   });
   it('terminal turn blocks arrival, not a zero-time send command', () => {

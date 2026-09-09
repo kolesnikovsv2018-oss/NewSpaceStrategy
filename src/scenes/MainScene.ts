@@ -209,7 +209,10 @@ export class MainScene extends Phaser.Scene {
       if (command.kind === 'deployProduction') {
         this.shipsPage = result.state.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
       }
-      this.message = command.kind === 'endTurn' ? 'Доход начислен. Ход передан другой стороне.'
+      const receipt = result.endTurnEconomy;
+      this.message = receipt ? `Ход передан. Доход: +${receipt.income.credits} кр. / +${receipt.income.minerals} мин. ` +
+        `Содержание: ${receipt.upkeep.paidCredits}/${receipt.upkeep.dueCredits} кр. ` +
+        `Дефицит: ${receipt.upkeep.shortfallCredits} кр. (без долга).`
         : command.kind === 'explore' ? 'Система разведана.' : command.kind === 'colonize' ? 'Колония основана.'
         : command.kind === 'enqueueProduction' ? 'Заказ оплачен и добавлен в очередь.'
         : command.kind === 'cancelProduction' ? 'Заказ отменён. Возврат за оставшиеся ходы начислен.'

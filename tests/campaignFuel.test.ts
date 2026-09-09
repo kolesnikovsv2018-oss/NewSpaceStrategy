@@ -155,7 +155,7 @@ describe('strategic fuel, independent of tactical design and energy', () => {
       { ...send, expectedTurn: 3, systemId: 'eden', destinationId: 'sol' }];
     freeze(commands);
     const run = () => commands.reduce(apply, initial), next = run(); expect(run()).toEqual(next);
-    expect(next.ships[0].fuel).toBe(2); expect(next.treasuries.blue).toEqual({ credits: 105, minerals: 54 });
+    expect(next.ships[0].fuel).toBe(2); expect(next.treasuries.blue).toEqual({ credits: 104, minerals: 54 }); // One own endTurn upkeep.
     reject(next, refuel, 'STALE_TURN');
     const view = getCampaignSessionView(next, 'blue'); view.ships[0].fuel = 0;
     expect(next.ships[0].fuel).toBe(2);

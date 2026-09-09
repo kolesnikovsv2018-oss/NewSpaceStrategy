@@ -196,7 +196,7 @@ describe('session input boundaries and view', () => {
   it.each(['blue', 'red'] as const)('exposes only %s treasury/income with the matching galaxy projection', faction => {
     const state = createCampaignSession(); state.treasuries.red = { credits: 9876, minerals: 5432 };
     const view = getCampaignSessionView(state, faction);
-    expect(Object.keys(view).sort()).toEqual(['activeFactionId', 'fleets', 'galaxy', 'income', 'production', 'ships', 'treasury', 'turn']);
+    expect(Object.keys(view).sort()).toEqual(['activeFactionId', 'economyForecast', 'fleets', 'galaxy', 'income', 'production', 'ships', 'treasury', 'turn']);
     expect(view.treasury).toEqual(state.treasuries[faction]);
     expect(view.galaxy).toEqual(getCampaignView(state.galaxy, faction));
     const before = getCampaignSessionView(state, faction);

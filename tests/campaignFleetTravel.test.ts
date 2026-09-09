@@ -80,7 +80,7 @@ describe('atomic one-own-turn group travel', () => {
     expect(next.fleets.items[0]).toEqual({ ...moving.fleets.items[0], systemId: 'eden' });
     expect(next.ships.slice(0, 2)).toEqual(moving.ships.slice(0, 2).map(({ transit: _transit, ...ship }) => ({ ...ship, systemId: 'eden' })));
     expect(next.ships.slice(2)).toEqual(moving.ships.slice(2)); expect(next.fleets.items.slice(1)).toEqual(moving.fleets.items.slice(1));
-    expect(next.treasuries.blue).toEqual({ credits: 120, minerals: 60 }); expect(next.turn).toBe(2);
+    expect(next.treasuries.blue).toEqual({ credits: 114, minerals: 60 }); expect(next.turn).toBe(2); // Six own ships, not just the travelling pair.
     expect(end(next).ships).toEqual(next.ships); expect(end(next).fleets).toEqual(next.fleets);
     reject(next, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }, 'STALE_TURN');
   });
@@ -173,7 +173,7 @@ describe('atomic one-own-turn group travel', () => {
     state.production.lastOrderId = 12;
     state.production.orders.push({ id: 11, factionId: 'blue', systemId: 'sol', design: state.ships[0].design, remainingTurns: 1 });
     state.ships.push({ ...structuredClone(state.ships[0]), id: 12 });
-    const next = end(state); expect(next.treasuries.blue).toEqual({ credits: MAX_RESOURCE, minerals: MAX_RESOURCE });
+    const next = end(state); expect(next.treasuries.blue).toEqual({ credits: MAX_RESOURCE - 7, minerals: MAX_RESOURCE });
     expect(next.production.completed[0].id).toBe(11); expect(next.production.orders).toEqual([]);
     expect(next.fleets.items[0].systemId).toBe('eden'); expect(next.ships[next.ships.length - 1].systemId).toBe('eden');
     expect(end(next).ships).toEqual(next.ships);

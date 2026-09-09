@@ -3,6 +3,7 @@ import { campaignCommandSchema, campaignStateSchema, createCampaignState, execut
   areSystemsAdjacent, factionIdSchema, systemIdSchema, getCampaignView, type CampaignErrorCode, type CampaignFactionId,
   type CampaignState, type CampaignView } from './campaign';
 import { treasurySchema, type Treasury } from './campaignEconomy';
+import { calculateEndTurnEconomy, getUpkeepQuote, type EndTurnBudget, type EconomyCalculation } from './campaignUpkeep';
 import { designSchema, validateDesign } from './shipDesign';
 import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
   MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
@@ -95,7 +96,12 @@ export type SessionErrorCode = CampaignErrorCode | 'STALE_TURN' | 'NOT_ACTIVE_FA
   'NOT_OWN_COLONY' | 'INVALID_DESIGN' | 'INSUFFICIENT_RESOURCES' | 'QUEUE_FULL' | 'PRODUCTION_LIMIT' | 'ORDER_NOT_FOUND' | 'ORDER_ID_LIMIT' |
   'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE' | 'INSUFFICIENT_FUEL' | 'FUEL_FULL' |
   'SHIP_IN_FLEET' | 'FLEET_LIMIT' | 'FLEET_ID_LIMIT' | 'FLEET_NOT_FOUND' | 'FLEET_IN_TRANSIT';
-export type SessionResult = { ok: true; state: CampaignSession } |
+export interface EndTurnEconomy extends EndTurnBudget {
+  factionId: CampaignFactionId;
+  turn: number;
+}
+export type EconomyForecast = EconomyCalculation | { ok: false; code: 'TURN_LIMIT' };
+export type SessionResult = { ok: true; state: CampaignSession; endTurnEconomy?: EndTurnEconomy } |
   { ok: false; code: SessionErrorCode; message: string };
 
 function activeFaction(turn: number): CampaignFactionId { return turn % 2 === 1 ? 'blue' : 'red'; }
@@ -104,6 +110,13 @@ function activeFaction(turn: number): CampaignFactionId { return turn % 2 === 1 
 function incomeFor(galaxy: CampaignState, factionId: CampaignFactionId): Treasury {
   const colonies = galaxy.systems.filter(system => system.ownerId === factionId).length;
   return { credits: colonies * colonyIncome.credits, minerals: colonies * colonyIncome.minerals };
+}
+
+/** Hypothetical own endTurn, including for an inactive observer; never command authorization. */
+function economyFor(state: CampaignSession, factionId: CampaignFactionId): EconomyForecast {
+  if (state.turn === MAX_TURN) return { ok: false, code: 'TURN_LIMIT' };
+  return calculateEndTurnEconomy(state.treasuries[factionId], incomeFor(state.galaxy, factionId),
+    getUpkeepQuote(state.ships, factionId));
 }
 
 /** Pure session boundary. Callers must keep the returned state; this is not network deduplication. */
@@ -261,14 +274,14 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
     state.galaxy = result.state;
     return { ok: true, state };
   }
-  if (state.turn === MAX_TURN) return { ok: false, code: 'TURN_LIMIT', message: 'Достигнут предел номера хода' };
-  const income = incomeFor(state.galaxy, command.factionId);
-  const treasury = state.treasuries[command.factionId];
-  const next = { credits: treasury.credits + income.credits, minerals: treasury.minerals + income.minerals };
-  if (!treasurySchema.safeParse(next).success) {
-    return { ok: false, code: 'RESOURCE_LIMIT', message: 'Доход превысит предел ресурсов; ход не завершён' };
+  const economy = economyFor(state, command.factionId);
+  if (!economy.ok) {
+    return { ok: false, code: economy.code, message: economy.code === 'TURN_LIMIT'
+      ? 'Достигнут предел номера хода' : 'Доход превысит предел ресурсов; ход не завершён' };
   }
-  state.treasuries[command.factionId] = next;
+  const endTurnEconomy: EndTurnEconomy = { factionId: command.factionId, turn: state.turn,
+    income: economy.income, upkeep: economy.upkeep, treasuryAfter: economy.treasuryAfter };
+  state.treasuries[command.factionId] = { ...economy.treasuryAfter };
   state.production = advanceProduction(state.production, command.factionId);
   // Use the validated members' route before advancing ships; publish both arrivals together.
   for (const fleet of state.fleets.items) {
@@ -277,7 +290,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   }
   state.ships = advanceShipTravel(state.ships, command.factionId);
   state.turn += 1;
-  return { ok: true, state };
+  return { ok: true, state, endTurnEconomy };
 }
 
 export interface CampaignSessionView {
@@ -286,6 +299,7 @@ export interface CampaignSessionView {
   activeFactionId: CampaignFactionId;
   treasury: Treasury;
   income: Treasury;
+  economyForecast: EconomyForecast;
   production: ProductionView;
   ships: CampaignShip[];
   fleets: CampaignFleet[];
@@ -299,7 +313,7 @@ export function getCampaignSessionView(inputState: CampaignSession, factionId: C
   const faction = factionIdSchema.parse(factionId);
   return { galaxy: getCampaignView(state.galaxy, faction), turn: state.turn,
     activeFactionId: activeFaction(state.turn), treasury: { ...state.treasuries[faction] },
-    income: incomeFor(state.galaxy, faction), production: {
+    income: incomeFor(state.galaxy, faction), economyForecast: economyFor(state, faction), production: {
       orders: state.production.orders.filter(order => order.factionId === faction),
       completed: state.production.completed.filter(record => record.factionId === faction)
     }, ships: state.ships.filter(ship => ship.factionId === faction),

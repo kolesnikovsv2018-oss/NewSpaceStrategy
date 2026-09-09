@@ -143,7 +143,7 @@ describe('campaign scene and projection renderer', () => {
         click('campaign-production'); click('campaign-side-switch');
       }
       expect(current().turn).toBe(21); expect(current().production).toEqual({ lastOrderId: 2, orders: [], completed: [] });
-      expect(current().treasuries).toEqual({ blue: { credits: 115, minerals: 139 }, red: { credits: 115, minerals: 139 } });
+      expect(current().treasuries).toEqual({ blue: { credits: 114, minerals: 139 }, red: { credits: 114, minerals: 139 } });
       for (const faction of ['blue', 'red'] as const) {
         const view = domain.getCampaignSessionView(current(), faction);
         expect(view.ships).toHaveLength(1); expect(view.ships[0].factionId).toBe(faction);
@@ -242,9 +242,17 @@ describe('campaign scene and projection renderer', () => {
         const old = capture('campaign-end-turn');
         click('campaign-end-turn'); inert(old);
         expect(current().turn).toBe(before.turn + 1);
+        const due = before.ships.filter(ship => ship.factionId === faction).length;
+        const paid = Math.min(before.treasuries[faction].credits + 20, due);
         expect(current().treasuries[faction]).toEqual({
-          credits: before.treasuries[faction].credits + 20, minerals: before.treasuries[faction].minerals + 10
+          credits: before.treasuries[faction].credits + 20 - paid, minerals: before.treasuries[faction].minerals + 10
         });
+        const result = spy.mock.results[spy.mock.results.length - 1].value as domain.SessionResult;
+        if (!result.ok) throw Error(result.message);
+        expect(result.endTurnEconomy).toEqual({ factionId: faction, turn: before.turn,
+          income: { credits: 20, minerals: 10 },
+          upkeep: { shipCount: due, dueCredits: due, paidCredits: paid, shortfallCredits: due - paid },
+          treasuryAfter: current().treasuries[faction] });
         // Independent FIFO oracle: one head per own colony, no spillover into the second order.
         const heads = new Set<string>(), finished: number[] = [];
         const orders = before.production.orders.flatMap(order => {
@@ -342,6 +350,7 @@ describe('campaign scene and projection renderer', () => {
         click('campaign-production'); end();
       }
       expect(current().turn).toBe(47);
+      expect(current().treasuries).toEqual({ blue: { credits: 188, minerals: 258 }, red: { credits: 188, minerals: 258 } });
       expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
       const reads = load.mock.calls.length;
       // Three real flight legs exhaust both tanks; the fourth returns each group home.
@@ -406,7 +415,7 @@ describe('campaign scene and projection renderer', () => {
         }
       }
       expect(current().turn).toBe(55);
-      expect(current().treasuries).toEqual({ blue: { credits: 240, minerals: 286 }, red: { credits: 240, minerals: 286 } });
+      expect(current().treasuries).toEqual({ blue: { credits: 230, minerals: 286 }, red: { credits: 230, minerals: 286 } });
       for (const side of sides) {
         checkShips(side, side.home, [2, 2]);
         click(`system-${side.home}`); click('campaign-production'); click('production-fleets');
@@ -425,7 +434,7 @@ describe('campaign scene and projection renderer', () => {
         click('campaign-production'); end();
       }
       expect(current().turn).toBe(57); expect(current().fleets).toEqual({ lastFleetId: 2, items: [] });
-      expect(current().treasuries).toEqual({ blue: { credits: 260, minerals: 296 }, red: { credits: 260, minerals: 296 } });
+      expect(current().treasuries).toEqual({ blue: { credits: 248, minerals: 296 }, red: { credits: 248, minerals: 296 } });
       expect(current().production).toEqual({ lastOrderId: 4, orders: [], completed: [] });
       expect(current().ships.map(ship => [ship.id, ship.systemId, ship.fuel])).toEqual([[1, 'sol', 2], [2, 'sol', 2], [3, 'vega', 2], [4, 'vega', 2]]);
       expect(load).toHaveBeenCalledTimes(reads); expect(repositoryLoad).toHaveBeenCalledTimes(reads);
@@ -982,6 +991,24 @@ describe('campaign scene and projection renderer', () => {
     eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
     f.click('production-travel'); return f;
   }
+
+  it.each([0, 2, 100])('shows the actual endTurn receipt for %i ships, not the following forecast', count => {
+    const f = travelFixture(count);
+    f.state.treasuries.blue = { credits: 5, minerals: 5 };
+    const before = structuredClone(f.state), paid = Math.min(25, count);
+    f.click('campaign-end-turn');
+    const result = f.spy.mock.results[f.spy.mock.results.length - 1].value as domain.SessionResult;
+    if (!result.ok || !result.endTurnEconomy) throw Error('Expected endTurn receipt');
+    expect(f.message()).toBe(`Ход передан. Доход: +20 кр. / +10 мин. Содержание: ${paid}/${count} кр. Дефицит: ${count - paid} кр. (без долга).`);
+    expect(result.endTurnEconomy.treasuryAfter).toEqual({ credits: 25 - paid, minerals: 15 });
+    expect(result.state.ships).toEqual(before.ships); expect(result.state.turn).toBe(2);
+    const preview = domain.getCampaignSessionView(result.state, 'blue').economyForecast;
+    if (!preview.ok) throw Error(preview.code);
+    if (count === 100) expect(preview.upkeep.paidCredits).toBe(20); // Receipt paid25, subsequent forecast pays20.
+    expect(f.state).toEqual(before);
+    f.click('campaign-end-turn'); expect(f.message()).toContain('Сейчас ход другой стороны');
+    f.events.emit('shutdown');
+  });
 
   it('opens travel without reading the catalog again or changing the state', () => {
     const f = travelFixture(), before = structuredClone(f.state), reads = f.load.mock.calls.length;
