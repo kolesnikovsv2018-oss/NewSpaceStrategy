@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import type { SystemId } from '../domain/campaign';
 import type { CampaignSessionView } from '../domain/campaignSession';
 import { CAMPAIGN_FUEL_CAPACITY, isShipAtColony } from '../domain/campaignShips';
-import { isShipInFleet, MAX_CAMPAIGN_FLEETS, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
+import { isFleetAtColony, isShipInFleet, MAX_CAMPAIGN_FLEETS, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 
 export interface FleetPanelState {
   selectedShipIds: number[];
@@ -29,7 +29,7 @@ export class FleetPanel {
     state: FleetPanelState, actions: FleetPanelActions, private readonly blocked: boolean) {
     this.root = scene.add.container(0, 0).setName('fleet-panel');
     const candidates = view.ships.filter(ship => isShipAtColony(ship, source) && !isShipInFleet(view.fleets, ship.id));
-    const fleets = view.fleets.filter(fleet => fleet.systemId === source);
+    const fleets = view.fleets.filter(fleet => isFleetAtColony(fleet, view.ships, source));
     const candidatePage = Math.max(0, Math.min(state.candidatePage, candidates.length - 1));
     const fleetPage = Math.max(0, Math.min(state.fleetPage, fleets.length - 1));
     const ship = candidates[candidatePage], fleet = fleets[fleetPage];
@@ -59,7 +59,7 @@ export class FleetPanel {
     this.button(697, 523, '›', 'fleet-member-next', () => actions.memberPage(memberPage + 1), !fleet || memberPage >= fleet.shipIds.length - 1);
     this.label(46, 565, member ? `Топливо: ${member.fuel}/${CAMPAIGN_FUEL_CAPACITY} · Заправка — во вкладке «Перелёты».` : '', 'fleet-member-fuel');
     this.label(46, 601, 'Для одиночной отправки сначала расформируйте группу.', 'fleet-send-hint');
-    this.label(46, 628, 'Группового перелёта и изменения состава нет.', 'fleet-limit');
+    this.label(46, 628, 'Отправка группы пока через API; состав не редактируется.', 'fleet-limit');
   }
 
   private label(x: number, y: number, value: string, name: string, width = 745): void {

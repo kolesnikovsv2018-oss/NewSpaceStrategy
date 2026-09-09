@@ -5,7 +5,7 @@ import { createCampaignSession, executeSessionCommand, getCampaignSessionView,
 import { CampaignPanel } from '../ui/CampaignPanel';
 import { designSchema } from '../domain/shipDesign';
 import { isShipAtColony } from '../domain/campaignShips';
-import { isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
+import { isFleetAtColony, isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
 
 /** Owns the turn-based session; observation never changes the active faction. */
@@ -70,7 +70,7 @@ export class MainScene extends Phaser.Scene {
     const candidates = view.ships.filter(ship => isShipAtColony(ship, systemId) && !isShipInFleet(view.fleets, ship.id));
     this.fleetShipIds = this.fleetShipIds.filter(id => candidates.some(ship => ship.id === id));
     this.fleetCandidatePage = Math.max(0, Math.min(this.fleetCandidatePage, candidates.length - 1));
-    const fleets = view.fleets.filter(fleet => fleet.systemId === systemId);
+    const fleets = view.fleets.filter(fleet => isFleetAtColony(fleet, view.ships, systemId));
     this.fleetPage = Math.max(0, Math.min(this.fleetPage, fleets.length - 1));
     this.fleetMemberPage = Math.max(0, Math.min(this.fleetMemberPage, (fleets[this.fleetPage]?.shipIds.length ?? 0) - 1));
     this.transitPage = Math.max(0, Math.min(this.transitPage, view.ships.filter(ship => ship.transit).length - 1));
@@ -176,7 +176,7 @@ export class MainScene extends Phaser.Scene {
       if (command.kind === 'endTurn') this.fleetShipIds = [];
       if (command.kind === 'createFleet') {
         this.fleetShipIds = []; this.fleetMemberPage = 0;
-        this.fleetPage = result.state.fleets.items.filter(fleet => fleet.factionId === command.factionId && fleet.systemId === command.systemId).length - 1;
+        this.fleetPage = result.state.fleets.items.filter(fleet => fleet.factionId === command.factionId && isFleetAtColony(fleet, result.state.ships, command.systemId)).length - 1;
       }
       if (command.kind === 'disbandFleet') this.fleetMemberPage = 0;
       if (command.kind === 'sendShip') {
@@ -193,6 +193,7 @@ export class MainScene extends Phaser.Scene {
         : command.kind === 'cancelProduction' ? 'Заказ отменён. Возврат за оставшиеся ходы начислен.'
         : command.kind === 'refuelShip' ? 'Корабль заправлен. Ресурсы списаны.'
         : command.kind === 'createFleet' ? 'Группа кораблей создана.'
+        : command.kind === 'sendFleet' ? 'Группа отправлена; все участники прибудут в конце своего хода.'
         : command.kind === 'disbandFleet' ? 'Группа расформирована. Корабли остаются в колонии.'
         : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
     } else this.message = result.message;

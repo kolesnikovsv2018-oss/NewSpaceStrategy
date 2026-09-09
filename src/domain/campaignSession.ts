@@ -6,7 +6,7 @@ import { treasurySchema, type Treasury } from './campaignEconomy';
 import { designSchema, validateDesign } from './shipDesign';
 import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
   MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
-import { campaignFleetsSchema, createCampaignFleets, fleetIdSchema, fleetShipIdsSchema, isShipInFleet,
+import { campaignFleetsSchema, createCampaignFleets, fleetIdSchema, fleetShipIdsSchema, getFleetTransit, isShipInFleet,
   MAX_CAMPAIGN_FLEETS, MAX_FLEET_ID, type CampaignFleet } from './campaignFleets';
 import { advanceProduction, createProductionState, getProductionQuote, getProductionRefund,
   MAX_COLONY_QUEUE, MAX_ORDER_ID, MAX_PRODUCTION_RECORDS, orderIdSchema, productionStateSchema,
@@ -39,10 +39,12 @@ export const campaignSessionSchema = z.object({
     if (state.galaxy.systems.find(system => system.id === fleet.systemId)?.ownerId !== fleet.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Группа требует собственную колонию' });
     }
+    const route = shipsById.get(fleet.shipIds[0])?.transit;
     for (const id of fleet.shipIds) {
       const ship = shipsById.get(id);
-      if (!ship || ship.factionId !== fleet.factionId || ship.systemId !== fleet.systemId || ship.transit) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Все участники группы должны стоять в одной собственной колонии' });
+      if (!ship || ship.factionId !== fleet.factionId || ship.systemId !== fleet.systemId ||
+        ship.transit?.destinationId !== route?.destinationId || ship.transit?.remainingTurns !== route?.remainingTurns) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Участники группы требуют общую свою колонию и согласованный перелёт' });
       }
     }
   }
@@ -84,13 +86,15 @@ export const sessionCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('createFleet'), factionId: factionIdSchema, expectedTurn: turnSchema,
     systemId: systemIdSchema, shipIds: fleetShipIdsSchema }).strict(),
   z.object({ kind: z.literal('disbandFleet'), factionId: factionIdSchema, expectedTurn: turnSchema,
-    systemId: systemIdSchema, fleetId: fleetIdSchema }).strict()
+    systemId: systemIdSchema, fleetId: fleetIdSchema }).strict(),
+  z.object({ kind: z.literal('sendFleet'), factionId: factionIdSchema, expectedTurn: turnSchema,
+    systemId: systemIdSchema, fleetId: fleetIdSchema, destinationId: systemIdSchema }).strict()
 ]);
 export type SessionCommand = z.infer<typeof sessionCommandSchema>;
 export type SessionErrorCode = CampaignErrorCode | 'STALE_TURN' | 'NOT_ACTIVE_FACTION' | 'RESOURCE_LIMIT' | 'TURN_LIMIT' |
   'NOT_OWN_COLONY' | 'INVALID_DESIGN' | 'INSUFFICIENT_RESOURCES' | 'QUEUE_FULL' | 'PRODUCTION_LIMIT' | 'ORDER_NOT_FOUND' | 'ORDER_ID_LIMIT' |
   'COMPLETED_NOT_FOUND' | 'SHIP_LIMIT' | 'SHIP_NOT_FOUND' | 'SHIP_IN_TRANSIT' | 'INVALID_ROUTE' | 'INSUFFICIENT_FUEL' | 'FUEL_FULL' |
-  'SHIP_IN_FLEET' | 'FLEET_LIMIT' | 'FLEET_ID_LIMIT' | 'FLEET_NOT_FOUND';
+  'SHIP_IN_FLEET' | 'FLEET_LIMIT' | 'FLEET_ID_LIMIT' | 'FLEET_NOT_FOUND' | 'FLEET_IN_TRANSIT';
 export type SessionResult = { ok: true; state: CampaignSession } |
   { ok: false; code: SessionErrorCode; message: string };
 
@@ -116,15 +120,37 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   if (command.factionId !== activeFaction(state.turn)) {
     return { ok: false, code: 'NOT_ACTIVE_FACTION', message: 'Сейчас ход другой стороны' };
   }
-  if (command.kind === 'createFleet' || command.kind === 'disbandFleet') {
+  if (command.kind === 'createFleet' || command.kind === 'disbandFleet' || command.kind === 'sendFleet') {
     if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Группировка доступна только в своей колонии' };
     }
-    if (command.kind === 'disbandFleet') {
+    if (command.kind === 'disbandFleet' || command.kind === 'sendFleet') {
       const index = state.fleets.items.findIndex(fleet => fleet.id === command.fleetId &&
         fleet.factionId === command.factionId && fleet.systemId === command.systemId);
       if (index < 0) return { ok: false, code: 'FLEET_NOT_FOUND', message: 'Своя группа не найдена в указанной колонии' };
-      state.fleets.items.splice(index, 1);
+      const fleet = state.fleets.items[index];
+      if (getFleetTransit(fleet, state.ships)) {
+        return { ok: false, code: 'FLEET_IN_TRANSIT', message: 'Группа уже в пути; дождитесь прибытия' };
+      }
+      if (command.kind === 'disbandFleet') {
+        state.fleets.items.splice(index, 1);
+        return { ok: true, state };
+      }
+      if (state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
+        return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
+      }
+      if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
+        return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
+      }
+      // Membership was validated at the session boundary. Check every tank before any debit.
+      const members = state.ships.filter(ship => fleet.shipIds.includes(ship.id));
+      if (members.some(ship => ship.fuel < TRAVEL_FUEL_COST)) {
+        return { ok: false, code: 'INSUFFICIENT_FUEL', message: 'Недостаточно топлива у одного из кораблей группы; нужна заправка' };
+      }
+      for (const ship of members) {
+        ship.fuel -= TRAVEL_FUEL_COST;
+        ship.transit = { destinationId: command.destinationId, remainingTurns: 1 };
+      }
       return { ok: true, state };
     }
     // Validate every member before allocating an ID or publishing membership.
@@ -244,6 +270,11 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   }
   state.treasuries[command.factionId] = next;
   state.production = advanceProduction(state.production, command.factionId);
+  // Use the validated members' route before advancing ships; publish both arrivals together.
+  for (const fleet of state.fleets.items) {
+    const transit = getFleetTransit(fleet, state.ships);
+    if (fleet.factionId === command.factionId && transit) fleet.systemId = transit.destinationId;
+  }
   state.ships = advanceShipTravel(state.ships, command.factionId);
   state.turn += 1;
   return { ok: true, state };

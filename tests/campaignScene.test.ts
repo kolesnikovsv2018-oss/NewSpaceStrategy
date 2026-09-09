@@ -716,6 +716,55 @@ describe('campaign scene and projection renderer', () => {
     return { ...f, selectTwo };
   }
 
+  it('hides an API-sent group at both endpoints, preserves total cap and shows it after arrival', () => {
+    const f = fleetFixture(2); f.selectTwo(); f.click('fleet-create');
+    const old = f.find('fleet-disband').listeners('pointerdown')[0] as () => void;
+    // Group send has no UI yet; exercise the real scene command boundary directly.
+    (f.scene as unknown as { execute: (command: domain.SessionCommand) => void }).execute({
+      kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 1, destinationId: 'eden'
+    });
+    const calls = f.spy.mock.calls.length; old(); expect(f.spy).toHaveBeenCalledTimes(calls);
+    expect(f.message()).toContain('Группа отправлена');
+    expect(f.find('fleet-count').text).toContain('КОЛОНИИ: 0 · У стороны: 1/20');
+    expect(f.find('fleet-disband').interactive).toBe(false); expect(f.find('fleet-candidates-title').text).toContain(': 0');
+    expect(f.find('fleet-limit').text).toContain('через API');
+    f.click('production-travel'); expect(f.find('travel-transit-title').text).toContain(': 2');
+    expect(f.find('travel-count').text).toContain('2/100');
+    f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-fleets');
+    expect(f.find('fleet-disband').interactive).toBe(false);
+    f.click('campaign-end-turn'); expect(f.find('fleet-current').text).toContain('Группа #1');
+    expect(f.find('fleet-member-fuel').text).toContain('2/3');
+    f.click('fleet-disband'); expect(f.message()).toBe('Сейчас ход другой стороны');
+    f.click('campaign-side-switch'); f.click('campaign-end-turn'); f.click('campaign-side-switch'); f.click('production-fleets');
+    f.click('fleet-disband'); expect(f.find('fleet-candidates-title').text).toContain(': 2');
+  });
+
+  it('rejects captured disband when the same group started travelling without a UI redraw', () => {
+    const f = fleetFixture(2); f.selectTwo(); f.click('fleet-create');
+    const grouped = f.spy.mock.results[0].value.state as domain.CampaignSession;
+    const moving = domain.executeSessionCommand(grouped, { kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 1, destinationId: 'eden' });
+    if (!moving.ok) throw Error(moving.code);
+    Object.assign(f.scene, { campaign: moving.state });
+    f.click('fleet-disband');
+    expect(f.spy.mock.results[f.spy.mock.results.length - 1].value).toMatchObject({ ok: false, code: 'FLEET_IN_TRANSIT' });
+    expect(f.find('fleet-current').text).toBe('Групп в этой колонии нет.');
+    expect(moving.state.fleets.items).toHaveLength(1);
+  });
+
+  it('clamps the displayed group when another group departs and clears all trips/groups on reset', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-create');
+    f.click('fleet-candidate-prev'); f.selectTwo(); f.click('fleet-create');
+    expect(f.find('fleet-current').text).toContain('2/2 · Группа #2');
+    (f.scene as unknown as { execute: (command: domain.SessionCommand) => void }).execute({
+      kind: 'sendFleet', factionId: 'blue', expectedTurn: 1, systemId: 'sol', fleetId: 1, destinationId: 'eden'
+    });
+    expect(f.find('fleet-current').text).toContain('1/1 · Группа #2');
+    expect(f.find('fleet-member').text).toContain('#3');
+    f.click('campaign-new'); f.click('campaign-confirm'); f.click('campaign-production'); f.click('production-fleets');
+    expect(f.find('fleet-count').text).toContain('0/20');
+    f.click('production-travel'); expect(f.find('travel-transit-title').text).toContain(': 0');
+  });
+
   it('opens exclusive group view without commands or catalog reads; empty controls are disabled', () => {
     const f = fleetFixture(0), before = structuredClone(f.state), reads = f.load.mock.calls.length;
     expect(f.find('fleet-candidate').text).toBe('Нет свободных стоящих кораблей.');

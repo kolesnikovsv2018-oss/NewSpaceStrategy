@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { factionIdSchema, systemIdSchema } from './campaign';
+import { factionIdSchema, systemIdSchema, type SystemId } from './campaign';
+import type { CampaignShip } from './campaignShips';
 import { orderIdSchema } from './production';
 
 export const MAX_FLEET_ID = 1_000_000_000;
@@ -51,4 +52,15 @@ export function createCampaignFleets(): z.infer<typeof campaignFleetsSchema> {
 /** Typed selector for already validated state or its detached faction projection. */
 export function isShipInFleet(fleets: readonly CampaignFleet[], shipId: number): boolean {
   return fleets.some(fleet => fleet.shipIds.includes(shipId));
+}
+
+/** Validated session/view only: all members have identical transit, or none. No second route stored on fleets. */
+export function getFleetTransit(fleet: CampaignFleet, ships: readonly CampaignShip[]): CampaignShip['transit'] {
+  const transit = ships.find(ship => ship.id === fleet.shipIds[0])?.transit;
+  return transit ? { ...transit } : undefined;
+}
+
+/** While travelling, fleet.systemId is the origin, not presence in either colony. */
+export function isFleetAtColony(fleet: CampaignFleet, ships: readonly CampaignShip[], systemId: SystemId): boolean {
+  return fleet.systemId === systemId && !getFleetTransit(fleet, ships);
 }
