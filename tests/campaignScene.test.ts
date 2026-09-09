@@ -709,6 +709,202 @@ describe('campaign scene and projection renderer', () => {
     return f;
   }
 
+  function fleetFixture(count = 4) {
+    const f = travelFixture(count);
+    f.click('production-fleets');
+    const selectTwo = () => { f.click('fleet-select'); f.click('fleet-candidate-next'); f.click('fleet-select'); };
+    return { ...f, selectTwo };
+  }
+
+  it('opens exclusive group view without commands or catalog reads; empty controls are disabled', () => {
+    const f = fleetFixture(0), before = structuredClone(f.state), reads = f.load.mock.calls.length;
+    expect(f.find('fleet-candidate').text).toBe('Нет свободных стоящих кораблей.');
+    expect(f.find('fleet-current').text).toBe('Групп в этой колонии нет.');
+    for (const name of ['fleet-select', 'fleet-create', 'fleet-clear', 'fleet-disband', 'fleet-next', 'fleet-member-next']) {
+      expect(f.find(name).interactive).toBe(false); f.click(name);
+    }
+    expect(f.nodes.some(n => !n.destroyed && ['travel-panel', 'production-enqueue'].includes(n.name))).toBe(false);
+    f.click('production-fleets'); expect(f.find('production-enqueue')).toBeDefined();
+    f.click('production-fleets'); expect(f.find('fleet-panel')).toBeDefined();
+    expect(f.state).toEqual(before); expect(f.spy).not.toHaveBeenCalled(); expect(f.load).toHaveBeenCalledTimes(reads);
+  });
+
+  it('captures the displayed ordered membership once, without payment or copying ship designs', () => {
+    const f = fleetFixture(), before = structuredClone(f.state), reads = f.load.mock.calls.length;
+    f.click('fleet-candidate-next'); f.click('fleet-select');
+    expect(f.find('fleet-create').interactive).toBe(false);
+    f.click('fleet-candidate-prev'); f.click('fleet-select');
+    const old = f.find('fleet-create').listeners('pointerdown')[0] as () => void;
+    old(); old(); expect(f.spy).toHaveBeenCalledTimes(1);
+    expect(f.spy.mock.calls[0][1]).toEqual({ kind: 'createFleet', factionId: 'blue', systemId: 'sol', expectedTurn: 1, shipIds: [2, 1] });
+    const next = f.spy.mock.results[0].value.state;
+    expect(next).toEqual({ ...before, fleets: { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'sol', shipIds: [2, 1] }] } });
+    expect(f.find('fleet-selection-count').text).toContain('Выбрано: 0/10');
+    expect(f.find('fleet-candidate').text).toContain('#3');
+    expect(f.find('fleet-member').text).toContain('#2'); f.click('fleet-member-next'); expect(f.find('fleet-member').text).toContain('#1');
+    expect(f.find('fleet-member-next').interactive).toBe(false);
+    expect(f.load).toHaveBeenCalledTimes(reads); expect(f.state).toEqual(before);
+  });
+
+  it('limits selection to ten, allows deselection and clear without changing membership', () => {
+    const f = fleetFixture(12);
+    for (let i = 0; i < 10; i++) { f.click('fleet-select'); f.click('fleet-candidate-next'); }
+    expect(f.find('fleet-selection-count').text).toContain('10/10'); expect(f.find('fleet-select').interactive).toBe(false);
+    f.click('fleet-select'); f.click('fleet-candidate-prev'); expect(f.find('fleet-select').interactive).toBe(true);
+    f.click('fleet-select'); expect(f.find('fleet-selection-count').text).toContain('9/10');
+    f.click('fleet-select'); f.click('fleet-clear');
+    expect(f.find('fleet-selection-count').text).toContain('0/10'); expect(f.spy).not.toHaveBeenCalled();
+  });
+
+  it('browses multiple groups, disbands the captured last group once and clamps member/group pages', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-create');
+    f.click('fleet-candidate-prev'); f.selectTwo(); f.click('fleet-create');
+    expect(f.find('fleet-current').text).toContain('2/2 · Группа #2');
+    f.click('fleet-member-next'); expect(f.find('fleet-member').text).toContain('2/2');
+    f.click('fleet-prev'); expect(f.find('fleet-member').text).toContain('1/2'); f.click('fleet-next');
+    const old = f.find('fleet-disband').listeners('pointerdown')[0] as () => void;
+    old(); old(); expect(f.spy).toHaveBeenCalledTimes(3);
+    expect(f.spy.mock.calls[2][1]).toEqual({ kind: 'disbandFleet', factionId: 'blue', systemId: 'sol', expectedTurn: 1, fleetId: 2 });
+    expect(f.find('fleet-current').text).toContain('1/1 · Группа #1'); expect(f.find('fleet-member').text).toContain('1/2');
+    expect(f.find('fleet-count').text).toContain('У стороны: 1/20');
+    f.click('fleet-disband'); expect(f.find('fleet-disband').interactive).toBe(false);
+    expect(f.find('fleet-candidates-title').text).toContain(': 4');
+    const next = f.spy.mock.results[3].value.state;
+    expect(next.fleets).toEqual({ lastFleetId: 2, items: [] }); expect(next.ships).toEqual(f.state.ships);
+  });
+
+  it('shows group membership in travel, refuels a member and allows send only after UI disband', () => {
+    const f = fleetFixture(2); f.state.ships[0].fuel = 1;
+    f.selectTwo(); f.click('fleet-create'); f.click('production-travel');
+    expect(f.find('travel-limit').text).toContain('Группа #1');
+    f.click('travel-send'); expect(f.message()).toContain('сначала расформируйте');
+    f.click('travel-refuel'); expect(f.find('travel-fuel').text).toContain('3/3');
+    f.click('production-fleets'); expect(f.find('fleet-member-fuel').text).toContain('3/3');
+    f.click('fleet-disband'); f.click('production-travel'); f.click('travel-send');
+    expect(f.find('travel-transit').text).toContain('#1');
+    f.click('production-fleets'); expect(f.find('fleet-candidates-title').text).toContain(': 1');
+  });
+
+  it('creates and disbands red groups without exposing blue groups or global counter', () => {
+    const f = fleetFixture();
+    f.state.ships.slice(2).forEach(ship => { ship.factionId = 'red'; ship.systemId = 'vega'; ship.design.name = 'Красный'; });
+    f.selectTwo(); f.click('fleet-create'); f.click('campaign-end-turn'); f.click('campaign-side-switch');
+    expect(f.nodes.some(n => !n.destroyed && n.name === 'fleet-panel')).toBe(false);
+    f.click('campaign-production'); f.click('system-vega'); f.click('campaign-production'); f.click('production-fleets');
+    expect(f.find('fleet-count').text).toContain('У стороны: 0/20');
+    f.selectTwo(); f.click('fleet-create'); expect(f.find('fleet-current').text).toContain('Группа #2');
+    expect(f.find('fleet-member').text).toContain('Красный');
+    expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toEqual({ kind: 'createFleet', factionId: 'red', expectedTurn: 2, systemId: 'vega', shipIds: [3, 4] });
+    f.click('fleet-disband'); expect(f.spy.mock.calls[f.spy.mock.calls.length - 1][1]).toEqual({ kind: 'disbandFleet', factionId: 'red', expectedTurn: 2, systemId: 'vega', fleetId: 2 });
+    expect(f.spy.mock.results[f.spy.mock.results.length - 1].value.state.fleets.items).toHaveLength(1);
+  });
+
+  it('filters members, transit and other colonies out of candidates and shows colony-specific groups', () => {
+    const f = fleetFixture(8);
+    f.state.ships[2].transit = { destinationId: 'eden', remainingTurns: 1 };
+    f.state.ships.slice(3, 6).forEach(ship => { ship.systemId = 'eden'; });
+    f.state.fleets = { lastFleetId: 2, items: [
+      { id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 2] },
+      { id: 2, factionId: 'blue', systemId: 'eden', shipIds: [4, 5] }
+    ] };
+    f.click('production-fleets'); f.click('production-fleets');
+    expect(f.find('fleet-candidates-title').text).toContain(': 2'); expect(f.find('fleet-candidate').text).toContain('#7');
+    expect(f.find('fleet-count').text).toContain('КОЛОНИИ: 1 · У стороны: 2/20');
+    f.click('fleet-select'); f.click('campaign-production'); f.click('system-eden'); f.click('campaign-production'); f.click('production-fleets');
+    expect(f.find('fleet-candidate').text).toContain('#6'); expect(f.find('fleet-current').text).toContain('Группа #2');
+    expect(f.find('fleet-selection-count').text).toContain('0/10');
+  });
+
+  it.each(['eden', 'rift', 'vega'])('does not expose group controls in unavailable colony %s', id => {
+    const f = fixture(); f.click(`system-${id}`); f.click('campaign-production');
+    expect(f.find('production-unavailable')).toBeDefined();
+    expect(f.nodes.some(n => !n.destroyed && ['production-fleets', 'fleet-panel'].includes(n.name))).toBe(false);
+  });
+
+  it.each(['stale', 'vanished', 'moved', 'transit', 'grouped'] as const)('rejects changed captured membership: %s', change => {
+    const f = fleetFixture(); f.selectTwo();
+    if (change === 'stale') f.state.turn = 3;
+    if (change === 'vanished') f.state.ships.shift();
+    if (change === 'moved') f.state.ships[0].systemId = 'eden';
+    if (change === 'transit') f.state.ships[0].transit = { destinationId: 'eden', remainingTurns: 1 };
+    if (change === 'grouped') f.state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 3] }] };
+    const before = structuredClone(f.state); f.click('fleet-create');
+    expect(f.spy.mock.calls[0][1]).toMatchObject({ shipIds: [1, 2], expectedTurn: 1 });
+    expect(f.spy.mock.results[0].value).toMatchObject({ ok: false, code: change === 'stale' ? 'STALE_TURN' : change === 'grouped' ? 'SHIP_IN_FLEET' : change === 'transit' ? 'SHIP_IN_TRANSIT' : 'SHIP_NOT_FOUND' });
+    expect(f.state).toEqual(before);
+    expect(f.find('fleet-selection-count').text).toContain(change === 'stale' ? '2/10' : '1/10');
+  });
+
+  it('shows missing captured group refusal, then refreshes empty group/member pages', () => {
+    const f = fleetFixture();
+    f.state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 2] }] };
+    f.click('production-fleets'); f.click('production-fleets'); f.state.fleets.items = [];
+    f.click('fleet-disband'); expect(f.message()).toContain('Своя группа не найдена');
+    expect(f.spy.mock.calls[0][1]).toMatchObject({ fleetId: 1 }); expect(f.find('fleet-disband').interactive).toBe(false);
+    expect(f.find('fleet-member').text).toBe('Нет участников для просмотра.');
+  });
+
+  it('keeps inactive create/disband clickable for domain refusal and clears selection on successful endTurn', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-create');
+    f.click('fleet-candidate-prev'); f.selectTwo(); f.click('campaign-end-turn');
+    expect(f.find('fleet-selection-count').text).toContain('0/10');
+    f.click('fleet-candidate-prev'); f.selectTwo(); f.click('fleet-create'); expect(f.message()).toBe('Сейчас ход другой стороны');
+    expect(f.find('fleet-selection-count').text).toContain('2/10'); f.click('fleet-disband'); expect(f.message()).toBe('Сейчас ход другой стороны');
+  });
+
+  it.each(['fleet-limit', 'id-limit'] as const)('shows domain %s without clearing the valid draft', limit => {
+    const f = fleetFixture(42);
+    if (limit === 'fleet-limit') f.state.fleets = { lastFleetId: 20, items: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, factionId: 'blue', systemId: 'sol', shipIds: [i * 2 + 1, i * 2 + 2] })) };
+    else f.state.fleets.lastFleetId = 1_000_000_000;
+    f.click('production-fleets'); f.click('production-fleets'); f.selectTwo();
+    expect(f.find('fleet-create').interactive).toBe(true); f.click('fleet-create');
+    expect(f.spy.mock.results[0].value).toMatchObject({ ok: false, code: limit === 'fleet-limit' ? 'FLEET_LIMIT' : 'FLEET_ID_LIMIT' });
+    expect(f.find('fleet-selection-count').text).toContain('2/10');
+  });
+
+  it.each(['fleet-clear', 'fleet-candidate-prev', 'production-fleets', 'production-travel', 'campaign-production', 'campaign-side-switch', 'campaign-new'])('makes old create inert after %s', action => {
+    const f = fleetFixture(); f.selectTwo(); const old = f.find('fleet-create').listeners('pointerdown')[0] as () => void;
+    f.click(action); old(); expect(f.spy).not.toHaveBeenCalled();
+  });
+
+  it('blocks all group controls while pending, restores draft on cancel, then ESC closes one layer', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-create'); f.click('fleet-candidate-prev'); f.selectTwo();
+    f.click('campaign-new');
+    for (const name of ['fleet-select', 'fleet-create', 'fleet-clear', 'fleet-disband', 'fleet-candidate-prev', 'fleet-next', 'fleet-member-next', 'production-fleets', 'production-travel']) {
+      expect(f.find(name).interactive).toBe(false); f.click(name);
+    }
+    expect(f.spy).toHaveBeenCalledTimes(1);
+    f.keyboard.emit('keydown-ESC'); expect(f.find('fleet-selection-count').text).toContain('2/10');
+    f.keyboard.emit('keydown-ESC'); expect(f.find('production-enqueue')).toBeDefined();
+    f.click('production-fleets'); expect(f.find('fleet-selection-count').text).toContain('0/10');
+    f.keyboard.emit('keydown-ESC'); f.keyboard.emit('keydown-ESC'); expect(f.find('system-sol')).toBeDefined();
+  });
+
+  it('destroys group callbacks on reset/exit and reenters with one handler, empty groups and draft', () => {
+    const f = fleetFixture(); f.selectTwo(); f.click('fleet-create');
+    const old = f.find('fleet-disband').listeners('pointerdown')[0] as () => void;
+    f.click('campaign-new'); f.click('campaign-confirm'); old(); expect(f.spy).toHaveBeenCalledTimes(1);
+    f.click('campaign-production'); f.click('production-fleets'); expect(f.find('fleet-count').text).toContain('0/20');
+    f.click('campaign-menu'); f.click('campaign-confirm'); old();
+    expect(f.nodes.every(n => n.destroyed)).toBe(true); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(0);
+    f.scene.create(); f.click('campaign-production'); f.click('production-fleets');
+    expect(f.find('fleet-selection-count').text).toContain('0/10'); expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    expect(f.nodes.filter(n => !n.destroyed && n.name === 'fleet-panel')).toHaveLength(1);
+  });
+
+  it('fits long member/candidate names and large IDs without changing snapshots', () => {
+    const f = fleetFixture(2); const name = `Ш\n${'Ш'.repeat(78)}`;
+    f.state.production.lastOrderId = 1_000_000_000;
+    f.state.ships.forEach((ship, i) => { ship.id = 999999999 + i; ship.design.name = name; });
+    f.state.fleets.lastFleetId = 999999999;
+    f.click('production-fleets'); f.click('production-fleets');
+    expect(f.find('fleet-candidate').text).toMatch(/#999999999 Ш Ш.*…$/); expect(f.find('fleet-candidate').width).toBeLessThanOrEqual(745);
+    f.selectTwo(); f.click('fleet-create');
+    expect(f.find('fleet-current').text).toContain('#1000000000'); expect(f.find('fleet-current').width).toBeLessThanOrEqual(540);
+    expect(f.find('fleet-member').text).toMatch(/#999999999 Ш Ш.*…$/); expect(f.find('fleet-member').width).toBeLessThanOrEqual(590);
+    expect(f.spy.mock.results[0].value.state.ships.every((ship: { design: { name: string } }) => ship.design.name === name)).toBe(true);
+  });
+
   it('keeps grouped ships visible and individually refuelable, but shows the grouped-send refusal', () => {
     const f = refuelFixture(2);
     f.state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 2] }] };

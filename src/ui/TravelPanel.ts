@@ -58,7 +58,9 @@ export class TravelPanel {
     const name = (id: SystemId) => view.galaxy.systems.find(system => system.id === id)!.name;
     this.label(46, 563, trip?.transit ? `${name(trip.systemId)} → ${name(trip.transit.destinationId)} · Осталось: 1 свой ход` : '', 'travel-route');
     this.label(46, 598, `Всего кораблей: ${view.ships.length}/${MAX_CAMPAIGN_SHIPS} · В пути тоже занимают место.`, 'travel-count');
-    this.label(46, 628, 'Заправка: только в своей колонии, без смены хода. Боя нет.', 'travel-limit');
+    const fleet = ship ? view.fleets.find(item => item.shipIds.includes(ship.id)) : undefined;
+    this.label(46, 628, fleet ? `Группа #${fleet.id}: перед отправкой расформируйте во вкладке «Группы».`
+      : 'Заправка: только в своей колонии, без смены хода. Боя нет.', 'travel-limit');
   }
 
   private label(x: number, y: number, value: string, name: string, width = 745): void {

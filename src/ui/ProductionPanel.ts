@@ -5,6 +5,7 @@ import { isShipAtColony, MAX_CAMPAIGN_SHIPS } from '../domain/campaignShips';
 import { getProductionQuote, getProductionRefund } from '../domain/production';
 import type { ProductionCatalog } from '../utils/ProductionCatalog';
 import { TravelPanel, type TravelPanelState, type TravelPanelActions } from './TravelPanel';
+import { FleetPanel, type FleetPanelState, type FleetPanelActions } from './FleetPanel';
 
 export interface ProductionPanelState {
   catalog: ProductionCatalog;
@@ -13,6 +14,7 @@ export interface ProductionPanelState {
   shipsPage: number;
   showShips: boolean;
   travel?: TravelPanelState;
+  fleets?: FleetPanelState;
 }
 export interface ProductionPanelActions {
   choose: (index: number) => void;
@@ -25,6 +27,8 @@ export interface ProductionPanelActions {
   deploy: (orderId: number) => void;
   toggleTravel: () => void;
   travel: TravelPanelActions;
+  toggleFleets: () => void;
+  fleets: FleetPanelActions;
 }
 const short = (text: string, length = 42): string => {
   const clean = text.replace(/\s+/g, ' ');
@@ -36,6 +40,7 @@ export class ProductionPanel {
   private readonly root: Phaser.GameObjects.Container;
   private disposed = false;
   private travel?: TravelPanel;
+  private fleets?: FleetPanel;
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, systemId: SystemId,
     state: ProductionPanelState, actions: ProductionPanelActions, private readonly blocked: boolean) {
@@ -46,7 +51,12 @@ export class ProductionPanel {
       this.label(46, 270, 'Выберите свою колонию на карте. Чужие очереди недоступны.', 'production-unavailable');
       return;
     }
+    this.button(350, 216, state.fleets ? '← Очередь' : 'Группы', 'production-fleets', actions.toggleFleets);
     this.button(490, 216, state.travel ? '← Производство' : 'Перелёты', 'production-travel', actions.toggleTravel);
+    if (state.fleets) {
+      this.fleets = new FleetPanel(scene, session, systemId, state.fleets, actions.fleets, blocked);
+      return;
+    }
     if (state.travel) {
       this.travel = new TravelPanel(scene, session, systemId, state.travel, actions.travel, blocked);
       return;
@@ -101,7 +111,7 @@ export class ProductionPanel {
   }
 
   private label(x: number, y: number, value: string, name: string, size = 15): void {
-    const width = name === 'production-completed' ? 570
+    const width = name === 'production-title' ? 290 : name === 'production-completed' ? 570
       : name === 'production-design' || name.startsWith('production-order-') || name.startsWith('production-progress-') ? 435 : 745;
     const text = this.scene.add.text(x, y, value, { fontFamily: 'Arial', fontSize: `${size}px`, color: '#c8d9ed' }).setName(name);
     // Word wrapping + maxLines can hide the entire name after an order ID.
@@ -116,5 +126,5 @@ export class ProductionPanel {
     this.root.add(text);
     if (!disabled && !this.blocked) text.setInteractive({ useHandCursor: true }).on('pointerdown', () => { if (!this.disposed) action(); });
   }
-  destroy(): void { if (!this.disposed) { this.disposed = true; this.travel?.destroy(); this.root.destroy(); } }
+  destroy(): void { if (!this.disposed) { this.disposed = true; this.travel?.destroy(); this.fleets?.destroy(); this.root.destroy(); } }
 }

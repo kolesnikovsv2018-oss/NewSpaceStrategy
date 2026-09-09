@@ -5,6 +5,7 @@ import { createCampaignSession, executeSessionCommand, getCampaignSessionView,
 import { CampaignPanel } from '../ui/CampaignPanel';
 import { designSchema } from '../domain/shipDesign';
 import { isShipAtColony } from '../domain/campaignShips';
+import { isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
 
 /** Owns the turn-based session; observation never changes the active faction. */
@@ -25,6 +26,11 @@ export class MainScene extends Phaser.Scene {
   private travelOpen = false;
   private destinationIndex = 0;
   private transitPage = 0;
+  private fleetsOpen = false;
+  private fleetShipIds: number[] = [];
+  private fleetCandidatePage = 0;
+  private fleetPage = 0;
+  private fleetMemberPage = 0;
 
   constructor() { super({ key: 'MainScene' }); }
 
@@ -61,6 +67,12 @@ export class MainScene extends Phaser.Scene {
     const choice = this.catalog?.choices[this.choiceIndex];
     const design = choice?.quote ? designSchema.parse(choice.design) : undefined;
     const view = getCampaignSessionView(this.campaign, factionId);
+    const candidates = view.ships.filter(ship => isShipAtColony(ship, systemId) && !isShipInFleet(view.fleets, ship.id));
+    this.fleetShipIds = this.fleetShipIds.filter(id => candidates.some(ship => ship.id === id));
+    this.fleetCandidatePage = Math.max(0, Math.min(this.fleetCandidatePage, candidates.length - 1));
+    const fleets = view.fleets.filter(fleet => fleet.systemId === systemId);
+    this.fleetPage = Math.max(0, Math.min(this.fleetPage, fleets.length - 1));
+    this.fleetMemberPage = Math.max(0, Math.min(this.fleetMemberPage, (fleets[this.fleetPage]?.shipIds.length ?? 0) - 1));
     this.transitPage = Math.max(0, Math.min(this.transitPage, view.ships.filter(ship => ship.transit).length - 1));
     this.completedPage = Math.max(0, Math.min(this.completedPage, view.production.completed.filter(record => record.systemId === systemId).length - 1));
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
@@ -68,7 +80,9 @@ export class MainScene extends Phaser.Scene {
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
         completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
-        travel: this.travelOpen ? { shipsPage: this.shipsPage, destinationIndex: this.destinationIndex, transitPage: this.transitPage } : undefined } : undefined
+        travel: this.travelOpen ? { shipsPage: this.shipsPage, destinationIndex: this.destinationIndex, transitPage: this.transitPage } : undefined,
+        fleets: this.fleetsOpen ? { selectedShipIds: [...this.fleetShipIds], candidatePage: this.fleetCandidatePage,
+          fleetPage: this.fleetPage, memberPage: this.fleetMemberPage } : undefined } : undefined
     }, {
       select: id => {
         if (this.pending) return;
@@ -111,8 +125,29 @@ export class MainScene extends Phaser.Scene {
         deploy: orderId => this.execute({ kind: 'deployProduction', factionId, systemId, expectedTurn, orderId }),
         toggleTravel: () => {
           if (this.pending) return;
+          this.resetFleets();
           this.travelOpen = !this.travelOpen; this.destinationIndex = 0; this.transitPage = 0;
           this.message = ''; this.error = false; this.render();
+        },
+        toggleFleets: () => {
+          if (this.pending) return;
+          const open = !this.fleetsOpen;
+          this.resetTravel(); this.fleetsOpen = open;
+          this.message = ''; this.error = false; this.render();
+        },
+        fleets: {
+          candidatePage: page => { if (this.pending) return; this.fleetCandidatePage = page; this.render(); },
+          fleetPage: page => { if (this.pending) return; this.fleetPage = page; this.fleetMemberPage = 0; this.render(); },
+          memberPage: page => { if (this.pending) return; this.fleetMemberPage = page; this.render(); },
+          toggleShip: id => {
+            if (this.pending) return;
+            if (this.fleetShipIds.includes(id)) this.fleetShipIds = this.fleetShipIds.filter(item => item !== id);
+            else if (candidates.some(ship => ship.id === id) && this.fleetShipIds.length < MAX_FLEET_SHIPS) this.fleetShipIds.push(id);
+            this.render();
+          },
+          clear: () => { if (this.pending) return; this.fleetShipIds = []; this.render(); },
+          create: shipIds => this.execute({ kind: 'createFleet', factionId, expectedTurn, systemId, shipIds }),
+          disband: fleetId => this.execute({ kind: 'disbandFleet', factionId, expectedTurn, systemId, fleetId })
         },
         travel: {
           shipsPage: page => { if (this.pending) return; this.shipsPage = page; this.destinationIndex = 0; this.render(); },
@@ -138,6 +173,12 @@ export class MainScene extends Phaser.Scene {
     this.error = !result.ok;
     if (result.ok) {
       this.campaign = result.state;
+      if (command.kind === 'endTurn') this.fleetShipIds = [];
+      if (command.kind === 'createFleet') {
+        this.fleetShipIds = []; this.fleetMemberPage = 0;
+        this.fleetPage = result.state.fleets.items.filter(fleet => fleet.factionId === command.factionId && fleet.systemId === command.systemId).length - 1;
+      }
+      if (command.kind === 'disbandFleet') this.fleetMemberPage = 0;
       if (command.kind === 'sendShip') {
         this.destinationIndex = 0;
         this.transitPage = result.state.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
@@ -160,6 +201,7 @@ export class MainScene extends Phaser.Scene {
 
   private onEscape = (): void => {
     if (!this.campaign) return;
+    if (!this.pending && this.fleetsOpen) { this.resetFleets(); this.render(); return; }
     if (!this.pending && this.travelOpen) { this.resetTravel(); this.render(); return; }
     if (!this.pending && this.productionOpen) { this.productionOpen = false; this.render(); return; }
     this.pending = this.pending ? undefined : 'menu';
@@ -167,6 +209,11 @@ export class MainScene extends Phaser.Scene {
   };
 
   private resetTravel(): void {
+    this.resetFleets();
     this.travelOpen = false; this.destinationIndex = 0; this.transitPage = 0;
+  }
+
+  private resetFleets(): void {
+    this.fleetsOpen = false; this.fleetShipIds = []; this.fleetCandidatePage = 0; this.fleetPage = 0; this.fleetMemberPage = 0;
   }
 }
