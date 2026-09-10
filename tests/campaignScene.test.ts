@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import * as domain from '../src/domain/campaignSession';
+import { getGalaxyDefinition } from '../src/domain/campaign';
 import * as catalog from '../src/utils/ProductionCatalog';
 import { createDesign, createComponent, installComponent } from '../src/domain/shipDesign';
 import { getProductionQuote } from '../src/domain/production';
@@ -10,10 +11,38 @@ import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
 import * as aiExecutor from '../src/domain/campaignAiExecutor';
 import * as aiPlanner from '../src/domain/campaignAiPlanner';
+import * as runDomain from '../src/domain/campaignRun';
+import { encodeCampaignRunSave, decodeCampaignRunSave } from '../src/domain/campaignRunSave';
+import { CampaignRunSaveManager } from '../src/utils/CampaignRunSaveManager';
 import { known, rich, threeCommands } from './fixtures/campaignAi';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
+
+/** Observe the real run boundary using the former session-shaped assertions, not a fake executor.
+ * This keeps all historical input/result identity, command and receipt assertions meaningful. */
+function observeRunCommands() {
+  const execute = runDomain.executeRunCommand;
+  const observer = vi.fn<(state: unknown, command: unknown) => domain.SessionResult | runDomain.RunFailure>();
+  vi.spyOn(runDomain, 'executeRunCommand').mockImplementation((input, command) => {
+    const result = execute(input, command);
+    observer.mockImplementationOnce(() => result.ok
+      ? { ok: true, state: result.run.session, ...(result.endTurnEconomy ? { endTurnEconomy: result.endTurnEconomy } : {}) }
+      : result);
+    observer((input as runDomain.CampaignRun).session, command);
+    return result;
+  });
+  return observer;
+}
+function seedSession(state: domain.CampaignSession) {
+  // Explicit diagnostic creator fault/fixture; ordinary paid cycles never call this.
+  vi.spyOn(runDomain, 'createCampaignRun').mockReturnValueOnce({ ok: true, run: { session: state, control: { mode: 'local' } } });
+}
+function rawRun(state: domain.CampaignSession) {
+  const result = encodeCampaignRunSave({ session: state, control: { mode: 'local' } });
+  if (!result.ok) throw Error(result.message);
+  return result.json;
+}
 
 /** Rendering/input contract harness; no actual Phaser hit testing. */
 class Node extends EventEmitter {
@@ -44,10 +73,21 @@ function fixture() {
   const make = (text = '') => { const node = new Node(text); nodes.push(node); return node; };
   const keyboard = new EventEmitter(), events = new EventEmitter();
   const scene = new MainScene();
+  const owner = scene as unknown as { run?: runDomain.CampaignRun };
+  // Historical diagnostic access redirects to the sole run; there is no duplicate session.
+  Object.defineProperty(scene, 'campaign', { configurable: true,
+    get: () => owner.run?.session,
+    set: (session: domain.CampaignSession) => { owner.run = { session, control: owner.run?.control ?? { mode: 'local' } }; } });
+  const tasks: { callback: () => void; removed: boolean; remove: ReturnType<typeof vi.fn> }[] = [];
+  const isActive = vi.fn(() => true);
+  const delayedCall = vi.fn((_delay: number, callback: () => void) => {
+    const task = { callback, removed: false, remove: vi.fn() };
+    task.remove.mockImplementation(() => { task.removed = true; }); tasks.push(task); return task;
+  });
   const start = vi.fn(() => events.emit('shutdown'));
   Object.assign(scene, {
     cameras: { main: { setBackgroundColor: vi.fn() } }, input: { keyboard }, events,
-    scene: { start }, add: { container: () => make(), graphics: () => make(),
+    scene: { start, isActive }, time: { delayedCall }, add: { container: () => make(), graphics: () => make(),
       text: (_x: number, _y: number, value: string) => make(value) }
   });
   scene.create();
@@ -56,11 +96,463 @@ function fixture() {
     if (!node) throw new Error(`Missing ${name}`);
     return node;
   };
-  return { scene, nodes, keyboard, events, start, find,
+  return { scene, nodes, keyboard, events, start, find, tasks, delayedCall, isActive,
     click: (name: string) => find(name).emit('pointerdown'),
     details: () => find('campaign-system-details').text,
     message: () => find('campaign-message').text };
 }
+
+describe('S3.34 bounded run scene integration', () => {
+  type Runtime = {
+    run: runDomain.CampaignRun; aiPhase: string; aiSummary?: aiExecutor.AiTurnSummary;
+    factionId: 'blue' | 'red'; selectedId: string; generation: number; pending?: string;
+    ticket?: { consumed: boolean; request: aiPlanner.AiTurnRequest };
+    operation?: unknown; executing: boolean;
+    render(): void; resetCampaign(): void; execute(command: domain.SessionCommand): void;
+    requestOperation(action: string, request?: aiPlanner.AiTurnRequest): void;
+    confirmOperation(operation?: unknown): void;
+  };
+  const runtime = (f: ReturnType<typeof fixture>) => f.scene as unknown as Runtime;
+  const capture = (f: ReturnType<typeof fixture>, name: string) => f.find(name).listeners('pointerdown')[0] as () => void;
+  const visible = (f: ReturnType<typeof fixture>) => f.nodes.filter(n => !n.destroyed).map(n => n.text).join('\n');
+  const absent = (f: ReturnType<typeof fixture>, name: string) => expect(f.nodes.some(n => !n.destroyed && n.name === name)).toBe(false);
+  function aiStart() {
+    const f = fixture(); f.click('campaign-new');
+    expect(f.find('campaign-mode-local').text).toContain('✓');
+    f.click('campaign-mode-ai'); f.click('campaign-confirm');
+    expect(runtime(f).run.control).toEqual({ mode: 'human-vs-ai', aiPolicy: 'expansion-v1' });
+    expect(runtime(f).aiPhase).toBe('idle'); expect(f.tasks).toHaveLength(0);
+    return f;
+  }
+  function redScheduled() {
+    const f = aiStart(); f.click('campaign-end-turn');
+    expect(runtime(f).run.session.turn).toBe(2); expect(runtime(f).aiPhase).toBe('scheduled');
+    expect(f.tasks).toHaveLength(1); return f;
+  }
+  function slot() {
+    const contents = new Map<string, string>([['unrelated', 'keep']]);
+    const storage = { getItem: vi.fn((key: string) => contents.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { contents.set(key, value); }) } satisfies StoragePort;
+    vi.stubGlobal('localStorage', storage); return { storage, contents };
+  }
+  function load(f: ReturnType<typeof fixture>, run: runDomain.CampaignRun, contents: Map<string, string>) {
+    const encoded = encodeCampaignRunSave(run); if (!encoded.ok) throw Error(encoded.message);
+    contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
+    f.click('campaign-load'); f.click('campaign-confirm');
+    expect(runtime(f).run).toEqual(run); expect(f.delayedCall).not.toHaveBeenCalled();
+  }
+
+  it('ordinary entry/reset is local without IO; mode defaults local every time and cancellation preserves AI run', () => {
+    const { storage } = slot();
+    try {
+      const f = aiStart(), r = runtime(f), source = r.run;
+      f.click('campaign-new'); expect(f.find('campaign-mode-local').text).toContain('✓');
+      const mode = capture(f, 'campaign-mode-ai'); f.click('campaign-cancel'); mode();
+      expect(r.run).toBe(source); expect(r.pending).toBeUndefined();
+      f.click('campaign-new'); f.click('campaign-confirm'); expect(r.run.control).toEqual({ mode: 'local' });
+      absent(f, 'campaign-ai-status'); expect(f.find('campaign-ai').interactive).toBe(true);
+      f.events.emit('shutdown'); f.scene.create(); expect(r.run.control).toEqual({ mode: 'local' });
+      expect(storage.getItem).not.toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(f.delayedCall).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('real blue1→red2→blue3→red4→blue5 is one deferred call/commit per blue end, with no red summary or next AI', async () => {
+    const panels = await import('../src/ui/CampaignPanel'), Original = panels.CampaignPanel;
+    const rendered = vi.spyOn(panels, 'CampaignPanel').mockImplementation(function (...args) { return new Original(...args); });
+    const { storage } = slot();
+    try {
+      const f = aiStart(), r = runtime(f);
+      const executor = vi.spyOn(runDomain, 'executeRunAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+      const dispatch = vi.spyOn(domain, 'executeSessionCommand');
+      const views = vi.spyOn(domain, 'getCampaignSessionView');
+      const log = vi.spyOn(console, 'log'), warn = vi.spyOn(console, 'warn'), error = vi.spyOn(console, 'error');
+      for (const expectedTurn of [2, 4]) {
+        if (expectedTurn === 4) { f.click('system-eden'); f.click('campaign-explore'); f.click('campaign-colonize'); }
+        f.click('campaign-end-turn');
+        expect(r.run.session.turn).toBe(expectedTurn);
+        expect(r.run.session.treasuries.blue).toEqual({ credits: expectedTurn === 2 ? 110 : 130, minerals: expectedTurn === 2 ? 55 : 65 });
+        const source = r.run, before = structuredClone(source), calls = executor.mock.calls.length;
+        const task = f.tasks.at(-1)!;
+        for (let frame = 0; frame < 4; frame++) r.render();
+        f.click('campaign-budget'); f.click('campaign-budget'); f.click('system-sol');
+        expect(executor).toHaveBeenCalledTimes(calls); expect(f.tasks).toHaveLength(expectedTurn / 2);
+        let current = r.run, commits = 0;
+        Object.defineProperty(r, 'run', { configurable: true, get: () => current, set: value => { current = value; commits++; } });
+        const commandCount = dispatch.mock.calls.length; task.callback(); task.callback();
+        expect(commits).toBe(1); expect(task.remove).toHaveBeenCalledWith(false);
+        expect(executor).toHaveBeenCalledTimes(calls + 1); expect(planner).toHaveBeenCalledTimes(calls + 1);
+        expect(executor.mock.calls[calls]).toEqual([before, { factionId: 'red', expectedTurn }]);
+        expect(executor.mock.calls[calls][0]).toBe(source); expect(source).toEqual(before);
+        expect(dispatch.mock.calls.slice(commandCount).map(([, command]) => (command as domain.SessionCommand).kind))
+          .toEqual(expectedTurn === 2 ? ['explore', 'endTurn'] : ['colonize', 'explore', 'endTurn']);
+        expect(r.run.session.turn).toBe(expectedTurn + 1); expect(r.aiPhase).toBe('idle'); expect(r.ticket).toBeUndefined();
+        expect(r.factionId).toBe('blue'); expect(r.aiSummary).toBeUndefined(); absent(f, 'campaign-ai-summary');
+        expect(f.message()).toBe('Компьютер завершил ход. Ваш ход.');
+        expect(r.run.session.treasuries.red).toEqual({ credits: expectedTurn === 2 ? 110 : 130, minerals: expectedTurn === 2 ? 55 : 65 });
+      }
+      // The trusted executor needs red's own before/after observations; only its two calls per
+      // transaction may request red. All panel projections below must still be blue-only.
+      expect(views.mock.calls.filter(([, side]) => side === 'red').map(([state]) => state.turn)).toEqual([2, 3, 4, 5]);
+      for (const [, view, state] of rendered.mock.calls.filter(([, , state]) => state.aiMode)) {
+        expect(view.galaxy.factionId).toBe('blue'); expect(view).not.toHaveProperty('treasuries');
+        expect(state.aiSummary).toBeUndefined();
+      }
+      expect(storage.getItem).not.toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(f.nodes.filter(n => !n.destroyed && n.name === 'campaign-panel')).toHaveLength(1);
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+      expect(log).not.toHaveBeenCalled(); expect(warn).not.toHaveBeenCalled(); expect(error).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['button', 'escape'] as const)('%s pauses before panels unwind; cancelled Resume never executes and confirmed Resume is one-shot', how => {
+    const f = redScheduled(), r = runtime(f), executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+    f.click('campaign-budget'); const source = r.run, first = f.tasks[0];
+    if (how === 'button') f.click('campaign-pause'); else f.keyboard.emit('keydown-ESC');
+    expect(first.removed).toBe(true); expect(r.aiPhase).toBe('paused'); expect(f.find('campaign-budget-panel')).toBeDefined();
+    first.callback(); expect(executor).not.toHaveBeenCalled(); expect(r.run).toBe(source);
+    f.click('campaign-resume'); const oldConfirm = capture(f, 'campaign-confirm'); f.keyboard.emit('keydown-ESC'); oldConfirm();
+    expect(r.aiPhase).toBe('paused'); expect(f.tasks).toHaveLength(1);
+    f.click('campaign-resume'); const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+    expect(r.aiPhase).toBe('scheduled'); expect(f.tasks).toHaveLength(2); expect(executor).not.toHaveBeenCalled();
+    first.callback(); expect(executor).not.toHaveBeenCalled(); f.tasks[1].callback(); f.tasks[1].callback();
+    expect(executor).toHaveBeenCalledTimes(1); expect(r.run.session.turn).toBe(3);
+  });
+
+  it.each(['save', 'load', 'new', 'menu', 'takeover'] as const)('%s cancels the ticket BEFORE IO/pending; cancellation never silently resumes', action => {
+    const { storage, contents } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f), task = f.tasks[0], source = r.run;
+      contents.set(CampaignRunSaveManager.STORAGE_KEY, rawRun(domain.createCampaignSession()));
+      storage.getItem.mockImplementation(key => {
+        expect(task.removed).toBe(true); expect(r.ticket).toBeUndefined(); expect(r.aiPhase).toBe('paused');
+        expect(r.pending).toBe(action); task.callback(); return contents.get(key) ?? null;
+      });
+      const executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+      f.click(`campaign-${action}`); expect(task.removed).toBe(true); expect(r.aiPhase).toBe('paused');
+      expect(r.pending).toBe(action); const old = capture(f, 'campaign-confirm');
+      const buttons = f.nodes.filter(n => !n.destroyed && n.interactive).map(n => n.name);
+      expect(buttons.sort()).toEqual((action === 'new' ? ['campaign-mode-local', 'campaign-mode-ai', 'campaign-cancel', 'campaign-confirm']
+        : ['campaign-cancel', 'campaign-confirm']).sort());
+      f.click('campaign-cancel'); old(); task.callback(); r.render();
+      expect(r.run).toBe(source); expect(r.aiPhase).toBe('paused'); expect(executor).not.toHaveBeenCalled();
+      expect(f.tasks).toHaveLength(1); expect(storage.setItem).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['save', 'load'] as const)('%s read failure remains paused; empty save writes full save2 and never auto-resumes', action => {
+    const { storage, contents } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f), source = r.run, task = f.tasks[0];
+      storage.getItem.mockImplementationOnce(() => { expect(task.removed).toBe(true); throw Error('private'); });
+      f.click(`campaign-${action}`); expect(r.pending).toBeUndefined(); expect(r.aiPhase).toBe('paused');
+      expect(r.run).toBe(source); expect(f.message()).not.toContain('private');
+      task.callback(); f.click('campaign-save');
+      expect(r.run).toBe(source); expect(r.aiPhase).toBe('paused'); expect(storage.setItem).toHaveBeenCalledTimes(1);
+      const json = contents.get(CampaignRunSaveManager.STORAGE_KEY)!;
+      expect(Object.keys(JSON.parse(json)).sort()).toEqual(['format', 'schemaVersion', 'rulesVersion', 'session', 'control'].sort());
+      expect(JSON.parse(json).schemaVersion).toBe(2); expect(decodeCampaignRunSave(json)).toEqual({ ok: true, run: source });
+      expect(f.tasks).toHaveLength(1); expect(contents.get('unrelated')).toBe('keep');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['local-blue', 'local-red', 'ai-blue', 'ai-red', 'legacy-red'] as const)('load %s uses captured whole run/control without reread, resets UI and never schedules', variant => {
+    const { storage, contents } = slot();
+    try {
+      const f = aiStart(), r = runtime(f);
+      const run: runDomain.CampaignRun = { session: domain.createCampaignSession(), control: variant.startsWith('ai')
+        ? { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } : { mode: 'local' } };
+      run.session.turn = variant.endsWith('red') ? 2 : 1;
+      const encoded = variant.startsWith('legacy') ? encodeCampaignSave(run.session) : encodeCampaignRunSave(run);
+      if (!encoded.ok) throw Error(encoded.message);
+      contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
+      f.click('campaign-production'); f.click('production-fleets');
+      Object.assign(r, { fleetShipIds: [77, 88], fleetPage: 12, fleetMemberPage: 2, choiceIndex: 6, completedPage: 3 });
+      f.click('campaign-load'); const operation = r.operation as { candidate: runDomain.CampaignRun };
+      const reads = storage.getItem.mock.calls.length; contents.delete(CampaignRunSaveManager.STORAGE_KEY);
+      f.click('campaign-confirm'); expect(r.run).toBe(operation.candidate); expect(r.run).toEqual(run);
+      expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(storage.setItem).not.toHaveBeenCalled();
+      expect(r.factionId).toBe(variant.startsWith('ai') ? 'blue' : variant.endsWith('red') ? 'red' : 'blue');
+      expect(r.aiPhase).toBe(variant === 'ai-red' ? 'paused' : 'idle'); expect(f.tasks).toHaveLength(0);
+      expect(r).toMatchObject({ fleetShipIds: [], fleetPage: 0, fleetMemberPage: 0, choiceIndex: 0, completedPage: 0,
+        productionOpen: false, budgetOpen: false, travelOpen: false, fleetsOpen: false, fleetTravelOpen: false, catalog: undefined });
+      expect(r.aiSummary).toBeUndefined();
+      if (variant.startsWith('legacy')) {
+        contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
+        f.click('campaign-save'); expect(r.pending).toBe('save'); expect(storage.setItem).not.toHaveBeenCalled();
+        f.click('campaign-confirm'); expect(JSON.parse(contents.get(CampaignRunSaveManager.STORAGE_KEY)!).schemaVersion).toBe(2);
+        expect(r.run.control).toEqual({ mode: 'local' });
+      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('captures AI run before presence read and writes that snapshot even if nested live control/session change', () => {
+    const { storage, contents } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f), before = structuredClone(r.run);
+      contents.set(CampaignRunSaveManager.STORAGE_KEY, 'occupied');
+      f.click('campaign-save'); r.run.control = { mode: 'local' }; r.run.session.treasuries.red.credits = 234;
+      f.click('campaign-confirm'); expect(decodeCampaignRunSave(contents.get(CampaignRunSaveManager.STORAGE_KEY)))
+        .toEqual({ ok: true, run: before });
+      expect(storage.getItem).toHaveBeenCalledTimes(1); expect(storage.setItem).toHaveBeenCalledTimes(1);
+      expect(f.tasks).toHaveLength(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['replace', 'turn', 'generation', 'mode', 'pending', 'inactive', 'reset', 'shutdown', 'reentry'] as const)
+  ('pre-call %s invalidates a stale ticket, even if invoked despite removal', change => {
+    const f = redScheduled(), r = runtime(f), task = f.tasks[0], execute = vi.spyOn(runDomain, 'executeRunAiTurn');
+    if (change === 'replace') r.run = structuredClone(r.run);
+    if (change === 'turn') r.run.session.turn = 4;
+    if (change === 'generation') r.generation++;
+    if (change === 'mode') r.run.control = { mode: 'local' };
+    if (change === 'pending') r.pending = 'save';
+    if (change === 'inactive') f.isActive.mockReturnValue(false);
+    if (change === 'reset') r.resetCampaign();
+    if (change === 'shutdown' || change === 'reentry') f.events.emit('shutdown');
+    if (change === 'reentry') f.scene.create();
+    const run = r.run; task.callback(); task.callback(); expect(execute).not.toHaveBeenCalled(); expect(r.run).toBe(run);
+    expect(r.ticket).toBeUndefined(); expect(r.aiPhase).not.toBe('failed');
+  });
+
+  it.each(['replace', 'turn', 'generation', 'mode', 'pending', 'inactive', 'reset', 'shutdown', 'reentry'] as const)
+  ('post-call %s discards a real result without committing/failing the replacement', change => {
+    const f = redScheduled(), r = runtime(f), task = f.tasks[0], original = runDomain.executeRunAiTurn;
+    let replacement: runDomain.CampaignRun;
+    const executor = vi.spyOn(runDomain, 'executeRunAiTurn').mockImplementation((run, request) => {
+      const result = original(run, request); expect(result.ok).toBe(true);
+      if (change === 'replace') r.run = structuredClone(r.run);
+      if (change === 'turn') r.run.session.turn = 4;
+      if (change === 'generation') r.generation++;
+      if (change === 'mode') r.run.control = { mode: 'local' };
+      if (change === 'pending') r.pending = 'save';
+      if (change === 'inactive') f.isActive.mockReturnValue(false);
+      if (change === 'reset') r.resetCampaign();
+      if (change === 'shutdown' || change === 'reentry') f.events.emit('shutdown');
+      if (change === 'reentry') f.scene.create();
+      replacement = r.run; return result;
+    });
+    task.callback(); task.callback(); expect(executor).toHaveBeenCalledTimes(1); expect(r.run).toBe(replacement!);
+    expect(r.aiPhase).not.toBe('failed'); expect(r.aiSummary).toBeUndefined();
+    expect(f.tasks).toHaveLength(1); expect(r.ticket).toBeUndefined();
+    if (change === 'reset' || change === 'reentry') {
+      expect(f.find('campaign-end-turn').interactive).toBe(true); expect(f.find('campaign-new').interactive).toBe(true);
+      expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    }
+  });
+
+  it('consumes before synchronous AI; running blocks commands, repeat callbacks, Resume/IO/new/menu/takeover and ESC', () => {
+    const { storage } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f), task = f.tasks[0], original = runDomain.executeRunAiTurn;
+      const execute = vi.spyOn(runDomain, 'executeRunAiTurn').mockImplementation((run, request) => {
+        expect(r.aiPhase).toBe('running'); expect(r.ticket?.consumed).toBe(true); expect(task.removed).toBe(true);
+        expect(f.nodes.filter(n => !n.destroyed && n.interactive)).toHaveLength(0);
+        for (const action of ['resume', 'ai', 'save', 'load', 'new', 'menu', 'takeover']) r.requestOperation(action, { factionId: 'red', expectedTurn: 2 });
+        r.execute({ kind: 'endTurn', factionId: 'red', expectedTurn: 2 }); task.callback(); f.keyboard.emit('keydown-ESC');
+        expect(r.pending).toBeUndefined(); expect(r.run).toBe(run); expect(storage.getItem).not.toHaveBeenCalled();
+        return original(run, request);
+      });
+      task.callback(); expect(execute).toHaveBeenCalledTimes(1); expect(r.aiPhase).toBe('idle');
+      expect(r.run.session.turn).toBe(3); expect(storage.setItem).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['credits', 'minerals', 'late-credits', 'late-minerals', 'terminal', 'throw'] as const)
+  ('%s failure is atomic, safe and never retries; accepted blue end remains accepted', fault => {
+    const { contents } = slot();
+    try {
+      const f = aiStart(), r = runtime(f);
+      if (fault === 'terminal') r.run.session.turn = domain.MAX_TURN - 1;
+      if (fault.includes('credits') || fault.includes('minerals')) {
+        const resource = fault.includes('credits') ? 'credits' : 'minerals';
+        r.run.session.treasuries.red[resource] = domain.MAX_RESOURCE - (fault.startsWith('late') ? resource === 'credits' ? 10 : 5 : 0);
+        if (fault.startsWith('late')) known(r.run.session, 'nexus', 'red', null);
+      }
+      r.render(); f.click('campaign-end-turn'); const source = r.run, before = structuredClone(source);
+      const dispatch = vi.spyOn(domain, 'executeSessionCommand');
+      const executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+      if (fault === 'throw') executor.mockImplementationOnce(() => { throw Error('red-target-and-finance-secret'); });
+      f.tasks[0].callback(); f.tasks[0].callback(); r.render();
+      expect(r.run).toBe(source); expect(source).toEqual(before); expect(r.aiPhase).toBe('failed');
+      expect(executor).toHaveBeenCalledTimes(1); expect(dispatch.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(r.aiSummary).toBeUndefined(); expect(f.message()).toBe('Не удалось выполнить ход компьютера.');
+      expect(visible(f)).not.toContain('red-target-and-finance-secret'); expect(f.tasks).toHaveLength(1);
+      expect(source.session.treasuries.blue).toEqual({ credits: 110, minerals: 55 });
+      f.click('campaign-save'); expect(r.aiPhase).toBe('failed');
+      expect(decodeCampaignRunSave(contents.get(CampaignRunSaveManager.STORAGE_KEY))).toEqual({ ok: true, run: before });
+      f.click('campaign-resume'); f.click('campaign-cancel'); expect(r.aiPhase).toBe('failed');
+      expect(executor).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('blue end failure never schedules and explicit failed Resume is exactly one new attempt', () => {
+    const f = aiStart(), r = runtime(f); r.run.session.treasuries.blue.credits = domain.MAX_RESOURCE;
+    f.click('campaign-end-turn'); expect(f.tasks).toHaveLength(0); expect(r.run.session.turn).toBe(1);
+    r.run.session.treasuries.blue.credits = 100; f.click('campaign-end-turn');
+    const executor = vi.spyOn(runDomain, 'executeRunAiTurn').mockImplementationOnce(() => { throw Error('fault'); });
+    f.tasks[0].callback(); expect(r.aiPhase).toBe('failed');
+    f.click('campaign-resume'); f.click('campaign-confirm'); expect(executor).toHaveBeenCalledTimes(1);
+    f.tasks[1].callback(); f.tasks[0].callback(); expect(executor).toHaveBeenCalledTimes(2);
+    expect(r.run.session.turn).toBe(3); expect(r.aiPhase).toBe('idle'); expect(f.tasks).toHaveLength(2);
+  });
+
+  it.each(['scheduled', 'failed', 'idle'] as const)('confirmed takeover from %s changes only control, observes active and invalidates old task', phase => {
+    const f = phase === 'idle' ? aiStart() : redScheduled(), r = runtime(f);
+    if (phase === 'failed') {
+      vi.spyOn(runDomain, 'executeRunAiTurn').mockImplementationOnce(() => { throw Error('fault'); }); f.tasks[0].callback();
+    }
+    const source = r.run, before = structuredClone(source.session);
+    const commands = vi.spyOn(domain, 'executeSessionCommand'), takeover = vi.spyOn(runDomain, 'convertRunToLocal');
+    f.click('campaign-takeover'); expect(takeover).not.toHaveBeenCalled(); f.click('campaign-confirm');
+    expect(takeover).toHaveBeenCalledExactlyOnceWith(source); expect(r.run.session).toEqual(before);
+    expect(r.run.control).toEqual({ mode: 'local' }); expect(r.factionId).toBe(phase === 'idle' ? 'blue' : 'red');
+    expect(r.aiPhase).toBe('idle'); expect(r.aiSummary).toBeUndefined(); expect(commands).not.toHaveBeenCalled();
+    f.tasks.forEach(task => task.callback()); expect(r.run.session).toEqual(before);
+    expect(f.find('campaign-ai').interactive).toBe(true); expect(f.find('campaign-side-switch').interactive).toBe(true);
+    f.click('campaign-end-turn'); expect(r.run.session.turn).toBe(before.turn + 1); expect(r.aiPhase).toBe('idle');
+  });
+
+  it('authorizes all eleven manual commands through run API; helper is absent and cannot be forced in AI mode', () => {
+    const f = redScheduled(), r = runtime(f); f.click('campaign-pause');
+    const source = r.run, low = vi.spyOn(domain, 'executeSessionCommand'), execute = vi.spyOn(runDomain, 'executeRunCommand');
+    const payloads = [
+      { kind: 'endTurn' }, { kind: 'explore', systemId: 'nexus' }, { kind: 'colonize', systemId: 'nexus' },
+      { kind: 'enqueueProduction', systemId: 'vega', design: createCombatDesign('fighter') },
+      { kind: 'cancelProduction', systemId: 'vega', orderId: 1 }, { kind: 'deployProduction', systemId: 'vega', orderId: 1 },
+      { kind: 'sendShip', systemId: 'vega', shipId: 1, destinationId: 'nexus' },
+      { kind: 'refuelShip', systemId: 'vega', shipId: 1 }, { kind: 'createFleet', systemId: 'vega', shipIds: [1, 2] },
+      { kind: 'disbandFleet', systemId: 'vega', fleetId: 1 }, { kind: 'sendFleet', systemId: 'vega', fleetId: 1, destinationId: 'nexus' }
+    ] as const;
+    for (const payload of payloads) {
+      r.execute({ ...payload, factionId: 'red', expectedTurn: 2 } as domain.SessionCommand);
+      expect(execute.mock.results.at(-1)?.value).toMatchObject({ ok: false, code: 'FACTION_CONTROLLED_BY_AI' });
+      expect(r.run).toBe(source);
+    }
+    expect(execute).toHaveBeenCalledTimes(11); expect(low).not.toHaveBeenCalled();
+    r.requestOperation('ai', { factionId: 'red', expectedTurn: 2 }); expect(r.pending).toBeUndefined();
+    absent(f, 'campaign-ai'); absent(f, 'campaign-side-switch');
+    r.factionId = 'red'; r.render(); expect(r.factionId).toBe('blue');
+  });
+
+  it.each(['production', 'travel', 'fleets', 'fleetTravel'] as const)('%s stays blue-only/read-only on red turn, with navigation enabled and no hidden finances', panel => {
+    const { contents } = slot();
+    try {
+      const f = fixture(), r = runtime(f), session = rich(2, 5);
+      session.treasuries.red = { credits: 987654321, minerals: 876543210 };
+      load(f, { session, control: { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } }, contents);
+      f.click('campaign-production');
+      if (panel === 'travel') f.click('production-travel');
+      if (panel === 'fleets' || panel === 'fleetTravel') f.click('production-fleets');
+      if (panel === 'fleetTravel') f.click('fleet-travel');
+      const mutating = /^(campaign-(explore|colonize|end-turn)|production-(enqueue|deploy|cancel-\d+)|travel-(send|refuel)|fleet-(select|clear|create|disband)|fleet-travel-send)$/;
+      const source = r.run, commands = vi.spyOn(runDomain, 'executeRunCommand');
+      for (const node of f.nodes.filter(n => !n.destroyed && mutating.test(n.name))) {
+        expect(node.interactive, node.name).toBe(false); node.emit('pointerdown');
+      }
+      expect(commands).not.toHaveBeenCalled(); expect(r.run).toBe(source);
+      expect(visible(f)).not.toContain('987654321'); expect(visible(f)).not.toContain('876543210');
+      expect(f.find('campaign-budget').interactive).toBe(true); f.click('campaign-budget');
+      expect(f.find('budget-title').text).toContain('Синий союз'); expect(f.find('budget-context').text).toContain('Условный');
+      expect(f.tasks).toHaveLength(0); expect(r.aiPhase).toBe('paused');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('diagnostic full ship cap/deficit advances paid FIFO/free/group arrivals with zero fuel and no leaked red receipt', () => {
+    const { contents } = slot();
+    try {
+      const f = fixture(), r = runtime(f), session = rich(2);
+      session.treasuries.red = { credits: 5, minerals: 5 };
+      load(f, { session, control: { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } }, contents);
+      const before = structuredClone(r.run), expected = runDomain.executeRunAiTurn(before, { factionId: 'red', expectedTurn: 2 });
+      if (!expected.ok) throw Error(expected.message);
+      expect(expected.summary.endTurnEconomy.upkeep).toEqual({ shipCount: 100, dueCredits: 100, paidCredits: 25, shortfallCredits: 75 });
+      f.click('campaign-resume'); f.click('campaign-confirm'); f.tasks[0].callback();
+      expect(r.run).toEqual(expected.run); expect(r.run.session.ships).toHaveLength(200);
+      expect(r.run.session.ships.filter(s => s.factionId === 'red' && s.transit)).toHaveLength(0);
+      expect(r.run.session.ships.filter(s => s.factionId === 'red').slice(0, 3).map(s => s.fuel)).toEqual([0, 0, 0]);
+      expect(r.aiSummary).toBeUndefined(); absent(f, 'campaign-ai-summary'); expect(visible(f)).not.toContain('25/100');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['no-colonies', 'no-frontier', 'all-caps'] as const)('loaded diagnostic %s completes exactly one package and never seeks another turn', boundary => {
+    const { contents } = slot();
+    try {
+      const f = fixture(), r = runtime(f), session = boundary === 'all-caps' ? rich(2) : domain.createCampaignSession();
+      session.turn = 2;
+      if (boundary === 'no-colonies') {
+        session.galaxy.systems.forEach(system => { if (system.ownerId === 'red') system.ownerId = null; system.exploredBy = system.exploredBy.filter(side => side !== 'red'); });
+      }
+      if (boundary === 'no-frontier') {
+        const galaxy = getGalaxyDefinition();
+        session.galaxy.systems.forEach(system => {
+          system.ownerId = galaxy.systems.find(definition => definition.id === system.id)!.habitable ? 'blue' : null;
+          system.exploredBy = ['blue', 'red'];
+        });
+      }
+      if (boundary === 'all-caps') {
+        const design = session.ships[0].design;
+        session.fleets.items = [];
+        for (const [index, factionId] of (['blue', 'red'] as const).entries()) {
+          const systemId = factionId === 'blue' ? 'sol' : 'vega';
+          for (let n = 0; n < 95; n++) session.production.completed.push({ id: 300 + index * 100 + n, factionId, systemId, design: structuredClone(design) });
+          for (let n = 0; n < 20; n++) session.fleets.items.push({ id: index * 20 + n + 1, factionId, systemId,
+            shipIds: n === 0 ? [index * 100 + 2, index * 100 + 1] : [index * 100 + n * 2 + 2, index * 100 + n * 2 + 3] });
+        }
+        session.production.lastOrderId = 1_000_000_000; session.fleets.lastFleetId = 1_000_000_000;
+        session.fleets.items.at(-1)!.id = 1_000_000_000;
+        expect(session.production.orders.length + session.production.completed.length).toBe(200);
+        expect(session.fleets.items).toHaveLength(40); expect(session.ships).toHaveLength(200);
+      }
+      load(f, { session, control: { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } }, contents);
+      const expected = runDomain.executeRunAiTurn(r.run, { factionId: 'red', expectedTurn: 2 });
+      if (!expected.ok) throw Error(expected.message);
+      const executor = vi.spyOn(runDomain, 'executeRunAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+      f.click('campaign-resume'); f.click('campaign-confirm'); f.tasks[0].callback(); f.tasks[0].callback();
+      expect(r.run).toEqual(expected.run); expect(r.run.session.turn).toBe(3); expect(r.aiPhase).toBe('idle');
+      expect(executor).toHaveBeenCalledTimes(1); expect(planner).toHaveBeenCalledTimes(1); expect(f.tasks).toHaveLength(1);
+      if (boundary !== 'all-caps') expect(expected.summary.commands.map(command => command.kind)).toEqual(['endTurn']);
+      expect(r.aiSummary).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('write failure after an accepted computer turn preserves both the accepted run and previous checkpoint bytes', () => {
+    const { storage, contents } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f);
+      f.click('campaign-save'); const bytes = contents.get(CampaignRunSaveManager.STORAGE_KEY);
+      expect(r.aiPhase).toBe('paused');
+      f.click('campaign-resume'); f.click('campaign-confirm'); f.tasks[1].callback();
+      const accepted = r.run, before = structuredClone(accepted), executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+      storage.setItem.mockImplementationOnce(() => { throw new DOMException('private quota', 'QuotaExceededError'); });
+      f.click('campaign-save'); f.click('campaign-confirm');
+      expect(r.run).toBe(accepted); expect(r.run).toEqual(before); expect(r.run.session.turn).toBe(3);
+      expect(contents.get(CampaignRunSaveManager.STORAGE_KEY)).toBe(bytes); expect(contents.get('unrelated')).toBe('keep');
+      expect(r.aiPhase).toBe('idle'); expect(f.message()).not.toContain('private quota');
+      f.tasks.forEach(task => task.callback()); expect(executor).not.toHaveBeenCalled(); expect(f.tasks).toHaveLength(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('scheduler creation failure is neutral failed state without a ticket or hidden retry', () => {
+    const f = aiStart(), r = runtime(f), executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+    f.delayedCall.mockImplementationOnce(() => { throw Error('private scheduler fault'); });
+    f.click('campaign-end-turn'); expect(r.run.session.turn).toBe(2); expect(r.aiPhase).toBe('failed');
+    expect(r.ticket).toBeUndefined(); expect(f.message()).toBe('Не удалось выполнить ход компьютера.');
+    r.render(); f.click('campaign-budget'); expect(f.delayedCall).toHaveBeenCalledTimes(1); expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('a request made while the scheduled panel is being built prevents an orphan deferred task', () => {
+    const f = aiStart(), r = runtime(f);
+    const render = r.render.bind(r);
+    vi.spyOn(r, 'render').mockImplementation(() => {
+      render();
+      if (r.aiPhase === 'scheduled') r.requestOperation('new');
+    });
+    f.click('campaign-end-turn'); expect(r.pending).toBe('new'); expect(r.aiPhase).toBe('paused');
+    expect(r.ticket).toBeUndefined(); expect(f.delayedCall).not.toHaveBeenCalled();
+    f.click('campaign-cancel'); expect(r.aiPhase).toBe('paused'); expect(f.delayedCall).not.toHaveBeenCalled();
+  });
+});
 
 describe('S3.29 confirmed manual AI turn', () => {
   type Runtime = {
@@ -150,20 +642,24 @@ describe('S3.29 confirmed manual AI turn', () => {
     vi.stubGlobal('localStorage', storage);
     try {
       const f = fixture(), r = runtime(f), sceneExecute = vi.spyOn(r, 'execute');
-      let current = r.campaign, writes = 0;
-      Object.defineProperty(r, 'campaign', { configurable: true, get: () => current, set: value => { writes++; current = value; } });
+      const owner = f.scene as unknown as { run: runDomain.CampaignRun };
+      let owned = owner.run, writes = 0;
+      Object.defineProperty(owner, 'run', { configurable: true, get: () => owned, set: value => { writes++; owned = value; } });
+      let current = r.campaign;
       for (let turn = 1; turn <= 4; turn++) {
         const before = structuredClone(current), source = current, factionId = turn % 2 ? 'blue' : 'red';
         const calls = commands.mock.calls.length;
         f.click('campaign-ai'); expect(executor).toHaveBeenCalledTimes(turn - 1); expect(planner).toHaveBeenCalledTimes(turn - 1);
         expect(commands).toHaveBeenCalledTimes(calls); expect(writes).toBe(turn - 1);
         const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
+        current = r.campaign;
         expect(executor).toHaveBeenCalledTimes(turn); expect(planner).toHaveBeenCalledTimes(turn); expect(writes).toBe(turn);
         expect(executor.mock.calls[turn - 1]).toEqual([before, { factionId, expectedTurn: turn }]);
-        expect(executor.mock.calls[turn - 1][0]).toBe(source); expect(source).toEqual(before);
+        expect(executor.mock.calls[turn - 1][0]).not.toBe(source); expect(source).toEqual(before);
         const result = executor.mock.results[turn - 1].value as aiExecutor.AiTurnResult;
         if (!result.ok) throw Error(result.message);
-        expect(current).toBe(result.state); expect(r.aiSummary).toBe(result.summary);
+        expect(current).toEqual(result.state); expect(current).not.toBe(result.state);
+        expect(r.aiSummary).toEqual(result.summary); expect(r.aiSummary).not.toBe(result.summary);
         expect(commands.mock.calls.slice(calls).map(([, c]) => c)).toEqual(result.summary.commands);
         expect(result.summary.commands.length).toBeLessThanOrEqual(3);
         expect(result.summary.commands.map(c => c.kind)).toEqual(turn < 3 ? ['explore', 'endTurn'] : ['colonize', 'explore', 'endTurn']);
@@ -208,11 +704,13 @@ describe('S3.29 confirmed manual AI turn', () => {
   });
 
   it.each(['same-side turn', 'other-side turn'] as const)('passes captured request to the real executor after in-place %s becomes stale', change => {
-    const f = fixture(), r = runtime(f), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
+    const f = fixture(), r = runtime(f), executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+    const low = vi.spyOn(aiExecutor, 'executeAiTurn');
     f.click('campaign-ai'); r.campaign.turn = change === 'same-side turn' ? 3 : 2;
     const state = r.campaign, before = structuredClone(state); f.click('campaign-confirm');
     expect(executor.mock.calls[0][1]).toEqual({ factionId: 'blue', expectedTurn: 1 });
     expect(executor.mock.results[0].value).toMatchObject({ ok: false, code: 'STALE_TURN' });
+    expect(low).not.toHaveBeenCalled();
     expect(r.campaign).toBe(state); expect(state).toEqual(before); summaryAbsent(f);
   });
 
@@ -332,7 +830,7 @@ describe('S3.29 confirmed manual AI turn', () => {
         expect(commands.mock.calls.map(([, c]) => (c as domain.SessionCommand).kind)).toEqual(['colonize', 'explore', 'endTurn']);
         expect(executor.mock.results[0].value).toMatchObject({ ok: false, code: 'RESOURCE_LIMIT' });
         expect(r.campaign).toBe(state); expect(state).toEqual(before); expect(ui(r)).toEqual(panels); summaryAbsent(f);
-        expect(f.message()).toBe('Доход превысит предел ресурсов; AI-ход не выполнен');
+        expect(f.message()).toBe('Операция превысит предел ресурсов');
       }
     } finally { vi.unstubAllGlobals(); }
   });
@@ -365,7 +863,7 @@ describe('S3.26 manual campaign slot UI', () => {
   ] as const;
   type Runtime = {
     campaign: domain.CampaignSession; factionId: 'blue' | 'red'; selectedId: string;
-    pending?: string; operation?: { candidate: domain.CampaignSession }; generation: number;
+    pending?: string; operation?: { candidate: runDomain.CampaignRun }; generation: number;
     productionOpen: boolean; budgetOpen: boolean; catalog?: catalog.ProductionCatalog;
     choiceIndex: number; completedPage: number; shipsPage: number; showShips: boolean;
     travelOpen: boolean; destinationIndex: number; transitPage: number; fleetsOpen: boolean;
@@ -432,7 +930,7 @@ describe('S3.26 manual campaign slot UI', () => {
       const old = capture(f, 'campaign-save'); f.click('campaign-save'); old();
       expect(commands).not.toHaveBeenCalled(); expect(library).not.toHaveBeenCalled();
       expect(storage.getItem.mock.calls).toEqual([[key]]); expect(storage.setItem).toHaveBeenCalledTimes(1);
-      expect(contents.get(key)).toBe(raw(before)); expect(runtime(f).campaign).toBe(state);
+      expect(contents.get(key)).toBe(rawRun(before)); expect(runtime(f).campaign).toBe(state);
       expect(state).toEqual(before); expect(runtime(f).factionId).toBe('red');
       expect(f.message()).toBe('Кампания сохранена.'); expect(runtime(f).pending).toBeUndefined();
       expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe('{corrupt library');
@@ -451,7 +949,7 @@ describe('S3.26 manual campaign slot UI', () => {
       contents.set(key, 'external writer while confirmation is open');
       const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); confirm();
       expect(storage.getItem.mock.calls).toEqual([[key]]); expect(storage.setItem).toHaveBeenCalledTimes(1);
-      expect(contents.get(key)).toBe(raw(before)); expect(state.treasuries.red.credits).toBe(123);
+      expect(contents.get(key)).toBe(rawRun(before)); expect(state.treasuries.red.credits).toBe(123);
       expect(runtime(f).campaign).toBe(state); expect(f.message()).toBe('Кампания сохранена.');
     } finally { vi.unstubAllGlobals(); }
   });
@@ -552,10 +1050,10 @@ describe('S3.26 manual campaign slot UI', () => {
       const oldEnd = capture(f, 'campaign-end-turn'), oldSave = capture(f, 'campaign-save');
       const state = runtime(f).campaign;
       f.click('campaign-load'); const candidate = runtime(f).operation!.candidate;
-      expect(candidate).toEqual(loaded); expect(candidate).not.toBe(state);
+      expect(candidate).toEqual({ session: loaded, control: { mode: 'local' } }); expect(candidate.session).not.toBe(state);
       expect(runtime(f).campaign).toBe(state); contents.delete(key);
       const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm');
-      expect(runtime(f).campaign).toBe(candidate); expect(runtime(f).campaign).toEqual(loaded);
+      expect(runtime(f).campaign).toBe(candidate.session); expect(runtime(f).campaign).toEqual(loaded);
       const generation = runtime(f).generation;
       confirm(); oldEnd(); oldSave();
       expect(runtime(f).generation).toBe(generation); expect(commands).not.toHaveBeenCalled(); expect(library).not.toHaveBeenCalled();
@@ -666,7 +1164,8 @@ describe('S3.26 manual campaign slot UI', () => {
   });
 
   it.each([
-    ['preset', 'manual'], ['library', 'manual'], ['preset', 'ai'], ['library', 'ai']
+    ['preset', 'manual'], ['library', 'manual'], ['preset', 'ai'], ['library', 'ai'],
+    ['preset', 'diagnostic-red-ai'], ['library', 'diagnostic-red-ai']
   ] as const)('continues both paid %s FIFO and fleet routes across manual saves, shutdown/reentry/load with %s end turns', (source, mode) => {
     const { contents, storage } = slot();
     try {
@@ -674,8 +1173,9 @@ describe('S3.26 manual campaign slot UI', () => {
       const saved = createCombatDesign('fighter'); saved.name = 'Автономный оплаченный снимок';
       // The library updates updatedAt on save; the paid snapshots below come from its saved result.
       if (source === 'library') expect(new ShipDesignManager(storage).saveDesign(saved).id).toBe(saved.id);
-      const libraryBefore = contents.get(ShipDesignManager.STORAGE_KEY);
+      let libraryBefore = contents.get(ShipDesignManager.STORAGE_KEY);
       const f = fixture(), execute = domain.executeSessionCommand, spy = vi.spyOn(domain, 'executeSessionCommand');
+      const owner = f.scene as unknown as { run: runDomain.CampaignRun; aiPhase: string };
       let uninterrupted = domain.createCampaignSession();
       const click = (name: string) => {
         const calls = spy.mock.calls.length; f.click(name);
@@ -688,34 +1188,48 @@ describe('S3.26 manual campaign slot UI', () => {
       };
       const executeAi = aiExecutor.executeAiTurn, aiSpy = vi.spyOn(aiExecutor, 'executeAiTurn');
       const end = () => {
-        if (mode === 'ai' && uninterrupted.turn >= 31) {
+        if (mode !== 'manual' && uninterrupted.turn >= 31) {
           const state = runtime(f).campaign, before = structuredClone(state);
           const calls = aiSpy.mock.calls.length, reads = storage.getItem.mock.calls.length, writes = storage.setItem.mock.calls.length;
-          const expected = executeAi(uninterrupted, { factionId: runtime(f).factionId, expectedTurn: uninterrupted.turn });
+          const computer = owner.run.control.mode === 'human-vs-ai';
+          const expected = executeAi(uninterrupted, { factionId: computer ? 'red' : runtime(f).factionId, expectedTurn: uninterrupted.turn });
           if (!expected.ok) throw Error(expected.message);
           const commandCount = spy.mock.calls.length;
-          f.click('campaign-ai'); expect(aiSpy).toHaveBeenCalledTimes(calls); expect(spy).toHaveBeenCalledTimes(commandCount);
+          f.click(computer ? 'campaign-resume' : 'campaign-ai'); expect(aiSpy).toHaveBeenCalledTimes(calls); expect(spy).toHaveBeenCalledTimes(commandCount);
           const oldConfirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm'); oldConfirm();
+          if (computer) {
+            expect(owner.aiPhase).toBe('scheduled'); expect(aiSpy).toHaveBeenCalledTimes(calls);
+            const task = f.tasks.at(-1)!; task.callback(); task.callback();
+          }
           expect(aiSpy).toHaveBeenCalledTimes(calls + 1); expect(aiSpy.mock.results[calls].value).toEqual(expected);
           expect(runtime(f).campaign).toEqual(expected.state); expect(state).toEqual(before);
           expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(storage.setItem).toHaveBeenCalledTimes(writes);
-          expect(runtime(f).factionId).toBe(expected.summary.factionId);
+          expect(runtime(f).factionId).toBe(computer ? 'blue' : expected.summary.factionId);
           uninterrupted = expected.state;
+          expect(owner.run).toEqual({ session: uninterrupted, control: computer
+            ? { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } : { mode: 'local' } });
         } else click('campaign-end-turn');
-        click('campaign-side-switch');
+        if (owner.run.control.mode === 'local') click('campaign-side-switch');
       };
       const checkpoint = () => {
         const snapshot = structuredClone(runtime(f).campaign), state = runtime(f).campaign;
-        const oldEnd = capture(f, 'campaign-end-turn');
-        const oldAi = capture(f, 'campaign-ai'), aiCalls = aiSpy.mock.calls.length;
+        const computer = owner.run.control.mode === 'human-vs-ai';
+        const oldEndNode = f.find('campaign-end-turn');
+        expect(oldEndNode.interactive).toBe(!computer);
+        const oldEnd = computer ? () => oldEndNode.emit('pointerdown') : capture(f, 'campaign-end-turn');
+        const oldAi = capture(f, computer ? 'campaign-resume' : 'campaign-ai'), aiCalls = aiSpy.mock.calls.length;
+        const runSnapshot = structuredClone(owner.run);
         click('campaign-save'); if (runtime(f).pending) click('campaign-confirm');
-        expect(runtime(f).campaign).toBe(state); expect(contents.get(key)).toBe(raw(snapshot));
+        expect(runtime(f).campaign).toBe(state);
+        const decoded = decodeCampaignRunSave(contents.get(key));
+        expect(decoded).toEqual({ ok: true, run: runSnapshot });
         const reads = storage.getItem.mock.calls.length;
         f.events.emit('shutdown'); f.scene.create();
         expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(runtime(f).campaign).toEqual(domain.createCampaignSession());
         click('campaign-load'); click('campaign-confirm'); oldEnd(); oldAi();
         expect(aiSpy).toHaveBeenCalledTimes(aiCalls);
         expect(storage.getItem).toHaveBeenCalledTimes(reads + 1); expect(runtime(f).campaign).toEqual(snapshot);
+        expect(owner.run).toEqual(runSnapshot); expect(owner.aiPhase).toBe(computer ? 'paused' : 'idle');
         expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
         expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
       };
@@ -731,6 +1245,10 @@ describe('S3.26 manual campaign slot UI', () => {
       }
       const designs = uninterrupted.production.orders.map(order => structuredClone(order.design));
       expect(uninterrupted.production.orders.map(order => order.remainingTurns)).toEqual([3, 4, 3, 4]); checkpoint();
+      if (mode === 'diagnostic-red-ai' && source === 'library') {
+        saved.name = 'Изменён после оплаты'; new ShipDesignManager(storage).saveDesign(saved);
+        contents.delete(ShipDesignManager.STORAGE_KEY); libraryBefore = undefined;
+      }
       for (let i = 0; i < 14; i++) end();
       expect(uninterrupted.turn).toBe(45); expect(uninterrupted.production.completed.map(item => item.id)).toEqual([1, 3, 2, 4]);
       for (const home of ['sol', 'vega']) {
@@ -738,6 +1256,13 @@ describe('S3.26 manual campaign slot UI', () => {
         click('production-fleets'); click('fleet-select'); click('fleet-candidate-next'); click('fleet-select'); click('fleet-create');
         click('fleet-travel'); click('fleet-travel-send');
         expect(runtime(f).campaign.ships.filter(ship => ship.transit)).toHaveLength(2);
+        if (mode === 'diagnostic-red-ai' && home === 'vega') {
+          // Diagnostic controller assignment AFTER actual local payment, FIFO, deployment and send.
+          // There is intentionally no public local→AI conversion and expansion-v1 cannot buy/send.
+          owner.run = { session: owner.run.session, control: { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } };
+          owner.aiPhase = 'paused';
+          (f.scene as unknown as { render(): void }).render();
+        }
         checkpoint(); end();
       }
       expect(uninterrupted.turn).toBe(47);
@@ -749,7 +1274,7 @@ describe('S3.26 manual campaign slot UI', () => {
       expect(uninterrupted.fleets.items.map(fleet => fleet.shipIds)).toEqual([[1, 2], [3, 4]]);
       expect(contents.get(ShipDesignManager.STORAGE_KEY)).toBe(libraryBefore);
       expect(storage.setItem.mock.calls.filter(([k]) => k === key)).toHaveLength(3);
-      expect(aiSpy).toHaveBeenCalledTimes(mode === 'ai' ? 16 : 0);
+      expect(aiSpy).toHaveBeenCalledTimes(mode !== 'manual' ? 16 : 0);
     } finally { vi.unstubAllGlobals(); }
   });
 });
@@ -791,7 +1316,7 @@ describe('campaign scene and projection renderer', () => {
     const storage = { getItem: vi.fn((key: string) => source === 'library' && key === ShipDesignManager.STORAGE_KEY ? raw : null), setItem: vi.fn() };
     vi.stubGlobal('localStorage', storage);
     try {
-      const spy = vi.spyOn(domain, 'executeSessionCommand'), f = fixture();
+      const spy = observeRunCommands(), f = fixture();
       const current = (): domain.CampaignSession => {
         for (let i = spy.mock.results.length - 1; i >= 0; i--) {
           const result = spy.mock.results[i].value as domain.SessionResult;
@@ -896,7 +1421,7 @@ describe('campaign scene and projection renderer', () => {
     const originalContents = [...contents];
     const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     vi.stubGlobal('localStorage', storage);
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    const spy = observeRunCommands();
     const load = vi.spyOn(catalog, 'loadProductionCatalog');
     const repositoryLoad = vi.spyOn(ShipDesignManager.prototype, 'load');
     const f = fixture();
@@ -1264,9 +1789,9 @@ describe('campaign scene and projection renderer', () => {
   });
 
   it('shows domain rejection and never accepts its state', () => {
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    const spy = observeRunCommands();
     const f = fixture(); f.click('system-eden'); f.click('campaign-colonize');
-    expect(f.message()).toBe('Сначала разведайте систему');
+    expect(f.message()).toBe('Система не разведана');
     const before = spy.mock.calls[0][0];
     f.click('campaign-explore');
     expect(spy.mock.calls[1][0]).toBe(before);
@@ -1347,7 +1872,7 @@ describe('campaign scene and projection renderer', () => {
   });
 
   it('shows projected income immediately, pays once and retains the observed side on end turn', () => {
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    const spy = observeRunCommands();
     const f = fixture(); f.click('system-eden'); f.click('campaign-explore'); f.click('campaign-colonize');
     expect(f.find('campaign-income').text).toContain('+20 кредитов · +10 минералов');
     expect(f.find('campaign-treasury').text).toBe('Кредиты: 100\nМинералы: 50');
@@ -1374,7 +1899,7 @@ describe('campaign scene and projection renderer', () => {
   });
 
   it.each(['campaign-explore', 'campaign-colonize', 'campaign-end-turn'])('switching observation does not authorize %s for an inactive side', button => {
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    const spy = observeRunCommands();
     const f = fixture(); f.click('campaign-side-switch'); f.click('system-nexus');
     f.click(button);
     expect(f.message()).toBe('Сейчас ход другой стороны');
@@ -1387,8 +1912,8 @@ describe('campaign scene and projection renderer', () => {
   it('uses the displayed expected turn, rejects a stale command and refreshes without income', () => {
     // Simulate a state advance outside this rendered panel; not the normal synchronous UI path.
     const state = domain.createCampaignSession();
-    vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    seedSession(state);
+    const spy = observeRunCommands();
     const f = fixture(); state.turn = 3;
     f.click('campaign-end-turn');
     expect(spy.mock.calls[0][1]).toEqual({ kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
@@ -1403,8 +1928,8 @@ describe('campaign scene and projection renderer', () => {
   it.each(['credits', 'minerals'] as const)('shows %s overflow without replacing state or paying partial income', resource => {
     const state = domain.createCampaignSession(); state.treasuries.blue[resource] = domain.MAX_RESOURCE;
     const before = structuredClone(state);
-    vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    seedSession(state);
+    const spy = observeRunCommands();
     const f = fixture(), treasury = f.find('campaign-treasury').text;
     f.click('campaign-end-turn'); f.click('campaign-end-turn');
     expect(f.message()).toContain('Доход превысит предел');
@@ -1415,7 +1940,7 @@ describe('campaign scene and projection renderer', () => {
 
   it('shows the terminal turn error without income or side advance', () => {
     const state = domain.createCampaignSession(); state.turn = domain.MAX_TURN;
-    vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
+    seedSession(state);
     const f = fixture(); f.click('campaign-side-switch'); f.click('campaign-end-turn');
     expect(f.message()).toContain('Достигнут предел номера хода');
     expect(f.find('campaign-turn').text).toBe(`Ход ${domain.MAX_TURN} · Красная лига`);
@@ -1426,7 +1951,7 @@ describe('campaign scene and projection renderer', () => {
     const state = domain.createCampaignSession();
     state.galaxy.systems.find(system => system.id === 'vega')!.exploredBy.push('blue');
     state.treasuries.red = { credits: 987654321, minerals: 876543210 };
-    vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
+    seedSession(state);
     const f = fixture(); f.click('system-vega');
     expect(f.details()).toContain('Красная лига');
     const visibleText = () => f.nodes.filter(node => !node.destroyed).map(node => node.text).join('\n');
@@ -1456,8 +1981,8 @@ describe('campaign scene and projection renderer', () => {
     const load = vi.spyOn(catalog, 'loadProductionCatalog').mockImplementation(() => ({ choices: structuredClone(choices), notice: 'Снимок библиотеки' }));
     const state = domain.createCampaignSession();
     if (funded) state.treasuries = { blue: { credits: 10000, minerals: 10000 }, red: { credits: 10000, minerals: 10000 } };
-    vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
-    const spy = vi.spyOn(domain, 'executeSessionCommand');
+    seedSession(state);
+    const spy = observeRunCommands();
     const f = fixture(); expect(load).not.toHaveBeenCalled(); f.click('campaign-production');
     return { ...f, choices, load, spy, state };
   }
@@ -2550,8 +3075,8 @@ describe('campaign scene and projection renderer', () => {
     }
     function budgetFixture(state = domain.createCampaignSession()) {
       expect(domain.campaignSessionSchema.safeParse(state).success).toBe(true);
-      vi.spyOn(domain, 'createCampaignSession').mockReturnValueOnce(state);
-      const commands = vi.spyOn(domain, 'executeSessionCommand');
+      seedSession(state);
+      const commands = observeRunCommands();
       const load = vi.spyOn(catalog, 'loadProductionCatalog');
       return { ...fixture(), state, commands, load };
     }

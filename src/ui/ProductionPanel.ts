@@ -43,7 +43,8 @@ export class ProductionPanel {
   private fleets?: FleetPanel;
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, systemId: SystemId,
-    state: ProductionPanelState, actions: ProductionPanelActions, private readonly blocked: boolean) {
+    state: ProductionPanelState, actions: ProductionPanelActions, private readonly blocked: boolean,
+    private readonly readOnly = false) {
     this.root = scene.add.container(0, 0).setName('production-panel');
     const system = session.galaxy.systems.find(item => item.id === systemId)!;
     this.label(46, 223, `ПРОИЗВОДСТВО · ${system.name}`, 'production-title', 18);
@@ -54,11 +55,11 @@ export class ProductionPanel {
     this.button(350, 216, state.fleets ? '← Очередь' : 'Группы', 'production-fleets', actions.toggleFleets);
     this.button(490, 216, state.travel ? '← Производство' : 'Перелёты', 'production-travel', actions.toggleTravel);
     if (state.fleets) {
-      this.fleets = new FleetPanel(scene, session, systemId, state.fleets, actions.fleets, blocked);
+      this.fleets = new FleetPanel(scene, session, systemId, state.fleets, actions.fleets, blocked, readOnly);
       return;
     }
     if (state.travel) {
-      this.travel = new TravelPanel(scene, session, systemId, state.travel, actions.travel, blocked);
+      this.travel = new TravelPanel(scene, session, systemId, state.travel, actions.travel, blocked, readOnly);
       return;
     }
     const choice = state.catalog.choices[state.choiceIndex];
@@ -121,6 +122,7 @@ export class ProductionPanel {
     this.root.add(text);
   }
   private button(x: number, y: number, value: string, name: string, action: () => void, disabled = false): void {
+    disabled ||= this.readOnly && (name === 'production-enqueue' || name === 'production-deploy' || name.startsWith('production-cancel-'));
     const text = this.scene.add.text(x, y, value, { fontFamily: 'Arial', fontSize: '13px', color: disabled || this.blocked ? '#65768d' : '#e3f5ff' })
       .setName(name).setPadding(10, 8).setBackgroundColor('#233e58');
     this.root.add(text);

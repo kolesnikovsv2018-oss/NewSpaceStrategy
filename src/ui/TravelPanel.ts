@@ -22,7 +22,8 @@ export class TravelPanel {
   private disposed = false;
 
   constructor(private readonly scene: Phaser.Scene, view: CampaignSessionView, source: SystemId,
-    state: TravelPanelState, actions: TravelPanelActions, private readonly blocked: boolean) {
+    state: TravelPanelState, actions: TravelPanelActions, private readonly blocked: boolean,
+    private readonly readOnly = false) {
     this.root = scene.add.container(0, 0).setName('travel-panel');
     const ships = view.ships.filter(ship => isShipAtColony(ship, source));
     const destinations = view.galaxy.systems.filter(system => system.visibility === 'explored' &&
@@ -71,6 +72,7 @@ export class TravelPanel {
     this.root.add(text);
   }
   private button(x: number, y: number, value: string, name: string, action: () => void, disabled: boolean): void {
+    disabled ||= this.readOnly && ['travel-send', 'travel-refuel'].includes(name);
     const text = this.scene.add.text(x, y, value, { fontFamily: 'Arial', fontSize: '13px', color: disabled || this.blocked ? '#65768d' : '#e3f5ff' })
       .setName(name).setPadding(10, 8).setBackgroundColor('#233e58');
     this.root.add(text);

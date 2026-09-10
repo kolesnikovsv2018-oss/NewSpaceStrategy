@@ -220,7 +220,7 @@ describe('purity and integration boundary', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('planner has only erased type imports; the game reaches AI only through MainScene → executor → planner', () => {
+  it('planner has only erased type imports; the game reaches AI only through MainScene → run → executor → planner', () => {
     const root = resolve(import.meta.dirname, '..');
     const plannerPath = resolve(root, 'src/domain/campaignAiPlanner.ts');
     const syntax = ts.createSourceFile(plannerPath, readFileSync(plannerPath, 'utf8'), ts.ScriptTarget.Latest, true);
@@ -246,6 +246,8 @@ describe('purity and integration boundary', () => {
     expect(visited.has(plannerPath)).toBe(true);
     expect(visited.has(executorPath)).toBe(true);
     expect(imports.get(plannerPath)).toEqual(new Set([executorPath]));
-    expect(imports.get(executorPath)).toEqual(new Set([resolve(root, 'src/scenes/MainScene.ts')]));
+    const runPath = resolve(root, 'src/domain/campaignRun.ts');
+    expect(imports.get(executorPath)).toEqual(new Set([runPath]));
+    expect(imports.get(runPath)).toContain(resolve(root, 'src/scenes/MainScene.ts'));
   });
 });

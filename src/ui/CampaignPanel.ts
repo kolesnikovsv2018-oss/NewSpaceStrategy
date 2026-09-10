@@ -5,13 +5,15 @@ import { ProductionPanel, type ProductionPanelState, type ProductionPanelActions
 import { BudgetPanel } from './BudgetPanel';
 import type { AiTurnSummary } from '../domain/campaignAiExecutor';
 
-export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load' | 'ai';
+export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load' | 'ai' | 'resume' | 'takeover';
 const confirmationText: Record<CampaignConfirmation, string> = {
   new: 'Начать заново?\nТекущая партия будет потеряна.',
   menu: 'Выйти в меню?\nТекущая партия будет потеряна.',
   save: 'Заменить сохранение?\nПрежний слот будет перезаписан.',
   load: 'Загрузить кампанию?\nТекущая партия будет потеряна.',
-  ai: 'Поручить AI один ход?\nХод наблюдаемой стороны завершится.'
+  ai: 'Поручить AI один ход?\nХод наблюдаемой стороны завершится.',
+  resume: 'Продолжить ход компьютера?\nБудет выполнен один red-ход.',
+  takeover: 'Перейти в локальный режим?\nХод и ресурсы сохранятся.'
 };
 
 interface PanelState {
@@ -20,6 +22,10 @@ interface PanelState {
   error: boolean;
   pending?: CampaignConfirmation;
   aiSummary?: AiTurnSummary;
+  aiMode?: boolean;
+  aiPhase?: 'idle' | 'scheduled' | 'running' | 'paused' | 'failed';
+  running?: boolean;
+  newMode?: 'local' | 'human-vs-ai';
   budgetOpen?: boolean;
   production?: ProductionPanelState;
 }
@@ -33,6 +39,8 @@ interface PanelActions {
   toggleProduction: () => void;
   toggleBudget: () => void;
   production: ProductionPanelActions;
+  pause?: () => void;
+  chooseMode?: (mode: 'local' | 'human-vs-ai') => void;
 }
 const ownerName = (owner: 'blue' | 'red' | null): string =>
   owner === 'blue' ? 'Синий союз' : owner === 'red' ? 'Красная лига' : 'Нет колонии';
@@ -46,6 +54,8 @@ export class CampaignPanel {
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, state: PanelState, actions: PanelActions) {
     const view = session.galaxy;
+    const blocked = !!state.pending || !!state.running;
+    const readOnly = !!state.aiMode && session.activeFactionId === 'red';
     this.root = scene.add.container(0, 0).setName('campaign-panel');
     const graphics = scene.add.graphics(); this.root.add(graphics);
     graphics.fillStyle(0x101e32).fillRoundedRect(24, 104, 820, 554, 18);
@@ -53,22 +63,28 @@ export class CampaignPanel {
     graphics.fillStyle(0x101e32).fillRoundedRect(868, 104, 388, 554, 18);
     graphics.lineStyle(1, 0x29455e).strokeRoundedRect(868, 104, 388, 554, 18);
     this.label(28, 22, 'ORION / ГАЛАКТИКА', 26, '#b4f1ff');
-    this.label(28, 60, 'Локальная пошаговая партия · S3.29 · 6 систем', 14, '#859bb6');
-    this.button(475, 24, 'Сохранить кампанию', 'campaign-save', () => actions.request('save'), !!state.pending);
-    this.button(675, 24, 'Загрузить кампанию', 'campaign-load', () => actions.request('load'), !!state.pending);
-    this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), !!state.pending);
-    this.button(1075, 24, '← Меню · ESC', 'campaign-menu', () => actions.request('menu'), !!state.pending);
+    this.label(28, 60, `${state.aiMode ? 'Человек blue / компьютер red' : 'Локальная пошаговая партия'} · S3.34 · 6 систем`, 14, '#859bb6');
+    if (state.aiMode) {
+      const status = { idle: 'Ваш ход', scheduled: 'Компьютер: ожидает · можно поставить на паузу',
+        running: 'Компьютер выполняет ход', paused: 'Компьютер: пауза · требуется продолжение', failed: 'Компьютер: отказ · повтор только по подтверждению' };
+      this.label(630, 64, status[state.aiPhase ?? 'idle'], 14, '#a6e5d5').setName('campaign-ai-status');
+    }
+    this.button(475, 24, 'Сохранить кампанию', 'campaign-save', () => actions.request('save'), blocked);
+    this.button(675, 24, 'Загрузить кампанию', 'campaign-load', () => actions.request('load'), blocked);
+    this.button(875, 24, 'Новая партия', 'campaign-new', () => actions.request('new'), blocked);
+    this.button(1075, 24, '← Меню · ESC', 'campaign-menu', () => actions.request('menu'), blocked);
     this.label(46, 126, 'КАРТА ПЕРЕХОДОВ', 13, '#859bb6');
-    this.button(440, 114, state.budgetOpen ? '← Карта' : 'Бюджет', 'campaign-budget', actions.toggleBudget, !!state.pending);
-    this.button(630, 114, state.production ? '← Карта' : 'Производство', 'campaign-production', actions.toggleProduction, !!state.pending);
+    this.button(440, 114, state.budgetOpen ? '← Карта' : 'Бюджет', 'campaign-budget', actions.toggleBudget, blocked);
+    this.button(630, 114, state.production ? '← Карта' : 'Производство', 'campaign-production', actions.toggleProduction, blocked);
     this.label(46, 156, `Ход ${session.turn} · ${ownerName(session.activeFactionId)}`, 20, '#e4f2ff').setName('campaign-turn');
     this.label(46, 187, session.activeFactionId === view.factionId
       ? 'Ваша очередь: действия или завершение хода.'
+      : state.aiMode ? 'Ход компьютера. Ваша карта и панели доступны только для чтения.'
       : 'Ход другой стороны. Смените сторону наблюдения для управления.', 14, '#a6e5d5').setName('campaign-turn-hint');
     if (state.budgetOpen) {
       this.budget = new BudgetPanel(scene, session);
     } else if (state.production) {
-      this.production = new ProductionPanel(scene, session, state.selectedId, state.production, actions.production, !!state.pending);
+      this.production = new ProductionPanel(scene, session, state.selectedId, state.production, actions.production, blocked, readOnly);
     } else {
       this.label(46, 620, '○ Неизвестно     ◇ Разведано     ● Колония', 15, '#b5c7dc');
       const positions = new Map(view.systems.map(system => [system.id, { x: 115 + system.x * 208, y: 348 - system.y * 108 }]));
@@ -85,19 +101,26 @@ export class CampaignPanel {
         graphics.fillStyle(color).fillCircle(point.x, point.y, known ? 9 : 4);
         const marker = !known ? '○' : system.ownerId === null ? '◇' : '●';
         this.button(point.x - 67, point.y + 34, `${marker} ${system.name}`, `system-${system.id}`,
-          () => actions.select(system.id), !!state.pending);
+          () => actions.select(system.id), blocked);
       }
     }
     this.label(892, 126, 'СТОРОНА НАБЛЮДЕНИЯ', 13, '#859bb6');
     this.label(892, 150, ownerName(view.factionId), 22, view.factionId === 'blue' ? '#60bdff' : '#ff927d').setName('campaign-side');
-    this.button(892, 184, 'Сменить сторону · локально', 'campaign-side-switch', actions.switchSide, !!state.pending);
+    if (state.aiMode) this.button(892, 184, 'Перейти в локальный режим', 'campaign-takeover', () => actions.request('takeover'), blocked);
+    else this.button(892, 184, 'Сменить сторону · локально', 'campaign-side-switch', actions.switchSide, blocked);
     this.label(892, 236, `Кредиты: ${session.treasury.credits}\nМинералы: ${session.treasury.minerals}`, 17, '#e4f2ff')
       .setLineSpacing(5).setName('campaign-treasury');
     this.label(892, 286, `Доход при завершении своего хода:\n+${session.income.credits} кредитов · +${session.income.minerals} минералов`, 14, '#a6e5d5')
       .setLineSpacing(5).setName('campaign-income');
     const selected = view.systems.find(system => system.id === state.selectedId);
-    const summary = state.aiSummary?.factionId === view.factionId ? state.aiSummary : undefined;
-    if (summary) {
+    const summary = !state.aiMode && state.aiSummary?.factionId === view.factionId ? state.aiSummary : undefined;
+    if (state.pending === 'new') {
+      this.label(892, 344, 'Режим новой партии', 22, '#e4f2ff');
+      this.button(892, 386, `${state.newMode !== 'human-vs-ai' ? '✓ ' : ''}Локальная: две стороны`, 'campaign-mode-local',
+        () => actions.chooseMode?.('local'), !!state.running);
+      this.button(892, 430, `${state.newMode === 'human-vs-ai' ? '✓ ' : ''}Человек blue / AI red`, 'campaign-mode-ai',
+        () => actions.chooseMode?.('human-vs-ai'), !!state.running);
+    } else if (summary) {
       const receipt = summary.endTurnEconomy;
       const commands = summary.commands.map(command => command.kind === 'endTurn' ? 'Завершение хода'
         : `${command.kind === 'colonize' ? 'Колонизация' : 'Разведка'}: ${command.systemId}`);
@@ -116,20 +139,23 @@ export class CampaignPanel {
         : `Разведана\nВладелец: ${ownerName(selected.ownerId)}\n${selected.habitable ? 'Пригодна для колонизации' : 'Непригодна для колонизации'}`;
       this.label(892, 386, details, 15, '#c8d9ed').setLineSpacing(6).setName('campaign-system-details');
     }
-    this.button(892, 478, 'Разведать', 'campaign-explore', () => actions.command('explore'), !!state.pending);
-    this.button(1050, 478, 'Колонизировать', 'campaign-colonize', () => actions.command('colonize'), !!state.pending);
-    this.button(892, 526, 'Завершить ход', 'campaign-end-turn', () => actions.command('endTurn'), !!state.pending);
-    this.button(1050, 526, 'AI: один ход', 'campaign-ai', () => actions.request('ai'),
-      !!state.pending || session.activeFactionId !== view.factionId);
+    this.button(892, 478, 'Разведать', 'campaign-explore', () => actions.command('explore'), blocked || readOnly);
+    this.button(1050, 478, 'Колонизировать', 'campaign-colonize', () => actions.command('colonize'), blocked || readOnly);
+    this.button(892, 526, 'Завершить ход', 'campaign-end-turn', () => actions.command('endTurn'), blocked || readOnly);
+    if (!state.aiMode) this.button(1050, 526, 'AI: один ход', 'campaign-ai', () => actions.request('ai'),
+      blocked || session.activeFactionId !== view.factionId);
+    else if (state.aiPhase === 'scheduled') this.button(1050, 526, 'Пауза · ESC', 'campaign-pause', () => actions.pause?.(), blocked);
+    else this.button(1050, 526, 'Продолжить AI', 'campaign-resume', () => actions.request('resume'),
+      blocked || !readOnly || !['paused', 'failed'].includes(state.aiPhase ?? 'idle'));
     this.label(892, state.pending ? 566 : 574, state.pending
       ? confirmationText[state.pending]
       : state.message, 16, state.error && !state.pending ? '#ffad9f' : '#a6e5d5')
       .setWordWrapWidth(338).setLineSpacing(5).setName('campaign-message');
     if (state.pending) {
-      this.button(892, 614, 'Отмена · ESC', 'campaign-cancel', actions.cancel);
-      this.button(1066, 614, 'Продолжить', 'campaign-confirm', actions.confirm);
+      this.button(892, 614, 'Отмена · ESC', 'campaign-cancel', actions.cancel, !!state.running);
+      this.button(1066, 614, 'Продолжить', 'campaign-confirm', actions.confirm, !!state.running);
     }
-    this.label(28, 680, 'Ручной слот · AI: только один подтверждённый ход активной стороны · Без автозапуска и боя.', 15, '#99adc5');
+    this.label(28, 680, 'Ручной слот · AI red: один ход после вашего хода или подтверждения · Загрузка на паузе · Без боя.', 15, '#99adc5');
   }
 
   private label(x: number, y: number, value: string, size: number, color: string): Phaser.GameObjects.Text {

@@ -31,11 +31,12 @@ export class FleetPanel {
   private travel?: FleetTravelPanel;
 
   constructor(private readonly scene: Phaser.Scene, view: CampaignSessionView, source: SystemId,
-    state: FleetPanelState, actions: FleetPanelActions, private readonly blocked: boolean) {
+    state: FleetPanelState, actions: FleetPanelActions, private readonly blocked: boolean,
+    private readonly readOnly = false) {
     this.root = scene.add.container(0, 0).setName('fleet-panel');
     this.button(650, 216, state.travel ? '← Группы' : 'Маршруты', 'fleet-travel', actions.toggleTravel);
     if (state.travel) {
-      this.travel = new FleetTravelPanel(scene, view, source, state.travel, actions.travel, blocked);
+      this.travel = new FleetTravelPanel(scene, view, source, state.travel, actions.travel, blocked, readOnly);
       return;
     }
     const candidates = view.ships.filter(ship => isShipAtColony(ship, source) && !isShipInFleet(view.fleets, ship.id));
@@ -80,6 +81,7 @@ export class FleetPanel {
     this.root.add(text);
   }
   private button(x: number, y: number, value: string, name: string, action: () => void, disabled = false): void {
+    disabled ||= this.readOnly && ['fleet-select', 'fleet-clear', 'fleet-create', 'fleet-disband'].includes(name);
     const text = this.scene.add.text(x, y, value, { fontFamily: 'Arial', fontSize: '13px', color: disabled || this.blocked ? '#65768d' : '#e3f5ff' })
       .setName(name).setPadding(10, 8).setBackgroundColor('#233e58');
     this.root.add(text);

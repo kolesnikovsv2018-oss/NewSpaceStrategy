@@ -1,27 +1,44 @@
 import Phaser from 'phaser';
 import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
-import { createCampaignSession, executeSessionCommand, getCampaignSessionView,
+import { getCampaignSessionView,
   type CampaignSession, type SessionCommand } from '../domain/campaignSession';
 import { CampaignPanel, type CampaignConfirmation } from '../ui/CampaignPanel';
 import { designSchema } from '../domain/shipDesign';
 import { isShipAtColony } from '../domain/campaignShips';
 import { getFleetTransit, isFleetAtColony, isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
-import { CampaignSaveManager } from '../utils/CampaignSaveManager';
-import { executeAiTurn, type AiTurnSummary } from '../domain/campaignAiExecutor';
+import { CampaignRunSaveManager } from '../utils/CampaignRunSaveManager';
+import type { AiTurnSummary } from '../domain/campaignAiExecutor';
+import { createCampaignRun, executeRunCommand, executeRunAiTurn, convertRunToLocal,
+  type CampaignRun, type RunAiTurnResult } from '../domain/campaignRun';
+import type { CampaignControl } from '../domain/campaignControl';
 import type { AiTurnRequest } from '../domain/campaignAiPlanner';
 
 interface PendingOperation {
   action: CampaignConfirmation;
   generation: number;
-  source: CampaignSession;
-  candidate?: CampaignSession;
+  source: CampaignRun;
+  candidate?: CampaignRun;
   aiRequest?: AiTurnRequest;
+  mode?: CampaignControl['mode'];
 }
 
-/** Owns the turn-based session; observation never changes the active faction. */
+type AiPhase = 'idle' | 'scheduled' | 'running' | 'paused' | 'failed';
+interface AiTicket {
+  generation: number;
+  source: CampaignRun;
+  request: AiTurnRequest;
+  consumed: boolean;
+  task?: Phaser.Time.TimerEvent;
+}
+
+/** Sole owner of the run. The session accessor is a derived view, never a second state. */
 export class MainScene extends Phaser.Scene {
-  private campaign?: CampaignSession;
+  private run?: CampaignRun;
+  private get campaign(): CampaignSession | undefined { return this.run?.session; }
+  private aiPhase: AiPhase = 'idle';
+  private ticket?: AiTicket;
+  private executing = false;
   private factionId: CampaignFactionId = 'blue';
   private selectedId: SystemId = 'sol';
   private panel?: CampaignPanel;
@@ -32,7 +49,7 @@ export class MainScene extends Phaser.Scene {
   private operation?: PendingOperation;
   private generation = 0;
   private disposed = true;
-  private readonly saves = new CampaignSaveManager();
+  private readonly saves = new CampaignRunSaveManager();
   private productionOpen = false;
   private budgetOpen = false;
   private catalog?: ProductionCatalog;
@@ -64,7 +81,7 @@ export class MainScene extends Phaser.Scene {
       this.invalidateOperation();
       this.input.keyboard?.off('keydown-ESC', this.onEscape);
       this.panel?.destroy(); this.panel = undefined;
-      this.campaign = undefined; this.pending = undefined;
+      this.run = undefined; this.pending = undefined; this.aiPhase = 'idle';
       this.message = ''; this.error = false;
       this.aiSummary = undefined;
       this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
@@ -74,11 +91,14 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  private resetCampaign(): void {
+  private resetCampaign(mode: CampaignControl['mode'] = 'local'): void {
     this.invalidateOperation();
     this.aiSummary = undefined;
     this.resetTravel();
-    this.campaign = createCampaignSession();
+    const result = createCampaignRun(mode === 'local' ? { mode } : { mode, aiPolicy: 'expansion-v1' });
+    if (!result.ok) { this.error = true; this.message = result.message; this.render(); return; }
+    this.run = result.run;
+    this.aiPhase = 'idle';
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
     this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
     this.budgetOpen = false;
@@ -88,10 +108,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   private render(): void {
-    if (!this.campaign || this.disposed) return;
+    if (!this.run || !this.campaign || this.disposed) return;
+    const aiMode = this.run.control.mode === 'human-vs-ai';
+    if (aiMode) this.factionId = 'blue';
     this.panel?.destroy();
     const operation = this.operation;
-    const source = this.campaign, generation = this.generation;
+    const source = this.run, generation = this.generation;
     // Capture what this panel displayed, not mutable scene fields at invocation time.
     const expectedTurn = this.campaign.turn, factionId = this.factionId, systemId = this.selectedId;
     const choice = this.catalog?.choices[this.choiceIndex];
@@ -109,7 +131,9 @@ export class MainScene extends Phaser.Scene {
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
     this.panel = new CampaignPanel(this, view, {
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
-      aiSummary: this.aiSummary,
+      aiSummary: aiMode ? undefined : this.aiSummary,
+      aiMode, aiPhase: this.aiPhase, running: this.executing,
+      newMode: operation?.mode ?? 'local',
       budgetOpen: this.budgetOpen,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
         completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
@@ -127,7 +151,7 @@ export class MainScene extends Phaser.Scene {
         this.message = ''; this.error = false; this.render();
       },
       switchSide: () => {
-        if (this.pending) return;
+        if (this.pending || this.executing || this.run?.control.mode !== 'local') return;
         this.aiSummary = undefined;
         this.factionId = this.factionId === 'blue' ? 'red' : 'blue';
         this.choiceIndex = 0; this.completedPage = 0;
@@ -216,8 +240,14 @@ export class MainScene extends Phaser.Scene {
         }
       },
       request: action => {
-        if (action === 'ai' && (this.campaign !== source || this.generation !== generation)) return;
+        if (this.run !== source || this.generation !== generation) return;
         this.requestOperation(action, action === 'ai' ? { factionId, expectedTurn } : undefined);
+      },
+      pause: () => this.pauseAi(),
+      chooseMode: mode => {
+        if (operation && this.isCurrentOperation(operation) && operation.action === 'new' && !this.executing) {
+          operation.mode = mode; this.render();
+        }
       },
       cancel: () => { if (operation === this.operation) { this.invalidateOperation(); this.render(); } },
       confirm: () => this.confirmOperation(operation)
@@ -225,28 +255,34 @@ export class MainScene extends Phaser.Scene {
   }
 
   private invalidateOperation(): void {
+    this.cancelTicket();
     this.generation++;
     this.operation = undefined; this.pending = undefined;
   }
 
   private isCurrentOperation(operation: PendingOperation): boolean {
     return !this.disposed && this.operation === operation && this.generation === operation.generation &&
-      this.campaign === operation.source;
+      this.run === operation.source;
   }
 
   private requestOperation(action: CampaignConfirmation, aiRequest?: AiTurnRequest): void {
-    if (this.disposed || !this.campaign || this.pending) return;
-    if (action === 'ai' && (!aiRequest || aiRequest.factionId !== this.factionId ||
+    if (this.disposed || !this.run || !this.campaign || this.pending || this.executing) return;
+    if (action === 'ai' && (this.run.control.mode !== 'local' || !aiRequest || aiRequest.factionId !== this.factionId ||
       aiRequest.expectedTurn !== this.campaign.turn ||
       getCampaignSessionView(this.campaign, this.factionId).activeFactionId !== aiRequest.factionId)) return;
-    const operation: PendingOperation = { action, source: this.campaign, generation: ++this.generation, aiRequest };
+    if (action === 'resume' && (!this.isRedAi() || !['paused', 'failed'].includes(this.aiPhase))) return;
+    if (action === 'takeover' && this.run.control.mode !== 'human-vs-ai') return;
+    // Cancellation precedes both pending creation and any storage access.
+    this.invalidateOperation();
+    const operation: PendingOperation = { action, source: this.run, generation: this.generation, aiRequest,
+      mode: action === 'new' ? 'local' : undefined };
     this.operation = operation; this.pending = action;
     if (action === 'save' || action === 'load') {
       // Capture before reading the slot. Never substitute the live session at confirmation.
-      if (action === 'save') operation.candidate = structuredClone(this.campaign);
+      if (action === 'save') operation.candidate = structuredClone(this.run);
       const result = this.saves.load();
       if (!this.isCurrentOperation(operation)) return;
-      if (action === 'load' && result.ok) operation.candidate = result.state;
+      if (action === 'load' && result.ok) operation.candidate = result.run;
       else if (action === 'load' || (!result.ok && result.code === 'STORAGE_READ_FAILED')) {
         this.invalidateOperation();
         if (!result.ok) { this.error = true; this.message = result.message; }
@@ -261,19 +297,23 @@ export class MainScene extends Phaser.Scene {
   }
 
   private confirmOperation(operation?: PendingOperation): void {
-    if (!operation || this.operation !== operation || this.disposed) return;
+    if (!operation || this.operation !== operation || this.disposed || this.executing) return;
     if (!this.isCurrentOperation(operation)) {
       this.invalidateOperation(); this.render(); return;
     }
     const { action, candidate } = operation;
     if (action === 'ai' && operation.aiRequest) {
       // One atomic domain call, never publish the package's intermediate commands.
-      const result = executeAiTurn(operation.source, operation.aiRequest);
-      if (!this.isCurrentOperation(operation)) return;
+      this.executing = true;
+      let result: RunAiTurnResult;
+      try { result = executeRunAiTurn(operation.source, operation.aiRequest); }
+      catch { result = { ok: false, code: 'AI_EXECUTION_FAILED', message: 'Не удалось выполнить AI-ход' }; }
+      finally { this.executing = false; }
+      if (!this.isCurrentOperation(operation)) { this.render(); return; }
       this.invalidateOperation();
       this.error = !result.ok;
       if (result.ok) {
-        this.campaign = result.state;
+        this.run = result.run;
         this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
         this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
         this.resetTravel();
@@ -288,50 +328,51 @@ export class MainScene extends Phaser.Scene {
       this.error = !result.ok; this.message = result.ok ? 'Кампания сохранена.' : result.message;
       this.render();
     } else if (action === 'load' && candidate) {
-      this.invalidateOperation();
-      this.aiSummary = undefined;
-      this.campaign = candidate;
-      this.factionId = getCampaignSessionView(candidate, this.factionId).activeFactionId;
-      const galaxy = getGalaxyDefinition();
-      this.selectedId = galaxy.systems.find(system => candidate.galaxy.systems.some(
-        state => state.id === system.id && state.ownerId === this.factionId))?.id ??
-        galaxy.factions.find(faction => faction.id === this.factionId)!.homeSystemId;
-      this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
-      this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
-      this.resetTravel();
+      this.replaceRun(candidate);
       this.message = 'Кампания загружена.'; this.error = false;
       this.render();
-    } else if (action === 'new') this.resetCampaign();
+    } else if (action === 'resume') {
+      this.invalidateOperation();
+      this.scheduleAi();
+    } else if (action === 'takeover') {
+      const result = convertRunToLocal(operation.source);
+      if (!this.isCurrentOperation(operation)) return;
+      if (result.ok) { this.replaceRun(result.run); this.message = 'Локальное управление передано активной стороне.'; this.error = false; }
+      else { this.invalidateOperation(); this.message = result.message; this.error = true; }
+      this.render();
+    } else if (action === 'new') this.resetCampaign(operation.mode);
     else if (action === 'menu') {
       this.invalidateOperation(); this.scene.start('MenuScene');
     }
   }
 
   private execute(command: SessionCommand): void {
-    if (this.disposed || !this.campaign || this.pending) return;
+    if (this.disposed || !this.run || this.pending || this.executing) return;
     this.aiSummary = undefined;
-    const result = executeSessionCommand(this.campaign, command);
+    const source = this.run, generation = this.generation;
+    const result = executeRunCommand(source, command);
+    if (this.disposed || this.run !== source || this.generation !== generation || this.pending) return;
     this.error = !result.ok;
     if (result.ok) {
-      this.campaign = result.state;
+      this.run = result.run;
       if (command.kind === 'endTurn') this.fleetShipIds = [];
       if (command.kind === 'createFleet') {
         this.fleetShipIds = []; this.fleetMemberPage = 0;
-        this.fleetPage = result.state.fleets.items.filter(fleet => fleet.factionId === command.factionId && isFleetAtColony(fleet, result.state.ships, command.systemId)).length - 1;
+        this.fleetPage = result.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && isFleetAtColony(fleet, result.run.session.ships, command.systemId)).length - 1;
       }
       if (command.kind === 'disbandFleet') this.fleetMemberPage = 0;
       if (command.kind === 'sendFleet') {
         this.fleetDestinationIndex = 0; this.fleetMemberPage = 0;
-        this.fleetTransitPage = result.state.fleets.items.filter(fleet => fleet.factionId === command.factionId && getFleetTransit(fleet, result.state.ships))
+        this.fleetTransitPage = result.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && getFleetTransit(fleet, result.run.session.ships))
           .findIndex(fleet => fleet.id === command.fleetId);
       }
       if (command.kind === 'sendShip') {
         this.destinationIndex = 0;
-        this.transitPage = result.state.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
+        this.transitPage = result.run.session.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
           .findIndex(ship => ship.id === command.shipId);
       }
       if (command.kind === 'deployProduction') {
-        this.shipsPage = result.state.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
+        this.shipsPage = result.run.session.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
       }
       const receipt = result.endTurnEconomy;
       this.message = receipt ? `Ход передан. Доход: +${receipt.income.credits} кр. / +${receipt.income.minerals} мин. ` +
@@ -345,12 +386,131 @@ export class MainScene extends Phaser.Scene {
         : command.kind === 'sendFleet' ? 'Группа отправлена; все участники прибудут в конце своего хода.'
         : command.kind === 'disbandFleet' ? 'Группа расформирована. Корабли остаются в колонии.'
         : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
-    } else this.message = result.message;
+    } else {
+      // Keep actionable local UI wording; never use a red AI transcript for feedback.
+      const messages: Partial<Record<typeof result.code, string>> = {
+        RESOURCE_LIMIT: command.kind === 'cancelProduction' ? 'Возврат превысит предел ресурсов; заказ не отменён'
+          : 'Доход превысит предел ресурсов; ход не завершён',
+        QUEUE_FULL: 'Очередь колонии заполнена',
+        SHIP_LIMIT: 'Достигнут предел стратегических кораблей стороны',
+        COMPLETED_NOT_FOUND: 'Готовый проект не найден в колонии',
+        SHIP_IN_FLEET: 'Корабль входит в группу; сначала расформируйте её',
+        FLEET_NOT_FOUND: 'Своя группа не найдена в указанной колонии',
+        SHIP_NOT_FOUND: 'Свой корабль не найден в указанной системе',
+        INSUFFICIENT_FUEL: command.kind === 'sendFleet' ? 'Недостаточно топлива у одного из кораблей группы; нужна заправка'
+          : 'Недостаточно стратегического топлива; нужна заправка',
+        ...(command.kind === 'refuelShip' ? { INSUFFICIENT_RESOURCES: 'Недостаточно ресурсов для полной заправки' } : {}),
+        ...(command.kind === 'sendShip' || command.kind === 'sendFleet' ? { NOT_OWN_COLONY: 'Перелёт доступен только в свою колонию' } : {})
+      };
+      this.message = messages[result.code] ?? result.message;
+    }
+    this.render();
+    if (result.ok && this.run === result.run && this.generation === generation &&
+      command.kind === 'endTurn' && command.factionId === 'blue' && this.isRedAi()) this.scheduleAi();
+  }
+
+  private isRedAi(): boolean {
+    return this.run?.control.mode === 'human-vs-ai' && this.run.session.turn % 2 === 0;
+  }
+
+  private cancelTicket(): void {
+    const ticket = this.ticket;
+    this.ticket = undefined;
+    if (ticket) { ticket.consumed = true; ticket.task?.remove(false); }
+    if (this.aiPhase === 'scheduled' || this.aiPhase === 'running') this.aiPhase = this.isRedAi() ? 'paused' : 'idle';
+  }
+
+  private pauseAi(): void {
+    if (this.disposed || this.pending || this.executing || this.aiPhase !== 'scheduled') return;
+    this.invalidateOperation(); this.render();
+  }
+
+  private currentTicket(ticket: AiTicket): boolean {
+    return !this.disposed && this.scene.isActive() && this.ticket === ticket &&
+      this.generation === ticket.generation && this.run === ticket.source && !this.pending &&
+      this.isRedAi() && ticket.request.factionId === 'red' && this.run?.session.turn === ticket.request.expectedTurn;
+  }
+
+  /** Only called by accepted blue endTurn or the independent Resume confirmation. */
+  private scheduleAi(): void {
+    if (!this.run || !this.isRedAi() || this.disposed || this.pending || this.executing || this.ticket) return;
+    const ticket: AiTicket = { source: this.run, generation: this.generation,
+      request: { factionId: 'red', expectedTurn: this.run.session.turn }, consumed: false };
+    this.ticket = ticket; this.aiPhase = 'scheduled';
+    this.aiSummary = undefined; this.message = ''; this.error = false;
+    this.render();
+    if (!this.currentTicket(ticket)) {
+      if (this.ticket === ticket) this.cancelTicket();
+      return;
+    }
+    try {
+      // Clock handles scene pause/sleep; this is one deferred event, never a polling loop.
+      const task = this.time.delayedCall(0, () => this.runScheduledAi(ticket));
+      if (this.ticket === ticket && !ticket.consumed) ticket.task = task;
+      else task.remove(false);
+    } catch {
+      if (this.ticket === ticket) {
+        this.cancelTicket(); this.aiPhase = 'failed'; this.error = true;
+        this.message = 'Не удалось выполнить ход компьютера.'; this.render();
+      }
+    }
+  }
+
+  private runScheduledAi(ticket: AiTicket): void {
+    if (ticket.consumed || this.executing) return;
+    if (!this.currentTicket(ticket)) {
+      if (this.ticket === ticket) { this.cancelTicket(); this.render(); }
+      return;
+    }
+    ticket.consumed = true;
+    ticket.task?.remove(false); ticket.task = undefined;
+    this.aiPhase = 'running'; this.executing = true;
+    this.render();
+    let result: RunAiTurnResult;
+    try { result = executeRunAiTurn(ticket.source, ticket.request); }
+    catch { result = { ok: false, code: 'AI_EXECUTION_FAILED', message: 'Не удалось выполнить AI-ход' }; }
+    finally { this.executing = false; }
+    if (!this.currentTicket(ticket)) {
+      if (this.ticket === ticket) this.cancelTicket();
+      // A lifecycle replacement rendered while the synchronous call held the reentrancy lock.
+      // Release its UI lock too, without touching its run, phase or scheduling another task.
+      this.render();
+      return;
+    }
+    this.ticket = undefined;
+    this.aiSummary = undefined;
+    if (result.ok && result.run.control.mode === 'human-vs-ai' &&
+      result.run.session.turn === ticket.request.expectedTurn + 1) {
+      this.run = result.run; // Exactly one publication; never retain the red summary.
+      this.clearPanels(); this.aiPhase = 'idle'; this.error = false;
+      this.message = 'Компьютер завершил ход. Ваш ход.';
+    } else {
+      this.aiPhase = 'failed'; this.error = true;
+      this.message = 'Не удалось выполнить ход компьютера.';
+    }
     this.render();
   }
 
+  private clearPanels(): void {
+    this.aiSummary = undefined;
+    this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
+    this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
+    this.resetTravel();
+  }
+
+  private replaceRun(run: CampaignRun): void {
+    this.invalidateOperation(); this.run = run; this.clearPanels();
+    this.aiPhase = this.isRedAi() ? 'paused' : 'idle';
+    this.factionId = run.control.mode === 'human-vs-ai' ? 'blue' : run.session.turn % 2 ? 'blue' : 'red';
+    const galaxy = getGalaxyDefinition();
+    this.selectedId = galaxy.systems.find(system => run.session.galaxy.systems.some(
+      state => state.id === system.id && state.ownerId === this.factionId))?.id ??
+      galaxy.factions.find(faction => faction.id === this.factionId)!.homeSystemId;
+  }
+
   private onEscape = (): void => {
-    if (this.disposed || !this.campaign) return;
+    if (this.disposed || !this.campaign || this.executing) return;
+    if (this.aiPhase === 'scheduled') { this.pauseAi(); return; }
     if (this.pending) { this.invalidateOperation(); this.render(); return; }
     if (!this.pending && this.budgetOpen) { this.budgetOpen = false; this.render(); return; }
     if (!this.pending && this.fleetTravelOpen) { this.resetFleetTravel(); this.render(); return; }
