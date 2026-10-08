@@ -145,7 +145,8 @@ export class DesignedShip extends TacticalShip {
   override getInfo(): string {
     return `${this.name}\nПроект: ${this.design.id}\nКорпус: ${HULLS[this.design.hullId].name}\n` +
       `Масса: ${this.getTotalWeight().toFixed(1)} т | Стоимость: ${this.stats.cost}\n` +
-      `Скорость: ${this.getCurrentMaxSpeed().toFixed(1)} такт. ед/с | DPS без критов/защиты: ${this.stats.dps.toFixed(1)}\n` +
+      `Скорость: ${this.getCurrentMaxSpeed().toFixed(1)} такт. ед/с | DPS*: ${this.stats.dps.toFixed(1)}\n` +
+      `* DPS до исчерпания боезапаса; без критов/защиты цели\n` +
       `Энергия: ${this.getEnergy().toFixed(0)}/${this.stats.energyCapacity} ЭЕ\n` +
       `Генерация / движение: ${this.getEnergyGeneration()}/${this.getMovementPower()} ЭЕ/с\n` +
       `Полёт (только движение): ${formatFlightEstimate(this.getFlightEstimate())}\n` +

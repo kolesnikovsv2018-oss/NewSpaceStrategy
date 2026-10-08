@@ -59,7 +59,7 @@ export class ShipBuilderPanel {
       `Генерация: ${stats.powerGeneration.toFixed(1)} ЭЕ/с\n` +
       `Полная нагрузка: ${stats.peakPower.toFixed(1)} ЭЕ/с\n` +
       `Батарея: ${stats.energyCapacity} ЭЕ · DPS*: ${stats.dps.toFixed(1)}`, 14).setLineSpacing(5);
-    text(this.scene, this.container, 240, 257, '* без критов и защиты цели', 11);
+    text(this.scene, this.container, 240, 257, '* DPS до исчерпания боезапаса; без критов/защиты цели', 11);
     text(this.scene, this.container, 240, 278, `Трюм: ${stats.cargoMassLimit.toFixed(1)} т / ${stats.cargoVolume} м³ · не слоты`, 12);
     HULLS[this.design.hullId].slots.forEach((hardpoint, index) => {
       const slot = this.design.slots.find(item => item.id === hardpoint.id)!;

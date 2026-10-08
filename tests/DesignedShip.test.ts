@@ -34,6 +34,14 @@ describe('design to runtime', () => {
     expect(ship.getCombatInfo()).not.toContain('NaN');
   });
 
+  it('labels runtime DPS as nominal until projectile ammunition is depleted', () => {
+    const design = installComponent(createDesign('corvette', true), 'projectile_1', createComponent('projectile'));
+    const ship = new DesignedShip(design, 'blue');
+
+    expect(ship.getInfo()).toContain('DPS*:');
+    expect(ship.getInfo()).toContain('DPS до исчерпания боезапаса; без критов/защиты цели');
+  });
+
   it('does not regenerate a damaged shield before its delay expires', () => {
     const ship = new DesignedShip(installComponent(createDesign('corvette', true), 'shield_1', createComponent('shield')), 'blue');
     ship.takeDamage(100);

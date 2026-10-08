@@ -71,6 +71,14 @@ function panelFixture(saved = false) {
 }
 
 describe('shipyard draft replacement', () => {
+  it('labels the displayed DPS as ammo-limited nominal output', () => {
+    const f = panelFixture();
+    const displayedText = f.nodes.map(node => node.text).join('\n');
+
+    expect(displayedText).toContain('DPS*:');
+    expect(displayedText).toContain('* DPS до исчерпания боезапаса; без критов/защиты цели');
+  });
+
   it.each(['new-design', 'starter-design', 'copy-design', 'preset', 'load'] as const)('cancels %s without changing draft or storage', action => {
     const f = panelFixture();
     f.repo.saveDesign(createDesign('frigate'));

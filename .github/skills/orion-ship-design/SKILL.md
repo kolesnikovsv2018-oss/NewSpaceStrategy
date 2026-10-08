@@ -23,6 +23,8 @@ S3 завершён в минимальных границах, [военный 
 
 S4.5: `DesignedShip.getPreferredCombatRange()` возвращает кратчайшую дальность оружия, у которого ещё есть боезапас; `BattleManager` использует её только когда aggregate max range скрыл более короткое орудие. Это tactical movement policy, не изменение ShipDesign/стоимости/боеприпасов; legacy/однотипный путь остаётся прежним. Проверка mixed beam/projectile и depletion в `tests/DesignedShip.test.ts`; полный прогон3195/51, typecheck/build160 прошли.
 
+S4.10a: `ShipStats.dps` остался неизменным номинальным `damage × fireRate × accuracy`. Подписи в ShipBuilderPanel и `DesignedShip.getInfo()` уточняют: DPS действует до исчерпания боезапаса; crit/защита цели не учтены. Это не оценка длительного боя/баланса и не изменение `conquestAi` ranking. Регрессии текста: `tests/shipyardDraft.test.ts` и `tests/DesignedShip.test.ts`; браузер подтвердил, что пояснение в верфи не перекрывает строку трюма. Пересмотр AI score по обоим ресурсам/конечному бою остаётся открытым.
+
 ## Мирный S3.39: история приёмки
 
 2026-10-08 MainScene владеет одним CampaignMatch, использует match API и CampaignMatchSaveManager/save3; run/session/outcome производны. Defaults local/sandbox, joint-survey-v1 завершает общую разведку без победителя. Completed запрещает команды/helper/Resume, но оставляет просмотр/save/load/new/menu/takeover; readOnly передан прежним вложенным панелям без изменения их кода. Captured match identity/blue-only/lifecycle сохранены; completed load без AI, ongoing red-load paused. [Контракт](../../../docs/CAMPAIGN_COMPLETION.md), сервер localhost:3000 оставлен пользователю.
