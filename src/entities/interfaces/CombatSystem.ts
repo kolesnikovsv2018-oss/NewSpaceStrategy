@@ -68,6 +68,8 @@ export interface IFaction {
   ships: ICombatant[];       // Любые реализации боевого контракта, не конкретный класс
 }
 
+export type BattleTargetPriority = 'nearest' | 'lowest-hull-ratio';
+
 /**
  * Конфигурация боя
  */
@@ -77,6 +79,7 @@ export interface IBattleConfig {
   battlefieldHeight: number; // Высота поля боя
   autoTarget: boolean;       // Автоматический выбор целей
   friendlyFire: boolean;     // Дружественный огонь
+  targetPriority?: BattleTargetPriority;
 }
 
 /**

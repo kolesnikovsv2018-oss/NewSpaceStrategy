@@ -121,7 +121,7 @@ export class BattleManager {
     // Если нет цели или цель уничтожена, ищем новую
     if (!ship.target || ship.target.isDestroyed) {
       const enemies = this.getEnemies(ship.factionId);
-      ship.target = ship.findNearestEnemy(enemies);
+      ship.target = this.selectTarget(ship, enemies);
     }
 
     // Если есть цель
@@ -145,6 +145,24 @@ export class BattleManager {
         this.processAttack(ship, ship.target, attackResult);
       }
     }
+  }
+
+  private selectTarget(ship: ICombatant, enemies: readonly ICombatant[]): ICombatant | undefined {
+    if (this.config.targetPriority !== 'lowest-hull-ratio') return ship.findNearestEnemy(enemies);
+    return enemies.reduce<ICombatant | undefined>((best, candidate) => {
+      if (!best) return candidate;
+      const candidateHullRatio = candidate.combatStats.maxHull > 0
+        ? candidate.combatStats.currentHull / candidate.combatStats.maxHull : candidate.combatStats.currentHull;
+      const bestHullRatio = best.combatStats.maxHull > 0
+        ? best.combatStats.currentHull / best.combatStats.maxHull : best.combatStats.currentHull;
+      if (candidateHullRatio !== bestHullRatio) return candidateHullRatio < bestHullRatio ? candidate : best;
+
+      const distance = (target: ICombatant) => Math.hypot(ship.position.x - target.position.x, ship.position.y - target.position.y);
+      const candidateDistance = distance(candidate);
+      const bestDistance = distance(best);
+      if (candidateDistance !== bestDistance) return candidateDistance < bestDistance ? candidate : best;
+      return candidate.id < best.id ? candidate : best;
+    }, undefined);
   }
 
   /**

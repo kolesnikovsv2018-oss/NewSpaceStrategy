@@ -129,6 +129,36 @@ describe('BattleManager', () => {
     expect(order).toEqual(['blue', 'red', 'blue', 'red']);
   });
 
+  it('keeps nearest targeting by default and can prioritize the lowest hull ratio', () => {
+    const createPriorityBattle = (targetPriority?: 'nearest' | 'lowest-hull-ratio') => {
+      const blue = CombatShipFactory.createFighter('blue');
+      const near = CombatShipFactory.createFighter('red', 0);
+      const weakNear = CombatShipFactory.createFighter('red', 1);
+      const weakFar = CombatShipFactory.createFighter('red', 2);
+      blue.position = { x: 0, y: 0 };
+      near.position = { x: 40, y: 0 };
+      weakNear.position = { x: 80, y: 0 };
+      weakFar.position = { x: 120, y: 0 };
+      weakNear.combatStats.currentHull = weakNear.combatStats.maxHull * 0.25;
+      weakFar.combatStats.currentHull = weakFar.combatStats.maxHull * 0.25;
+      const manager = new BattleManager({ factions: [
+        { id: 'blue', name: 'Blue', color: 0, ships: [blue] },
+        { id: 'red', name: 'Red', color: 1, ships: [near, weakNear, weakFar] }
+      ], battlefieldWidth: 500, battlefieldHeight: 500, autoTarget: true, friendlyFire: false, targetPriority });
+      return { blue, near, weakNear, manager };
+    };
+
+    const nearest = createPriorityBattle();
+    nearest.manager.start();
+    nearest.manager.update(0.01);
+    expect(nearest.blue.target?.id).toBe(nearest.near.id);
+
+    const weakest = createPriorityBattle('lowest-hull-ratio');
+    weakest.manager.start();
+    weakest.manager.update(0.01);
+    expect(weakest.blue.target?.id).toBe(weakest.weakNear.id);
+  });
+
   it.each([0, -1, NaN, Infinity])('ignores invalid delta %s', delta => {
     const { blue, manager } = createBattle(false);
     const update = vi.spyOn(blue, 'update');
