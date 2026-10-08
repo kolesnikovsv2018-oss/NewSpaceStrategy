@@ -1,13 +1,14 @@
-import { z } from 'zod';
 import { DesignedShip } from '../entities/DesignedShip';
 import { BattleManager } from '../entities/BattleManager';
 import { campaignShipsSchema, type CampaignShip } from './campaignShips';
 import { readOperationalState, type OperationalState } from './campaignOperations';
+import { createSeededRandom } from './seededRandom';
+import { COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
 import type { CampaignFactionId } from './campaign';
 import type { BattleEvent } from '../entities/interfaces/CombatSystem';
 
-export const CONQUEST_BATTLE_STEP = 0.05;
-export const CONQUEST_BATTLE_STEPS = 2400;
+export const CONQUEST_BATTLE_STEP = COMBAT_SIMULATION_STEP;
+export const CONQUEST_BATTLE_STEPS = COMBAT_SIMULATION_MAX_STEPS;
 export interface BattleFrame {
   seconds: number;
   ships: { id: number; factionId: CampaignFactionId; x: number; y: number; hull: number }[];
@@ -23,12 +24,8 @@ export interface ConquestBattleResult {
 
 export function resolveConquestBattle(input: CampaignShip[], operations: Record<string, OperationalState>, seed: number): ConquestBattleResult {
   const ships = campaignShipsSchema.parse(input).sort((left, right) => left.id - right.id);
-  let randomState = z.number().int().min(1).max(0xffffffff).parse(seed);
+  const random = createSeededRandom(seed);
   if (!ships.length || ships.some(ship => ship.transit || ship.systemId !== ships[0].systemId)) throw new Error('Недопустимые участники боя');
-  const random = () => {
-    randomState ^= randomState << 13; randomState ^= randomState >>> 17; randomState ^= randomState << 5;
-    return (randomState >>> 0) / 0x100000000;
-  };
   const models = ships.map((ship, index) => {
     const operational = readOperationalState(operations[String(ship.id)], ship.design);
     const armed = ship.design.slots.some(slot => slot.component?.kind === 'beam' || slot.component?.kind === 'projectile');

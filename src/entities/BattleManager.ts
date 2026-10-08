@@ -11,8 +11,14 @@ export class BattleManager {
   private isFinished: boolean = false;
   private events: BattleEvent[] = [];
   private battleEndCallback?: (stats: IBattleStats) => void;
+  private simulationStep = 0;
 
-  constructor(config: IBattleConfig, private readonly environment: { now?: () => number; silent?: boolean } = {}) {
+  constructor(config: IBattleConfig, private readonly environment: {
+    now?: () => number;
+    silent?: boolean;
+    alternateFactionOrder?: boolean;
+    firstFactionId?: string;
+  } = {}) {
     this.config = config;
     
     // Собираем все корабли
@@ -87,20 +93,25 @@ export class BattleManager {
 
     this.stats.duration += deltaTime * 1000;
 
-    // Обновляем все корабли
-    this.allShips.forEach(ship => {
-      if (!ship.isDestroyed) {
-        ship.update(deltaTime);
-
-        // Автоматический выбор целей
-        if (this.config.autoTarget) {
-          this.updateShipBehavior(ship);
-        }
-      }
-    });
+    if (this.environment.alternateFactionOrder) {
+      const factions = [...this.config.factions];
+      const firstFactionIndex = factions.findIndex(faction => faction.id === this.environment.firstFactionId);
+      if (firstFactionIndex > 0) factions.push(...factions.splice(0, firstFactionIndex));
+      if (this.simulationStep % 2 === 1) factions.reverse();
+      factions.forEach(faction => faction.ships.forEach(ship => this.updateShip(ship, deltaTime)));
+      this.simulationStep++;
+    } else {
+      this.allShips.forEach(ship => this.updateShip(ship, deltaTime));
+    }
 
     // Проверяем условие окончания боя
     this.checkBattleEnd();
+  }
+
+  private updateShip(ship: ICombatant, deltaTime: number): void {
+    if (ship.isDestroyed) return;
+    ship.update(deltaTime);
+    if (this.config.autoTarget) this.updateShipBehavior(ship);
   }
 
   /**

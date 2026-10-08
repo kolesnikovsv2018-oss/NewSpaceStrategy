@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { BattleManager } from '../src/entities/BattleManager';
 import { LegacyCombatShipFactory as CombatShipFactory } from './fixtures/LegacyCombatShipFactory';
 
-function createBattle(autoTarget = true) {
+function createBattle(autoTarget = true, environment: {
+  alternateFactionOrder?: boolean;
+  firstFactionId?: string;
+} = {}) {
   const blue = CombatShipFactory.createFighter('blue');
   const red = CombatShipFactory.createFighter('red');
   // Same position, guaranteed hit. Random criticals are disabled for repeatability.
@@ -18,7 +21,7 @@ function createBattle(autoTarget = true) {
     battlefieldHeight: 720,
     autoTarget,
     friendlyFire: false
-  });
+  }, environment);
   return { blue, red, manager };
 }
 
@@ -102,6 +105,17 @@ describe('BattleManager', () => {
     manager.update(0.1);
     expect(blueUpdate).toHaveBeenCalledExactlyOnceWith(0.1);
     expect(redUpdate).toHaveBeenCalledExactlyOnceWith(0.1);
+  });
+
+  it('starts with the seeded faction and alternates initiative on following steps', () => {
+    const { blue, red, manager } = createBattle(false, { alternateFactionOrder: true, firstFactionId: 'red' });
+    const order: string[] = [];
+    vi.spyOn(blue, 'update').mockImplementation(() => { order.push('blue'); });
+    vi.spyOn(red, 'update').mockImplementation(() => { order.push('red'); });
+    manager.start();
+    manager.update(0.05);
+    manager.update(0.05);
+    expect(order).toEqual(['red', 'blue', 'blue', 'red']);
   });
 
   it.each([0, -1, NaN, Infinity])('ignores invalid delta %s', delta => {

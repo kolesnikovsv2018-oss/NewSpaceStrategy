@@ -4,6 +4,7 @@ import { DesignedShip } from '../src/entities/DesignedShip';
 import { BattleManager } from '../src/entities/BattleManager';
 import { COMBAT_PRESET_NAMES, createCombatDesign, type CombatPresetId } from '../src/domain/combatPresets';
 import { calculateShipStats, installComponent, validateDesign } from '../src/domain/shipDesign';
+import { createSeededRandom } from '../src/domain/seededRandom';
 import { ShipDesignManager } from '../src/utils/ShipDesignManager';
 
 describe('canonical combat factory', () => {
@@ -111,6 +112,34 @@ describe('canonical combat factory', () => {
     expect(fleet.every(ship => validateDesign(ship.getDesign()).length === 0)).toBe(true);
     expect(CombatShipFactory.createFleet('red', {})).toEqual([]);
     expect(CombatShipFactory.createFighterSquadron('blue', 0)).toEqual([]);
+  });
+
+  it('replays identical fleet battles from a seed without using Math.random', () => {
+    const replay = (seed: number) => {
+      const random = createSeededRandom(seed);
+      const blue = CombatShipFactory.createFleet('blue', { fighters: 3, frigates: 1 },
+        { random, idPrefix: `series-${seed}` });
+      const red = CombatShipFactory.createFleet('red', { fighters: 3, frigates: 1 },
+        { random, idPrefix: `series-${seed}` });
+      blue.forEach((ship, index) => { ship.position = { x: 160, y: 260 + index * 65 }; });
+      red.forEach((ship, index) => { ship.position = { x: 360, y: 260 + index * 65 }; });
+      const manager = new BattleManager({ factions: [
+        { id: 'blue', name: 'Blue', color: 0, ships: blue }, { id: 'red', name: 'Red', color: 1, ships: red }
+      ], battlefieldWidth: 600, battlefieldHeight: 800, autoTarget: true, friendlyFire: false },
+      { now: () => 0, silent: true });
+      manager.start();
+      for (let step = 0; step < 2400 && manager.getAliveShips().some(ship => ship.factionId === 'blue') &&
+        manager.getAliveShips().some(ship => ship.factionId === 'red'); step++) manager.update(0.05);
+      return {
+        duration: manager.getStats().duration,
+        shipsDestroyed: manager.getStats().shipsDestroyed,
+        totalDamage: manager.getStats().totalDamage,
+        alive: manager.getAliveShips().map(ship => [ship.factionId, ship.combatStats.currentHull])
+      };
+    };
+    vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('unexpected global RNG'); });
+    expect(replay(731)).toEqual(replay(731));
+    expect(replay(731)).not.toEqual(replay(732));
   });
 
   it.each([-1, 0.5, NaN, Infinity, 129])('rejects invalid count %s before creating ships', count => {

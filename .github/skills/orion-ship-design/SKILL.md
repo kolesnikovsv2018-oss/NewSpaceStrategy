@@ -15,6 +15,10 @@ S3 завершён в минимальных границах, [военный 
 - Ремонт в своей колонии полный, в поле ограничен суммой repairRate за команду; оплачивается ceil(HP/10) кредитов/ceil(HP/25) минералов. Снаряд1/1 только в своей колонии; fuel5/2 за единицу до3. Mining на own end в непригодной системе даёт floor(min(10,сумма speed×efficiency)) на корабль в казну; сканер с положительными range/accuracy показывает соседей. Не тактический груз/конвои/списание батареи второй раз.
 - tests/conquest.test.ts включает заработанную технологию → сохранённый библиотечный corvette → оплату/FIFO → удаление библиотеки → codec → deploy/перелёт/добычу/сканер. HP/полевой ремонт/пустые снаряды и ошибки отдельно диагностические. Browser paid обеих сторон/реальный AI/battle/save-reload, восстановленный HP8 и неизменный следующий исход; не новая browser-проверка каждого библиотечного проекта или реальной quota.
 
+## S4.1 — воспроизводимый factory path
+
+`CombatShipFactory.createFromDesign` принимает необязательный `{random,id}`, `createFleet`/`createFighterSquadron` — `{random,randomForShip,idPrefix}`. Defaults прежние. `createSeededRandomStream` даёт независимые потоки; `runCombatSeries` для1..100 seed seed-выбирает первую сторону и чередует инициативу каждого шага, но урон остаётся последовательным. Проверки в `tests/CombatShipFactory.test.ts`, `tests/combatSeries.test.ts`, `tests/BattleManager.test.ts`; полный прогон3190/51, typecheck и build160 модулей прошли. Это не UI replay/BattleScene seed entry.
+
 ## Мирный S3.39: история приёмки
 
 2026-10-08 MainScene владеет одним CampaignMatch, использует match API и CampaignMatchSaveManager/save3; run/session/outcome производны. Defaults local/sandbox, joint-survey-v1 завершает общую разведку без победителя. Completed запрещает команды/helper/Resume, но оставляет просмотр/save/load/new/menu/takeover; readOnly передан прежним вложенным панелям без изменения их кода. Captured match identity/blue-only/lifecycle сохранены; completed load без AI, ongoing red-load paused. [Контракт](../../../docs/CAMPAIGN_COMPLETION.md), сервер localhost:3000 оставлен пользователю.
