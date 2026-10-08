@@ -64,7 +64,9 @@ describe('design to runtime', () => {
     const design = installComponent(installComponent(createDesign('corvette', true), 'beam_1', null), 'projectile_1', weapon);
     const attacker = new DesignedShip(design, 'blue');
     const target = new DesignedShip(createDesign('corvette', true), 'red');
+    expect(attacker.getPreferredCombatRange()).toBe(300);
     expect(attacker.attack(target)?.hit).toBe(false);
+    expect(attacker.getPreferredCombatRange()).toBeUndefined();
     attacker.update(2);
     expect(attacker.attack(target)).toBeNull();
     expect(attacker.getWeaponState()[0].ammo).toBe(0);
@@ -110,5 +112,37 @@ describe('design to runtime', () => {
     expect(manager.getStats().shipsDestroyed).toBe(1);
     expect(manager.getStats().totalDamage).toBe(40);
     expect(manager.drainEvents().map(event => event.type)).toEqual(['WeaponFired', 'WeaponFired', 'ShipDestroyed']);
+  });
+
+  it('moves mixed-range designs close enough for their shortest loaded weapon', () => {
+    const beam = componentSchema.parse({ ...createComponent('beam'), range: 900, fireRate: 0.1 });
+    const projectile = componentSchema.parse({ ...createComponent('projectile'), range: 300, fireRate: 0.1 });
+    const design = installComponent(installComponent(createDesign('corvette', true), 'beam_1', beam), 'projectile_1', projectile);
+    const blue = new DesignedShip(design, 'blue');
+    const red = new DesignedShip(createDesign('corvette', true), 'red');
+    blue.position = { x: 100, y: 100 };
+    red.position = { x: 600, y: 100 };
+    const manager = new BattleManager({ factions: [
+      { id: 'blue', name: 'Blue', color: 0, ships: [blue] }, { id: 'red', name: 'Red', color: 1, ships: [red] }
+    ], battlefieldWidth: 1000, battlefieldHeight: 500, autoTarget: true, friendlyFire: false });
+
+    manager.start();
+    manager.update(0.05);
+
+    expect(blue.getPreferredCombatRange()).toBe(300);
+    expect(blue.target).toBe(red);
+    expect(blue.isMoving).toBe(true);
+  });
+
+  it('holds a requested close engagement range without retreating at the old half-range threshold', () => {
+    const ship = new DesignedShip(createDesign('corvette', true), 'blue');
+    const target = new DesignedShip(createDesign('corvette', true), 'red');
+    const range = ship.weaponStats.range;
+    ship.position = { x: 0, y: 0 };
+    target.position = { x: range * 0.2, y: 0 };
+
+    ship.moveToTarget(target, 0.25);
+
+    expect(ship.isMoving).toBe(false);
   });
 });

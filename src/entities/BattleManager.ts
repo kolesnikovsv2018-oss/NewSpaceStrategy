@@ -127,7 +127,14 @@ export class BattleManager {
     // Если есть цель
     if (ship.target) {
       // Двигаемся к цели
-      ship.moveToTarget(ship.target);
+      const preferredRange = ship.getPreferredCombatRange?.();
+      const weaponRange = ship.weaponStats.range;
+      if (preferredRange !== undefined && Number.isFinite(preferredRange) && preferredRange >= 0 &&
+        weaponRange > 0 && preferredRange < weaponRange * 0.8) {
+        ship.moveToTarget(ship.target, preferredRange / weaponRange);
+      } else {
+        ship.moveToTarget(ship.target);
+      }
 
       // Каждое готовое орудие может выстрелить в этом шаге. Обрабатываем урон сразу,
       // чтобы последующие орудия не засчитали уничтожение цели повторно.

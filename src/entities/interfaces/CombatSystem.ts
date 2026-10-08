@@ -55,6 +55,7 @@ export interface ICombatant extends ShipView {
   getCombatInfo(): string;
   update(deltaTime: number): void;
   getAttackAttemptsPerStep(): number;
+  getPreferredCombatRange?(): number | undefined;
   attack(target: ICombatant): IAttackResult | null;
   takeDamage(damage: number, critical?: boolean, damageType?: 'beam' | 'projectile'): IAttackResult;
   findNearestEnemy(enemies: readonly ICombatant[]): ICombatant | undefined;

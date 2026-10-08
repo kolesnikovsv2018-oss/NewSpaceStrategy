@@ -21,6 +21,8 @@ S3 завершён в минимальных границах, [военный 
 
 `runPairedCombatSeries` принимает композиции first/second и30..100 уникальных seed, для каждого выполняет оба назначения сторон с общими lineup/ship RNG streams; считает paired score, side-bias и approximate95% CI. Это не равностоимостный баланс: цены составов не ограничиваются. Полный прогон3192/51, typecheck/build160 прошли; детали/ограничения указаны в отчёте S4.3.
 
+S4.5: `DesignedShip.getPreferredCombatRange()` возвращает кратчайшую дальность оружия, у которого ещё есть боезапас; `BattleManager` использует её только когда aggregate max range скрыл более короткое орудие. Это tactical movement policy, не изменение ShipDesign/стоимости/боеприпасов; legacy/однотипный путь остаётся прежним. Проверка mixed beam/projectile и depletion в `tests/DesignedShip.test.ts`; полный прогон3195/51, typecheck/build160 прошли.
+
 ## Мирный S3.39: история приёмки
 
 2026-10-08 MainScene владеет одним CampaignMatch, использует match API и CampaignMatchSaveManager/save3; run/session/outcome производны. Defaults local/sandbox, joint-survey-v1 завершает общую разведку без победителя. Completed запрещает команды/helper/Resume, но оставляет просмотр/save/load/new/menu/takeover; readOnly передан прежним вложенным панелям без изменения их кода. Captured match identity/blue-only/lifecycle сохранены; completed load без AI, ongoing red-load paused. [Контракт](../../../docs/CAMPAIGN_COMPLETION.md), сервер localhost:3000 оставлен пользователю.

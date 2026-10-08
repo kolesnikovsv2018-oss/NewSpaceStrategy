@@ -86,6 +86,12 @@ export class DesignedShip extends TacticalShip {
     return this.state.weapons.map(weapon => ({ ...weapon }));
   }
 
+  getPreferredCombatRange(): number | undefined {
+    const availableRanges = this.stats.weapons.flatMap((weapon, index) =>
+      this.state.weapons[index].ammo === 0 ? [] : [weapon.definition.range]);
+    return availableRanges.length ? Math.min(...availableRanges) : undefined;
+  }
+
   override getAttackAttemptsPerStep(): number { return this.state.weapons.length; }
 
   override attack(target: ICombatant): IAttackResult | null {
