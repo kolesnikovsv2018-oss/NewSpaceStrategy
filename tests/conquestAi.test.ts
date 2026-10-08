@@ -5,6 +5,7 @@ import { calculateShipStats, createComponent, createDesign, installComponent, va
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { resolveConquestBattle } from '../src/domain/conquestBattle';
 import type { CampaignShip } from '../src/domain/campaignShips';
+import { getDefaultResearchTree, isCampaignDesignAvailable, researchTreeSchema } from '../src/domain/campaignResearch';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 
 function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
@@ -35,8 +36,21 @@ it('constructs legal deterministic candidates without clocks or random factories
     const designs = buildConquestDesigns(state.research.blue, state.researchTree);
     expect(designs.length).toBeGreaterThan(1);
     expect(designs.every(design => validateDesign(design, 'battle').length === 0)).toBe(true);
+    expect(designs.every(design => isCampaignDesignAvailable(design, state.research.blue, state.researchTree))).toBe(true);
     expect(buildConquestDesigns(state.research.blue, state.researchTree)).toEqual(designs);
   } finally { clock.mockRestore(); }
+});
+
+it('preserves legacy AI component values for version1 trees', () => {
+  const current = getDefaultResearchTree();
+  if (current.version !== 2) throw new Error('Expected version2 default research tree');
+  const { variantPolicy: _policy, ...legacyFields } = current;
+  const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-ai-v1' });
+  const design = buildConquestDesigns(createConquest({ mode: 'local' }, legacyTree).research.blue, legacyTree)
+    .find(candidate => candidate.hullId === 'corvette')!;
+  expect(design.slots.find(slot => slot.id === 'beam_1')?.component).toMatchObject({
+    kind: 'beam', damage: 8, range: 300, fireRate: 1, accuracy: 0.85
+  });
 });
 
 it('caps projectile output by ammo, reflects resource scarcity, defense and engagement range', () => {
@@ -101,7 +115,7 @@ it('plans from own observation and preserves paid production through save/load',
   const source = structuredClone(state);
   expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'research', technologyId: 'support' });
   let produced = false, deployed = false, travelled = false, battles = false;
-  for (let turn = 0; turn < 120 && getConquestOutcome(state).status === 'ongoing'; turn++) {
+    for (let turn = 0; turn < 160 && getConquestOutcome(state).status === 'ongoing'; turn++) {
     const faction = state.session.turn % 2 ? 'blue' : 'red';
     const result = executeConquestAiTurn(state, faction, state.session.turn);
     if (!result.ok) throw new Error(`${state.session.turn}: ${result.message}`);
@@ -120,7 +134,7 @@ it('plans from own observation and preserves paid production through save/load',
 
 it.each(['blue', 'red'] as const)('the real policy can win as %s against a passive opponent from a new start', winner => {
   let state = createConquest(winner === 'red' ? { mode: 'human-vs-ai', aiPolicy: 'conquest-v1' } : { mode: 'local' });
-  for (let action = 0; action < 120 && getConquestOutcome(state).status === 'ongoing'; action++) {
+  for (let action = 0; action < 160 && getConquestOutcome(state).status === 'ongoing'; action++) {
     const faction = state.session.turn % 2 ? 'blue' : 'red';
     const result = faction === winner ? executeConquestAiTurn(state, faction, state.session.turn) :
       executeConquestCommand(state, { kind: 'endTurn', factionId: faction, expectedTurn: state.session.turn });

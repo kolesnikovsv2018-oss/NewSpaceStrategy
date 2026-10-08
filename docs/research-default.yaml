@@ -1,5 +1,5 @@
-version: 1
-id: orion-technologies-v1
+version: 2
+id: orion-technologies-v2
 initial:
   hulls: [fighter, corvette]
   components: [engine, beam]
@@ -28,3 +28,30 @@ nodes:
     unlocks:
       hulls: [battleship]
       components: []
+variantPolicy:
+  id: component-bands-v1
+  tiers:
+    - level: 1
+      researchId: null
+      magnitude: 0.1
+      ratioStep: 0.05
+      ammo: 0.1
+      rechargeDelay: 0.5
+    - level: 2
+      researchId: support
+      magnitude: 0.2
+      ratioStep: 0.1
+      ammo: 0.2
+      rechargeDelay: 1
+    - level: 3
+      researchId: ordnance
+      magnitude: 0.3
+      ratioStep: 0.15
+      ammo: 0.3
+      rechargeDelay: 1.5
+    - level: 4
+      researchId: capital
+      magnitude: 0.4
+      ratioStep: 0.2
+      ammo: 0.4
+      rechargeDelay: 2

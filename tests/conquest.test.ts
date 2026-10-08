@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { createConquest, executeConquestCommand, getConquestOutcome, getConquestView, conquestSchema, type Conquest } from '../src/domain/conquest';
-import { createDesign, createComponentWithId, validateDesign } from '../src/domain/shipDesign';
+import { createDesign, createComponentWithId, installComponent, validateDesign } from '../src/domain/shipDesign';
+import { getDefaultResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
 import { buildConquestDesigns } from '../src/domain/conquestAi';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { encodeConquestSave, decodeConquestSave, ConquestSaveManager } from '../src/utils/ConquestSaveManager';
@@ -16,7 +17,7 @@ function end(state: Conquest): Conquest {
 function diagnosticServiceState() {
   const state = createConquest();
   state.research.blue.completed = ['support', 'ordnance'];
-  const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.id === 'conquest-corvette-0')!;
+  const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
   design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
   design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('repair', 'repair');
   expect(validateDesign(design, 'flight')).toEqual([]);
@@ -66,7 +67,10 @@ it('diagnostic scanner extends presence by one lane without exposing a distant e
 
 it('diagnostic ammunition remains depleted after reload and is replenished only by payment at a colony', () => {
   const source = diagnosticServiceState();
-  const design = buildConquestDesigns(source.research.blue, source.researchTree).find(item => item.id === 'conquest-corvette-2')!;
+  const design = buildConquestDesigns(source.research.blue, source.researchTree).find(item =>
+    item.hullId === 'corvette' && item.slots.some(slot => slot.id === 'projectile_1' && slot.component?.kind === 'projectile'))!;
+  const ammoCapacity = design.slots.find(slot => slot.id === 'projectile_1')!.component;
+  if (ammoCapacity?.kind !== 'projectile') throw new Error('Missing projectile fixture');
   source.session.ships[0].design = design;
   source.operations['1'] = createOperationalState(design);
   source.operations['1'].ammunition[0].amount = 0;
@@ -76,8 +80,9 @@ it('diagnostic ammunition remains depleted after reload and is replenished only 
   loaded.session.ships[0].systemId = 'sol';
   const result = executeConquestCommand(loaded, { kind: 'resupplyShip', shipId: 1, systemId: 'sol', factionId: 'blue', expectedTurn: 1 });
   if (!result.ok) throw new Error(result.message);
-  expect(result.state.operations['1'].ammunition[0].amount).toBe(20);
-  expect(result.state.session.treasuries.blue).toEqual({ credits: 80, minerals: 30 });
+  expect(result.state.operations['1'].ammunition[0].amount).toBe(ammoCapacity.ammoCapacity);
+  expect(result.state.session.treasuries.blue).toEqual({ credits: 100 - ammoCapacity.ammoCapacity,
+    minerals: 50 - ammoCapacity.ammoCapacity });
 });
 it('charges research once, advances only on own turns and preserves a detached tree through save', () => {
   const original = createConquest();
@@ -138,6 +143,34 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(() => decodeConquestSave(before.replace('"schemaVersion":4', '"schemaVersion":999'))).toThrow();
 });
 
+it('versions campaign variant profiles and grandfathers v4/rules1 ship designs', () => {
+  const current = createConquest();
+  const currentEnvelope = JSON.parse(encodeConquestSave(current));
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 4, rulesVersion: 2, conquest: { researchTree: { version: 2 } } });
+  expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
+
+  const currentTree = getDefaultResearchTree();
+  if (currentTree.version !== 2) throw new Error('Expected profiled research tree');
+  const { variantPolicy: _variantPolicy, ...legacyFields } = currentTree;
+  const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'grandfathered-v1' });
+  const legacy = createConquest({ mode: 'local' }, legacyTree);
+  let legacyDesign = createDesign('corvette', true);
+  const beam = legacyDesign.slots.find(slot => slot.id === 'beam_1')!.component;
+  if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+  legacyDesign = installComponent(legacyDesign, 'beam_1', { ...beam, damage: 27.6 });
+  legacy.session.production.lastOrderId = 1;
+  legacy.session.ships.push({ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design: legacyDesign });
+  legacy.operations['1'] = createOperationalState(legacyDesign);
+
+  const legacyBytes = encodeConquestSave(legacy);
+  expect(JSON.parse(legacyBytes)).toMatchObject({ schemaVersion: 4, rulesVersion: 1,
+    conquest: { researchTree: { version: 1 }, session: { ships: [{ design: { slots: expect.any(Array) } }] } } });
+  expect(decodeConquestSave(legacyBytes)).toEqual(legacy);
+  expect(decodeConquestSave(legacyBytes).session.ships[0].design.slots.find(slot => slot.id === 'beam_1')?.component)
+    .toMatchObject({ kind: 'beam', damage: 27.6 });
+  expect(() => decodeConquestSave(legacyBytes.replace('"rulesVersion":1', '"rulesVersion":2'))).toThrow();
+});
+
 it('removes captured production and invalidated groups while preserving surviving IDs', () => {
   const state = createConquest(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 5;
@@ -185,7 +218,7 @@ it('earns research, pays for a library service ship and mines after arrival with
   };
   command({ kind: 'research', technologyId: 'support' });
   state = end(end(end(end(state))));
-  const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.id === 'conquest-corvette-0')!;
+  const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
   design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'paid-miner');
   design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('scanner', 'paid-scanner');
   const storage = new Map<string, string>();

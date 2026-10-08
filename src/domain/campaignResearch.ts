@@ -1,19 +1,31 @@
 import { z } from 'zod';
-import { hullIdSchema, designSchema, validateDesign, type ShipDesign } from './shipDesign';
+import { componentSchema, createComponentWithId, hullIdSchema, designSchema, validateDesign,
+  type ComponentDefinition, type ComponentKind, type ShipDesign } from './shipDesign';
+import { isCombatPresetDesign } from './combatPresets';
+import { isCivilianPresetDesign } from './civilianPresets';
 
 export const researchIdSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
 const kindSchema = z.enum(['engine', 'beam', 'projectile', 'shield', 'armor', 'mining', 'repair', 'scanner', 'cargoExpansion']);
 const unlockSchema = z.object({ hulls: z.array(hullIdSchema).max(6), components: z.array(kindSchema).max(9) }).strict();
-export const researchTreeSchema = z.object({
-  version: z.literal(1), id: researchIdSchema,
-  initial: unlockSchema,
-  nodes: z.array(z.object({
-    id: researchIdSchema, name: z.string().trim().min(1).max(80),
-    prerequisites: z.array(researchIdSchema).max(64),
-    credits: z.number().int().min(1).max(1000000),
-    turns: z.number().int().min(1).max(1000), unlocks: unlockSchema
-  }).strict()).min(1).max(64)
-}).strict().superRefine((tree, context) => {
+const researchNodeSchema = z.object({
+  id: researchIdSchema, name: z.string().trim().min(1).max(80),
+  prerequisites: z.array(researchIdSchema).max(64),
+  credits: z.number().int().min(1).max(1000000),
+  turns: z.number().int().min(1).max(1000), unlocks: unlockSchema
+}).strict();
+const treeFields = { id: researchIdSchema, initial: unlockSchema,
+  nodes: z.array(researchNodeSchema).min(1).max(64) };
+const legacyResearchTreeSchema = z.object({ ...treeFields, version: z.literal(1) }).strict();
+const variantTierSchema = z.object({
+  level: z.number().int().min(1).max(4), researchId: researchIdSchema.nullable(),
+  magnitude: z.number().finite().min(0).max(1), ratioStep: z.number().finite().min(0).max(1),
+  ammo: z.number().finite().min(0).max(1), rechargeDelay: z.number().finite().min(0).max(60)
+}).strict();
+const profiledResearchTreeSchema = z.object({ ...treeFields, version: z.literal(2),
+  variantPolicy: z.object({ id: z.literal('component-bands-v1'), tiers: z.array(variantTierSchema).length(4) }).strict()
+}).strict();
+
+export const researchTreeSchema = z.union([legacyResearchTreeSchema, profiledResearchTreeSchema]).superRefine((tree, context) => {
   const nodes = new Map(tree.nodes.map(node => [node.id, node]));
   const fail = () => context.addIssue({ code: z.ZodIssueCode.custom, message: 'Недопустимое дерево исследований' });
   if (nodes.size !== tree.nodes.length || !tree.initial.hulls.includes('fighter') ||
@@ -31,11 +43,25 @@ export const researchTreeSchema = z.object({
     for (const node of tree.nodes) if (node.prerequisites.every(id => resolved.has(id))) resolved.add(node.id);
   }
   if (resolved.size !== nodes.size) fail();
+  if (tree.version === 2) {
+    const tiers = tree.variantPolicy.tiers;
+    if (tiers.some((tier, index) => tier.level !== index + 1 || (index === 0) !== (tier.researchId === null)) ||
+      new Set(tiers.flatMap(tier => tier.researchId ? [tier.researchId] : [])).size !== 3 ||
+      tiers.some(tier => tier.researchId !== null && !nodes.has(tier.researchId))) fail();
+  }
 });
 export type ResearchTree = z.infer<typeof researchTreeSchema>;
+export type ProfiledResearchTree = Extract<ResearchTree, { version: 2 }>;
+
+/** Tree v1 remains valid only as an embedded legacy-save snapshot. */
+export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree {
+  const tree = researchTreeSchema.parse(input);
+  if (tree.version !== 2) throw new Error('Новая кампания требует дерево с профилями вариантов');
+  return tree;
+}
 
 const defaultTree: ResearchTree = {
-  version: 1, id: 'orion-technologies-v1',
+  version: 2, id: 'orion-technologies-v2',
   initial: { hulls: ['fighter', 'corvette'], components: ['engine', 'beam'] },
   nodes: [
     { id: 'support', name: 'Флотская инфраструктура', prerequisites: [], credits: 10, turns: 2,
@@ -44,7 +70,13 @@ const defaultTree: ResearchTree = {
       unlocks: { hulls: ['destroyer', 'cruiser'], components: ['projectile'] } },
     { id: 'capital', name: 'Линейные корабли', prerequisites: ['ordnance'], credits: 30, turns: 4,
       unlocks: { hulls: ['battleship'], components: [] } }
-  ]
+  ],
+  variantPolicy: { id: 'component-bands-v1', tiers: [
+    { level: 1, researchId: null, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5 },
+    { level: 2, researchId: 'support', magnitude: 0.2, ratioStep: 0.1, ammo: 0.2, rechargeDelay: 1 },
+    { level: 3, researchId: 'ordnance', magnitude: 0.3, ratioStep: 0.15, ammo: 0.3, rechargeDelay: 1.5 },
+    { level: 4, researchId: 'capital', magnitude: 0.4, ratioStep: 0.2, ammo: 0.4, rechargeDelay: 2 }
+  ] }
 };
 
 export function getDefaultResearchTree(): ResearchTree { return researchTreeSchema.parse(defaultTree); }
@@ -76,10 +108,58 @@ export function getResearchAccess(state: ResearchState, tree: ResearchTree): Res
   };
 }
 
+export function getCampaignVariantTier(state: ResearchState, tree: ResearchTree): number {
+  if (tree.version === 1) return 4;
+  return tree.variantPolicy.tiers.reduce((level, tier) =>
+    tier.researchId && state.completed.includes(tier.researchId) ? tier.level : level, 1);
+}
+
+const magnitudeFields: Partial<Record<ComponentKind, readonly string[]>> = {
+  beam: ['damage', 'range', 'fireRate'], projectile: ['damage', 'range', 'fireRate'],
+  engine: ['thrust', 'maxSpeed', 'powerGeneration'], shield: ['capacity', 'rechargeRate'],
+  armor: ['armorPoints'], mining: ['miningSpeed'], repair: ['repairRate'], scanner: ['range'],
+  cargoExpansion: ['bonusCapacity']
+};
+const ratioFields: Partial<Record<ComponentKind, readonly string[]>> = {
+  beam: ['accuracy'], projectile: ['accuracy'], engine: ['maneuverability'], shield: ['beamResistance'],
+  armor: ['beamResistance', 'projectileResistance'], mining: ['efficiency'], scanner: ['accuracy']
+};
+
+function componentWithinVariantTier(component: ComponentDefinition, tier: number, tree: ResearchTree): boolean {
+  if (tree.version === 1) return true;
+  const profile = tree.variantPolicy.tiers[tier - 1];
+  const defaults = createComponentWithId(component.kind, 'campaign-variant-default') as unknown as Record<string, number>;
+  const values = component as unknown as Record<string, number>;
+  for (const key of magnitudeFields[component.kind] ?? []) {
+    const baseline = defaults[key], limit = baseline * profile.magnitude;
+    if (values[key] < baseline - limit - 1e-9 || values[key] > baseline + limit + 1e-9) return false;
+  }
+  for (const key of ratioFields[component.kind] ?? []) {
+    if (Math.abs(values[key] - defaults[key]) > profile.ratioStep + 1e-9) return false;
+  }
+  if (component.kind === 'projectile') {
+    const limit = defaults.ammoCapacity * profile.ammo;
+    if (component.ammoCapacity < Math.max(1, Math.floor(defaults.ammoCapacity - limit)) ||
+      component.ammoCapacity > Math.ceil(defaults.ammoCapacity + limit)) return false;
+  }
+  if (component.kind === 'shield' &&
+    Math.abs(component.rechargeDelay - defaults.rechargeDelay) > profile.rechargeDelay + 1e-9) return false;
+  return true;
+}
+
+export function isCampaignComponentVariantAvailable(component: ComponentDefinition, state: ResearchState, tree: ResearchTree): boolean {
+  if (!componentSchema.safeParse(component).success) return false;
+  const access = getResearchAccess(state, tree);
+  if (!access.components.includes(component.kind)) return false;
+  return tree.version === 1 || componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree);
+}
+
 export function isCampaignDesignAvailable(design: ShipDesign, state: ResearchState, tree: ResearchTree): boolean {
   if (!designSchema.safeParse(design).success || validateDesign(design, 'flight').length) return false;
   const access = getResearchAccess(state, tree);
-  return access.hulls.includes(design.hullId) && design.slots.every(slot => !slot.component || access.components.includes(slot.component.kind));
+  if (!access.hulls.includes(design.hullId)) return false;
+  if (tree.version === 1 || isCombatPresetDesign(design) || isCivilianPresetDesign(design)) return true;
+  return design.slots.every(slot => !slot.component || isCampaignComponentVariantAvailable(slot.component, state, tree));
 }
 
 export function advanceResearch(state: ResearchState, tree: ResearchTree): ResearchState {
@@ -94,6 +174,6 @@ export function advanceResearch(state: ResearchState, tree: ResearchTree): Resea
 }
 
 export interface ResearchTreeSource { load(): Promise<unknown> }
-export async function loadResearchTree(source: ResearchTreeSource): Promise<ResearchTree> {
-  return researchTreeSchema.parse(await source.load());
+export async function loadResearchTree(source: ResearchTreeSource): Promise<ProfiledResearchTree> {
+  return parseProfiledResearchTree(await source.load());
 }

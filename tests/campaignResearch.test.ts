@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { advanceResearch, createResearchState, getDefaultResearchTree, getResearchAccess,
-  isCampaignDesignAvailable, isResearchStateValid, loadResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
-import { createDesign } from '../src/domain/shipDesign';
+  isCampaignComponentVariantAvailable, isCampaignDesignAvailable, isResearchStateValid, loadResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
+import { componentSchema, createDesign, createComponentWithId, installComponent } from '../src/domain/shipDesign';
+import { createCombatDesign } from '../src/domain/combatPresets';
+import { createCivilianDesign } from '../src/domain/civilianPresets';
 import { parseResearchTreeYaml } from '../src/utils/ResearchTreeYaml';
 import { stringify } from 'yaml';
 import { readFileSync } from 'node:fs';
@@ -15,6 +17,15 @@ describe('campaign research', () => {
     expect(() => parseResearchTreeYaml('id: first\nid: second')).toThrow();
     expect(() => parseResearchTreeYaml('id: &loop [*loop]')).toThrow();
     expect(() => parseResearchTreeYaml(' '.repeat(256001))).toThrow();
+  });
+  it('requires profiled v2 for new YAML/source imports but keeps v1 parseable for legacy saves', async () => {
+    const current = getDefaultResearchTree();
+    if (current.version !== 2) throw new Error('Expected profiled default tree');
+    const { variantPolicy: _policy, ...fields } = current;
+    const legacy = { ...fields, version: 1 as const, id: 'legacy-tree' };
+    expect(researchTreeSchema.parse(legacy).version).toBe(1);
+    expect(() => parseResearchTreeYaml(JSON.stringify(legacy))).toThrow('профилями вариантов');
+    await expect(loadResearchTree({ load: async () => legacy })).rejects.toThrow('профилями вариантов');
   });
   it('provides independent complete default trees', () => {
     const tree = getDefaultResearchTree();
@@ -62,6 +73,68 @@ describe('campaign research', () => {
     state.completed.push('support');
     expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(true);
     expect(getResearchAccess(state, tree).components).toContain('repair');
+  });
+  it('applies versioned numeric tiers to custom values while preserving stock blueprints', () => {
+    const tree = getDefaultResearchTree(), state = createResearchState();
+    const factoryDesign = createDesign('corvette', true);
+    const changedBeam = factoryDesign.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (changedBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+    const custom = installComponent(factoryDesign, 'beam_1', { ...changedBeam, damage: 27.6 });
+
+    expect(tree.version).toBe(2);
+    expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCivilianDesign('scout'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(custom, state, tree)).toBe(false);
+    state.completed.push('support');
+    expect(isCampaignDesignAvailable(custom, state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createDesign('frigate', true), state, tree)).toBe(true);
+  });
+  it('enforces every declared numeric field against the current campaign tier', () => {
+    const tree = getDefaultResearchTree();
+    if (tree.version !== 2) throw new Error('Expected profiled default tree');
+    const state = { completed: ['support', 'ordnance', 'capital'], active: null };
+    const fields: { kind: Parameters<typeof createComponentWithId>[0]; key: string; mode: 'magnitude' | 'ratio' | 'ammo' | 'delay' }[] = [
+      ...(['damage', 'range', 'fireRate'].map(key => ({ kind: 'beam' as const, key, mode: 'magnitude' as const }))),
+      { kind: 'beam', key: 'accuracy', mode: 'ratio' },
+      ...(['damage', 'range', 'fireRate'].map(key => ({ kind: 'projectile' as const, key, mode: 'magnitude' as const }))),
+      { kind: 'projectile', key: 'accuracy', mode: 'ratio' }, { kind: 'projectile', key: 'ammoCapacity', mode: 'ammo' },
+      ...(['thrust', 'maxSpeed', 'powerGeneration'].map(key => ({ kind: 'engine' as const, key, mode: 'magnitude' as const }))),
+      { kind: 'engine', key: 'maneuverability', mode: 'ratio' },
+      { kind: 'shield', key: 'capacity', mode: 'magnitude' }, { kind: 'shield', key: 'rechargeRate', mode: 'magnitude' },
+      { kind: 'shield', key: 'rechargeDelay', mode: 'delay' }, { kind: 'shield', key: 'beamResistance', mode: 'ratio' },
+      { kind: 'armor', key: 'armorPoints', mode: 'magnitude' }, { kind: 'armor', key: 'beamResistance', mode: 'ratio' },
+      { kind: 'armor', key: 'projectileResistance', mode: 'ratio' },
+      { kind: 'mining', key: 'miningSpeed', mode: 'magnitude' }, { kind: 'mining', key: 'efficiency', mode: 'ratio' },
+      { kind: 'repair', key: 'repairRate', mode: 'magnitude' },
+      { kind: 'scanner', key: 'range', mode: 'magnitude' }, { kind: 'scanner', key: 'accuracy', mode: 'ratio' },
+      { kind: 'cargoExpansion', key: 'bonusCapacity', mode: 'magnitude' }
+    ];
+    const tier = tree.variantPolicy.tiers[3];
+    for (const field of fields) {
+      const component = createComponentWithId(field.kind, `tier-${field.kind}`);
+      expect(isCampaignComponentVariantAvailable(component, state, tree), `${field.kind}.${field.key} baseline`).toBe(true);
+      const values = component as unknown as Record<string, number>;
+      const baseline = values[field.key];
+      let outside: number;
+      if (field.mode === 'magnitude') outside = baseline * (1 + tier.magnitude) + 0.001;
+      else if (field.mode === 'ratio') outside = baseline + tier.ratioStep + 0.001 <= 1
+        ? baseline + tier.ratioStep + 0.001 : baseline - tier.ratioStep - 0.001;
+      else if (field.mode === 'ammo') outside = Math.ceil(20 * (1 + tier.ammo)) + 1;
+      else outside = baseline + tier.rechargeDelay + 0.01;
+      const invalid = componentSchema.parse({ ...component, [field.key]: outside });
+      expect(isCampaignComponentVariantAvailable(invalid, state, tree), `${field.kind}.${field.key} upper/lower cap`).toBe(false);
+    }
+  });
+  it('keeps version1 research trees grandfathered without numeric caps', () => {
+    const profiled = getDefaultResearchTree();
+    if (profiled.version !== 2) throw new Error('Expected profiled default tree');
+    const { variantPolicy: _variantPolicy, ...legacyFields } = profiled;
+    const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-tree-v1' });
+    const design = createDesign('corvette', true);
+    const beam = design.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+    const oldCustom = installComponent(design, 'beam_1', { ...beam, damage: 27.6 });
+    expect(isCampaignDesignAvailable(oldCustom, createResearchState(), legacyTree)).toBe(true);
   });
   it('loads and detaches a database/YAML adapter result, rejecting failures without fallback', async () => {
     const tree = getDefaultResearchTree();

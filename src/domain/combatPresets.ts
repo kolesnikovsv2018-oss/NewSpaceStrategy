@@ -43,6 +43,20 @@ const PRESETS: Record<CombatPresetId, CombatPreset> = {
   ] }
 };
 
+export function isCombatPresetDesign(design: ShipDesign): boolean {
+  return Object.values(PRESETS).some(preset => {
+    if (design.hullId !== preset.hullId) return false;
+    const modules = new Map(preset.modules.map(module => [module.slotId, module.component]));
+    return design.slots.every(slot => {
+      const expected = modules.get(slot.id), actual = slot.component;
+      if (!expected || !actual || expected.kind !== actual.kind) return !expected && !actual;
+      const actualValues = actual as unknown as Record<string, unknown>;
+      return Object.entries(expected).filter(([key]) => key !== 'name')
+        .every(([key, value]) => actualValues[key] === value);
+    });
+  });
+}
+
 /** A fresh, fully validated blueprint suitable for the yard, storage or runtime. */
 export function createCombatDesign(presetId: CombatPresetId, index = 0): ShipDesign {
   if (!Number.isSafeInteger(index) || index < 0 || index > 9999) throw new Error('Недопустимый номер корабля');

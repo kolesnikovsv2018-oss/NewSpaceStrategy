@@ -1,7 +1,7 @@
 import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
 import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
 import type { Treasury } from './campaignEconomy';
-import { getResearchAccess, isCampaignDesignAvailable, type ResearchState, type ResearchTree } from './campaignResearch';
+import { getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable, type ResearchState, type ResearchTree } from './campaignResearch';
 import { getProductionQuote } from './production';
 import { getRefuelQuote } from './campaignShips';
 import { createOperationalState } from './campaignOperations';
@@ -13,23 +13,58 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
   const access = getResearchAccess(research, tree), designs: ShipDesign[] = [];
   const signatures = new Set<string>();
   const components = new Map<string, ComponentDefinition>();
+  const legacyNumericPolicy = tree.version === 1;
+  const unlockedTier = tree.version === 2 ? getCampaignVariantTier(research, tree) : 1;
   for (const kind of access.components) {
     const component = createComponentWithId(kind, `conquest-${kind}-v1`);
-    if (component.kind === 'engine') Object.assign(component, { thrust: 100, maxSpeed: 100, maneuverability: 0.4, powerGeneration: 150 });
-    if (component.kind === 'beam') Object.assign(component, { damage: 8, range: 300, fireRate: 1, accuracy: 0.85 });
-    if (component.kind === 'projectile') Object.assign(component, { damage: 12, range: 300, fireRate: 0.5, accuracy: 0.9, ammoCapacity: 20 });
-    if (component.kind === 'armor') Object.assign(component, { armorPoints: 30, beamResistance: 0.1, projectileResistance: 0.1 });
+    if (legacyNumericPolicy && component.kind === 'engine') Object.assign(component, { thrust: 100, maxSpeed: 100, maneuverability: 0.4, powerGeneration: 150 });
+    if (legacyNumericPolicy && component.kind === 'beam') Object.assign(component, { damage: 8, range: 300, fireRate: 1, accuracy: 0.85 });
+    if (legacyNumericPolicy && component.kind === 'projectile') Object.assign(component, { damage: 12, range: 300, fireRate: 0.5, accuracy: 0.9, ammoCapacity: 20 });
+    if (legacyNumericPolicy && component.kind === 'armor') Object.assign(component, { armorPoints: 30, beamResistance: 0.1, projectileResistance: 0.1 });
     components.set(kind, component);
   }
   for (const hullId of access.hulls) for (let variant = 0; variant < 8; variant++) {
+    const profile = tree.version === 2
+      ? tree.variantPolicy.tiers[Math.min(unlockedTier, 1 + Math.floor(variant / 2)) - 1]
+      : undefined;
+    const variantComponents = new Map<string, ComponentDefinition>();
+    for (const [kind, component] of components) {
+      const candidate = structuredClone(component);
+      if (profile) {
+        const magnitude = profile.magnitude, ratioStep = profile.ratioStep;
+        if (candidate.kind === 'engine') Object.assign(candidate, { thrust: candidate.thrust * (1 + magnitude),
+          maxSpeed: candidate.maxSpeed * (1 + magnitude), maneuverability: Math.min(1, candidate.maneuverability + ratioStep),
+          powerGeneration: candidate.powerGeneration * (1 + magnitude) });
+        if (candidate.kind === 'beam') Object.assign(candidate, { damage: candidate.damage * (1 + magnitude),
+          range: candidate.range * (1 + magnitude),
+          fireRate: variant % 4 >= 2 ? candidate.fireRate : candidate.fireRate * (1 + magnitude),
+          accuracy: Math.min(1, candidate.accuracy + ratioStep) });
+        if (candidate.kind === 'projectile') Object.assign(candidate, { damage: candidate.damage * (1 + magnitude),
+          range: candidate.range * (1 + magnitude),
+          accuracy: Math.min(1, candidate.accuracy + ratioStep), ammoCapacity: Math.ceil(candidate.ammoCapacity * (1 + profile.ammo)) });
+        if (candidate.kind === 'shield') Object.assign(candidate, { capacity: candidate.capacity * (1 + magnitude),
+          rechargeRate: candidate.rechargeRate * (1 + magnitude), rechargeDelay: Math.max(0, candidate.rechargeDelay - profile.rechargeDelay),
+          beamResistance: Math.min(1, candidate.beamResistance + ratioStep) });
+        if (candidate.kind === 'armor') Object.assign(candidate, { armorPoints: candidate.armorPoints * (1 + magnitude),
+          beamResistance: Math.min(1, candidate.beamResistance + ratioStep),
+          projectileResistance: Math.min(1, candidate.projectileResistance + ratioStep) });
+        if (candidate.kind === 'mining') Object.assign(candidate, { miningSpeed: candidate.miningSpeed * (1 + magnitude),
+          efficiency: Math.min(1, candidate.efficiency + ratioStep) });
+        if (candidate.kind === 'repair') Object.assign(candidate, { repairRate: candidate.repairRate * (1 + magnitude) });
+        if (candidate.kind === 'scanner') Object.assign(candidate, { range: candidate.range * (1 + magnitude),
+          accuracy: Math.min(1, candidate.accuracy + ratioStep) });
+        if (candidate.kind === 'cargoExpansion') Object.assign(candidate, { bonusCapacity: candidate.bonusCapacity * (1 + magnitude) });
+      }
+      variantComponents.set(kind, candidate);
+    }
     const design: ShipDesign = { id: `conquest-${hullId}-${variant}`, name: `${HULLS[hullId].name} ${variant + 1}`,
       schemaVersion: 2, hullId, createdAt: '2000-01-01T00:00:00.000Z', updatedAt: '2000-01-01T00:00:00.000Z',
       slots: HULLS[hullId].slots.map(slot => {
         let component: ComponentDefinition | undefined;
-        if (slot.kind === 'engine' || slot.id === 'beam_1') component = components.get(slot.kind);
-        if (slot.id === 'beam_2' && variant % 2) component = components.get('beam');
-        if (slot.kind === 'armor' && variant >= 4) component = components.get('armor');
-        if (slot.kind === 'projectile' && variant % 4 >= 2) component = components.get('projectile');
+        if (slot.kind === 'engine' || slot.id === 'beam_1') component = variantComponents.get(slot.kind);
+        if (slot.id === 'beam_2' && variant % 2) component = variantComponents.get('beam');
+        if (slot.kind === 'armor' && variant >= 4) component = variantComponents.get('armor');
+        if (slot.kind === 'projectile' && variant % 4 >= 2) component = variantComponents.get('projectile');
         return { id: slot.id, component: component ? structuredClone(component) : null };
       }) };
     const signature = JSON.stringify([design.hullId, design.slots]);
@@ -140,14 +175,21 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       if (afford(quote.cost.credits, quote.cost.minerals)) return { ...fields, kind: 'refuelShip', systemId: ship.systemId, shipId: ship.id };
     }
     if (!ship.fuel) continue;
+    const homeRoutes = colonies.map(system => pathTo(view, ship.systemId, system.id))
+      .filter((route): route is SystemId[] => !!route && route.length > 1)
+      .sort((left, right) => left.length - right.length);
     const targets = view.galaxy.systems.filter(system => system.id !== ship.systemId &&
       (system.visibility === 'unknown' || (system.habitable && system.ownerId !== factionId)))
       .map(system => pathTo(view, ship.systemId, system.id)).filter((route): route is SystemId[] => !!route)
       .sort((left, right) => left.length - right.length || (left[left.length - 1] < right[right.length - 1] ? -1 : 1));
-    let route = targets[0];
-    if (!home && ship.fuel === 1) {
-      const retreat = colonies.map(system => pathTo(view, ship.systemId, system.id)).find(item => item?.length === 2);
-      if (retreat) route = retreat;
+    let route: SystemId[] | undefined = targets[0];
+    if (route && route.length > 1) {
+      const destination = route[1];
+      const reachesColony = colonies.some(system => system.id === destination);
+      const returnRoutes = reachesColony ? [] : colonies.map(system => pathTo(view, destination, system.id))
+        .filter((candidate): candidate is SystemId[] => !!candidate);
+      const canReturnAfterHop = reachesColony || returnRoutes.some(candidate => candidate.length - 1 <= ship.fuel - 1);
+      if (!canReturnAfterHop) route = homeRoutes.find(candidate => candidate.length - 1 <= ship.fuel);
     }
     if (route && route.length > 1) return { ...fields, kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId: route[1] };
   }

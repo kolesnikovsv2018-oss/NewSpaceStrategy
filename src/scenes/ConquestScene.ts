@@ -305,7 +305,7 @@ export class ConquestScene extends Phaser.Scene {
       text(this, this.root!, 24, 451, `${choice.source} · ${HULLS[choice.design.hullId].name}`, 14);
       let quote: ReturnType<typeof getProductionQuote> | undefined;
       try { quote = getProductionQuote(choice.design); } catch {}
-      text(this, this.root!, 24, 478, !available ? 'Проект недоступен: технологии или полётная валидация' :
+      text(this, this.root!, 24, 478, !available ? 'Проект недоступен: технология, профиль параметров или полётная валидация' :
         quote ? `${quote.cost.credits} кредитов / ${quote.cost.minerals} минералов · ${quote.turns} ходов` : 'Недопустимый проект', 14, available ? '#c8d9ed' : '#ffc08a');
       this.control(24, 516, '←', () => { this.choice--; this.render(); }, 'conquest-design-prev', this.choice > 0, 45);
       this.control(80, 516, '→', () => { this.choice++; this.render(); }, 'conquest-design-next', this.choice + 1 < choices.length, 45);
