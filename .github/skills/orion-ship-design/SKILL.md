@@ -23,7 +23,9 @@ S3 завершён в минимальных границах, [военный 
 
 S4.5: `DesignedShip.getPreferredCombatRange()` возвращает кратчайшую дальность оружия, у которого ещё есть боезапас; `BattleManager` использует её только когда aggregate max range скрыл более короткое орудие. Это tactical movement policy, не изменение ShipDesign/стоимости/боеприпасов; legacy/однотипный путь остаётся прежним. Проверка mixed beam/projectile и depletion в `tests/DesignedShip.test.ts`; полный прогон3195/51, typecheck/build160 прошли.
 
-S4.10a: `ShipStats.dps` остался неизменным номинальным `damage × fireRate × accuracy`. Подписи в ShipBuilderPanel и `DesignedShip.getInfo()` уточняют: DPS действует до исчерпания боезапаса; crit/защита цели не учтены. Это не оценка длительного боя/баланса и не изменение `conquestAi` ranking. Регрессии текста: `tests/shipyardDraft.test.ts` и `tests/DesignedShip.test.ts`; браузер подтвердил, что пояснение в верфи не перекрывает строку трюма. Пересмотр AI score по обоим ресурсам/конечному бою остаётся открытым.
+S4.10a: `ShipStats.dps` остался неизменным номинальным `damage × fireRate × accuracy`; UI/runtime/docs уточняют ammo cap и исключённые криты/защиту. `tests/shipyardDraft.test.ts` и `tests/DesignedShip.test.ts`; браузер подтвердил размещение пояснения без overlap.
+
+S4.10b: `calculateConquestDesignScore` ранжирует доступные проекты по `expectedDamage × effectiveDurability / resourcePressure`. Оружейные shot opportunities учитывают cooldown quantization, engagement approach от gap600 и target range из текущей movement policy; projectile shots capped ammo на horizon120с. Effective durability предполагает одинаковый raw beam/projectile stream, учитывает armor resistance/evasion/shield, но исключает shield regen; resource pressure делит cost обеих валют на доступные остатки, сохраняя credit reserve5. Это bounded heuristic, не вероятность победы/равностоимостный баланс; диапазон и защиту проверяет реальный resolver в paired design test, но AI не выбирает универсально лучший проект. `tests/conquestAi.test.ts` проверяет ammo/resource/defense/range и twin-vs-single beam30 seed pairs.
 
 ## Мирный S3.39: история приёмки
 

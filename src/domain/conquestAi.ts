@@ -1,4 +1,6 @@
 import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
+import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
+import type { Treasury } from './campaignEconomy';
 import { getResearchAccess, isCampaignDesignAvailable, type ResearchState, type ResearchTree } from './campaignResearch';
 import { getProductionQuote } from './production';
 import { getRefuelQuote } from './campaignShips';
@@ -36,6 +38,67 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
     }
   }
   return designs;
+}
+
+export interface ConquestDesignScore {
+  expectedDamage: number;
+  effectiveDurability: number;
+  approachSeconds: number;
+  resourcePressure: number;
+  score: number;
+}
+
+/**
+ * Bounded candidate heuristic, not a win-probability model. It uses the Conquest
+ * start gap and 120s cap, caps projectile shots by ammo, and models defense against
+ * a 50/50 beam/projectile stream without shield regeneration. Pair series remain
+ * the authority for comparisons between complete fleets.
+ */
+export function calculateConquestDesignScore(design: ShipDesign, available: Treasury): ConquestDesignScore {
+  const stats = calculateShipStats(design);
+  const preferredRange = stats.weapons.length
+    ? Math.min(...stats.weapons.map(weapon => weapon.definition.range)) : 0;
+  const maximumRange = Math.max(0, ...stats.weapons.map(weapon => weapon.definition.range));
+  const engagementRange = preferredRange < maximumRange * 0.8 ? preferredRange : maximumRange * 0.8;
+  const approachSeconds = stats.speed > 0
+    ? Math.min(COMBAT_SIMULATION_MAX_SECONDS, Math.max(0, (600 - engagementRange) / (2 * stats.speed)))
+    : COMBAT_SIMULATION_MAX_SECONDS;
+  const firstFiringStep = Math.ceil(approachSeconds / COMBAT_SIMULATION_STEP);
+  const activeSteps = Math.max(0, COMBAT_SIMULATION_MAX_STEPS - firstFiringStep);
+  let expectedDamage = 0;
+
+  for (const weapon of stats.weapons) {
+    const cooldownSteps = Math.max(1, Math.ceil(1 / weapon.definition.fireRate / COMBAT_SIMULATION_STEP - 1e-9));
+    const possibleShots = activeSteps === 0 ? 0 : Math.floor((activeSteps - 1) / cooldownSteps) + 1;
+    const ammunition = weapon.definition.kind === 'projectile' ? weapon.definition.ammoCapacity : possibleShots;
+    expectedDamage += weapon.definition.damage * weapon.definition.accuracy * Math.min(possibleShots, ammunition);
+  }
+
+  const hitRate = 1 - stats.evasion;
+  const armorFactor = 100 / (100 + stats.armor);
+  const beamHullRate = 0.5 * hitRate * armorFactor * (1 - stats.armorBeamResistance);
+  const projectileHullRate = 0.5 * hitRate * armorFactor * (1 - stats.armorProjectileResistance);
+  const shieldDrainRate = 0.5 * hitRate * (1 - stats.shieldBeamResistance);
+  const shieldDepletionSeconds = stats.shield > 0 && shieldDrainRate > 0
+    ? stats.shield / shieldDrainRate : stats.shield > 0 ? Infinity : 0;
+  const hullDepletionWhileShielded = projectileHullRate > 0 ? stats.hitPoints / projectileHullRate : Infinity;
+  let effectiveDurability: number;
+  if (shieldDepletionSeconds < hullDepletionWhileShielded) {
+    const remainingHull = stats.hitPoints - projectileHullRate * shieldDepletionSeconds;
+    const hullRateAfterShield = beamHullRate + projectileHullRate;
+    effectiveDurability = shieldDepletionSeconds + (hullRateAfterShield > 0
+      ? remainingHull / hullRateAfterShield : Number.POSITIVE_INFINITY);
+  } else {
+    effectiveDurability = hullDepletionWhileShielded;
+  }
+  effectiveDurability = Math.min(Number.MAX_SAFE_INTEGER,
+    Number.isFinite(effectiveDurability) ? Math.max(0, effectiveDurability) : Number.MAX_SAFE_INTEGER);
+
+  const quote = getProductionQuote(design);
+  const resourcePressure = quote.cost.credits / Math.max(1, available.credits) +
+    quote.cost.minerals / Math.max(1, available.minerals);
+  return { expectedDamage, effectiveDurability, approachSeconds, resourcePressure,
+    score: expectedDamage * effectiveDurability / resourcePressure };
 }
 
 function pathTo(view: ConquestView, start: SystemId, target: SystemId): SystemId[] | undefined {
@@ -92,12 +155,12 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     const designs = buildConquestDesigns(view.research, view.researchTree).filter(design => {
       const quote = getProductionQuote(design);
       return afford(quote.cost.credits + 5, quote.cost.minerals);
-    }).sort((left, right) => {
-      const score = (design: ShipDesign) => { const stats = calculateShipStats(design); return stats.hitPoints * stats.dps / getProductionQuote(design).cost.credits; };
-      return score(right) - score(left) || (left.id < right.id ? -1 : 1);
-    });
+    }).map(design => ({ design, value: calculateConquestDesignScore(design,
+      { credits: view.treasury.credits - 5, minerals: view.treasury.minerals }) }))
+      .sort((left, right) => right.value.score - left.value.score ||
+        (left.design.id < right.design.id ? -1 : left.design.id > right.design.id ? 1 : 0));
     const colony = colonies.find(system => view.production.orders.filter(order => order.systemId === system.id).length < 3);
-    if (designs[0] && colony) return { ...fields, kind: 'enqueueProduction', systemId: colony.id, design: designs[0] };
+    if (designs[0] && colony) return { ...fields, kind: 'enqueueProduction', systemId: colony.id, design: designs[0].design };
   }
   return { ...fields, kind: 'endTurn' };
 }

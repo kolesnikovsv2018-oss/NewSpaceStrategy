@@ -14,14 +14,14 @@ description: 'Контекст Orion, стек, карта кода и план 
 - TypeScript strict, ES2020; Phaser 3, WebGL/Canvas; Vite 4; Yarn Classic 1.22.22.
 - На исходном аудите установлены Phaser 3.90.0, TypeScript 5.9.3, Vite 4.5.14. Актуальные диапазоны — в package.json, разрешения — в yarn.lock.
 - `yarn install --frozen-lockfile` — установка; `yarn dev` — запуск на порту 3000; `yarn build` — TypeScript и production-сборка; `yarn preview` — просмотр сборки.
-- Vitest 3.2.7: `yarn test` — однократный прогон, `yarn test:watch` — наблюдение, `yarn typecheck` — типы исходников и тестов. Vitest имеет отдельный vitest.config.ts; основной Vite 4 не обновлялся. Последний полный прогон S4.10a:3201/51, strict/build160 модулей main-7909f264/1839.60 kB gzip447.90 kB; прежний chunk warning. Проверено на Node 24.20.0, рекомендуется Node 22+.
+- Vitest 3.2.7: `yarn test` — однократный прогон, `yarn test:watch` — наблюдение, `yarn typecheck` — типы исходников и тестов. Vitest имеет отдельный vitest.config.ts; основной Vite 4 не обновлялся. Последний полный прогон S4.10b:3203/51, strict/build160 модулей main-51da76f7/1840.79 kB gzip448.45 kB; прежний chunk warning. Проверено на Node 24.20.0, рекомендуется Node 22+.
 - Бэкенда и БД нет. ShipDesignManager подключён к верфи: localStorage, JSON импорт/экспорт, Zod 3.25.76 для проверки схемы и миграции.
 - Arcade Physics настроена, но движение ручное. Не добавлять физику для исправления формул движения.
 
 ## Карта кода
 
 - src/main.ts — конфигурация Phaser, регистрация сцен, масштабируемый canvas 1280×720.
-- src/scenes/ConquestScene.ts — отдельная военная сцена и единственный Conquest; domain/conquest.ts — полный state/команды/видимость/исход, conquestAi.ts — реальный конструктор и ограниченная policy, conquestBattle.ts — мост настоящего BattleManager. Не подменять этим мирные MainScene/Match API.
+- src/scenes/ConquestScene.ts — отдельная военная сцена и единственный Conquest; domain/conquest.ts — полный state/команды/видимость/исход, conquestAi.ts — реальный конструктор и ограниченная policy с `calculateConquestDesignScore`, conquestBattle.ts — мост настоящего BattleManager. Не подменять этим мирные MainScene/Match API.
 - src/domain/campaignResearch.ts — strict дерево/прогресс/доступность/ResearchTreeSource; utils/ResearchTreeYaml.ts — YAML/JSON импорт, docs/research-default.yaml — проверяемый пример. campaignOperations.ts — HP/снаряды и общие quotes ремонта/пополнения; ConquestSaveManager пишет/читает4/1 в общем слоте.
 - src/domain/seededRandom.ts — общий xorshift32 RNG с проверкой seed1..uint32; `createSeededRandomStream(seed,id)` создаёт изолированный поток. CombatShipFactory принимает optional `{random,randomForShip,idPrefix}` для флота; conquest/series используют общий helper.
 - src/domain/combatSimulation.ts — общий тактический шаг0.05с/лимит120с. `combatSeries.ts` запускает до100 одиночных боёв; paired API зеркалит lineup на30–100 уникальных seed, сохраняет common random streams по lineup, возвращает score/side bias и95% approximate CI по seed-парам. CI normal approximation для выборки, не оценка неопределённости самой модели; equal-cost matchup ещё не реализован. Урон внутри шага последовательный; BattleScene не подключена к seed/replay.

@@ -1,8 +1,32 @@
 import { expect, it, vi } from 'vitest';
 import { createConquest, getConquestOutcome, getConquestView, executeConquestCommand } from '../src/domain/conquest';
-import { buildConquestDesigns, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
-import { validateDesign } from '../src/domain/shipDesign';
+import { buildConquestDesigns, calculateConquestDesignScore, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
+import { calculateShipStats, createComponent, createDesign, installComponent, validateDesign, type ShipDesign } from '../src/domain/shipDesign';
+import { createOperationalState } from '../src/domain/campaignOperations';
+import { resolveConquestBattle } from '../src/domain/conquestBattle';
+import type { CampaignShip } from '../src/domain/campaignShips';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
+
+function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
+  const score = (winner: string | null, firstFaction: 'blue' | 'red') =>
+    winner === null ? 0.5 : winner === firstFaction ? 1 : 0;
+  let total = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const run = (firstFaction: 'blue' | 'red') => {
+      const firstId = firstFaction === 'blue' ? 1 : 2;
+      const secondFaction = firstFaction === 'blue' ? 'red' : 'blue';
+      const secondId = secondFaction === 'blue' ? 1 : 2;
+      const ships: CampaignShip[] = [
+        { id: firstId, factionId: firstFaction, systemId: 'eden', design: first, fuel: 3 },
+        { id: secondId, factionId: secondFaction, systemId: 'eden', design: second, fuel: 3 }
+      ];
+      const operations = Object.fromEntries(ships.map(ship => [String(ship.id), createOperationalState(ship.design)]));
+      return resolveConquestBattle(ships, operations, seed).winner;
+    };
+    total += (score(run('blue'), 'blue') + score(run('red'), 'red')) / 2;
+  }
+  return total / 30;
+}
 
 it('constructs legal deterministic candidates without clocks or random factories', () => {
   const state = createConquest();
@@ -14,6 +38,56 @@ it('constructs legal deterministic candidates without clocks or random factories
     expect(buildConquestDesigns(state.research.blue, state.researchTree)).toEqual(designs);
   } finally { clock.mockRestore(); }
 });
+
+it('caps projectile output by ammo, reflects resource scarcity, defense and engagement range', () => {
+  const base = createDesign('corvette', true);
+  const projectile = createComponent('projectile');
+  if (projectile.kind !== 'projectile') throw new Error('Invalid projectile fixture');
+  const withTwentyRounds = installComponent(base, 'projectile_1', projectile);
+  const withFortyRounds = installComponent(withTwentyRounds, 'projectile_1', { ...projectile, ammoCapacity: 40 });
+  const treasury = { credits: 10000, minerals: 10000 };
+  const standard = calculateConquestDesignScore(withTwentyRounds, treasury);
+  const moreAmmo = calculateConquestDesignScore(withFortyRounds, treasury);
+  const mineralScarce = calculateConquestDesignScore(withTwentyRounds, { credits: 10000, minerals: 100 });
+  expect(moreAmmo.expectedDamage).toBeGreaterThan(standard.expectedDamage);
+  expect(mineralScarce.resourcePressure).toBeGreaterThan(standard.resourcePressure);
+  expect(mineralScarce.score).toBeLessThan(standard.score);
+
+  const shielded = installComponent(base, 'shield_1', createComponent('shield'));
+  const armored = installComponent(base, 'armor_1', createComponent('armor'));
+  expect(calculateConquestDesignScore(shielded, treasury).effectiveDurability)
+    .toBeGreaterThan(calculateConquestDesignScore(base, treasury).effectiveDurability);
+  expect(calculateConquestDesignScore(armored, treasury).effectiveDurability)
+    .toBeGreaterThan(calculateConquestDesignScore(base, treasury).effectiveDurability);
+
+  const beam = base.slots.find(slot => slot.id === 'beam_1')!.component;
+  if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+  const longerRange = installComponent(base, 'beam_1', { ...beam, range: 900 });
+  expect(calculateConquestDesignScore(longerRange, treasury).approachSeconds)
+    .toBeLessThan(calculateConquestDesignScore(base, treasury).approachSeconds);
+  let mixedRange = installComponent(longerRange, 'projectile_1', createComponent('projectile'));
+  const engine = mixedRange.slots.find(slot => slot.id === 'engine_1')!.component;
+  if (engine?.kind !== 'engine') throw new Error('Invalid engine fixture');
+  mixedRange = installComponent(mixedRange, 'engine_1', { ...engine, powerGeneration: 1000 });
+  const mixedStats = calculateShipStats(mixedRange);
+  expect(calculateConquestDesignScore(mixedRange, treasury).approachSeconds)
+    .toBeCloseTo((600 - 300) / (2 * mixedStats.speed));
+});
+
+it('ranks the twin-beam candidate above a single beam in a mirrored 30-seed Conquest series', () => {
+  const state = createConquest();
+  const candidates = buildConquestDesigns(state.research.blue, state.researchTree).filter(design => design.hullId === 'fighter');
+  const singleBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component === null)!;
+  const twinBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component?.kind === 'beam')!;
+  const treasury = { credits: 10000, minerals: 10000 };
+
+  expect(validateDesign(singleBeam, 'battle')).toEqual([]);
+  expect(validateDesign(twinBeam, 'battle')).toEqual([]);
+  expect(calculateConquestDesignScore(twinBeam, treasury).score)
+    .toBeGreaterThan(calculateConquestDesignScore(singleBeam, treasury).score);
+  expect(pairedDesignMean(twinBeam, singleBeam)).toBeGreaterThan(0.5);
+});
+
 it('does not change its plan when only hidden enemy resources and research differ', () => {
   const first = createConquest(), second = structuredClone(first);
   second.session.treasuries.red = { credits: 999, minerals: 888 };
