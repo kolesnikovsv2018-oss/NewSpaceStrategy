@@ -1,3 +1,4 @@
+- Профиль S4 для Conquest: schema разрешает100 стратегических кораблей на сторону. На Node 24.21.0 реальный resolver для одинаковых fighter 100v100 завершился за median78.3ms (пять прогретых замеров, один seed); безоружный 100v100 timeout на2400 fixed steps — median459.8ms. Browser replay реальных 100v100 frames: 200 ships/frame, максимум256 events, 300 принудительных Phaser `game.step`; median0.6ms, p95 1.2ms, max21.3ms. Это диагностический renderer-step, не естественный RAF/FPS benchmark; оптимизаций не вводили. [Отчёт](../../../reports/2026-10-08/26-s4-fleet-performance-profile.md).
 ---
 name: orion-project
 description: 'Контекст Orion, стек, карта кода и план развития. Использовать перед улучшением, рефакторингом, исправлением или тестированием игры, чтобы начать с проверенных фактов без повторного общего аудита.'
