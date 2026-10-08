@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { createComponent, createDesign, designSchema, type ShipDesign } from '../src/domain/shipDesign';
+import { createComponent, createDesign, designSchema, installComponent, type ShipDesign } from '../src/domain/shipDesign';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { ShipBuilderPanel } from '../src/ui/ShipBuilderPanel';
 import { isShipyardModalOpen } from '../src/ui/ShipyardModal';
@@ -63,14 +63,23 @@ function repository() {
   return { repo: new ShipDesignManager(store), store, data };
 }
 
-function panelFixture(saved = false) {
+function panelFixture(saved = false, source = createDesign('corvette', true)) {
   const h = harness(), r = repository();
-  const initial = saved ? r.repo.saveDesign(createDesign('corvette', true)) : createDesign('corvette', true);
+  const initial = saved ? r.repo.saveDesign(source) : source;
   const panel = new ShipBuilderPanel(h.scene, 0, 0, r.repo, initial, saved ? initial : undefined);
   return { ...h, ...r, panel, initial };
 }
 
 describe('shipyard draft replacement', () => {
+  it('reports draft, flight and battle readiness independently for an unarmed flight design', () => {
+    const flightDesign = installComponent(createDesign('fighter'), 'engine_1', createComponent('engine'));
+    const f = panelFixture(false, flightDesign);
+
+    expect(f.find('design-mode-draft').text).toBe('Черновик: допустим');
+    expect(f.find('design-mode-flight').text).toBe('Полёт: доступен');
+    expect(f.find('design-mode-battle').text).toMatch(/^Бой: недоступен \(/);
+  });
+
   it('labels the displayed DPS as ammo-limited nominal output', () => {
     const f = panelFixture();
     const displayedText = f.nodes.map(node => node.text).join('\n');

@@ -75,9 +75,15 @@ export class ShipBuilderPanel {
       }, `slot-${hardpoint.id}`).setFixedSize(280, 34);
       if (slot.component) button(this.scene, this.container, x + 286, y, '×', () => this.installEquipment(hardpoint.id, null), `remove-${hardpoint.id}`);
     });
-    const issues = validateDesign(this.design);
-    text(this.scene, this.container, 18, 454, issues.length ? issues.map(issue => issue.message).join('\n') : 'Готов к полёту и боевому испытанию', 12,
-      issues.length ? '#ffc880' : '#8af5bd').setWordWrapWidth(660);
+    const draftIssues = validateDesign(this.design, 'draft');
+    const flightIssues = validateDesign(this.design, 'flight');
+    const battleIssues = validateDesign(this.design, 'battle');
+    text(this.scene, this.container, 18, 454, draftIssues.length ? 'Черновик: ошибка' : 'Черновик: допустим', 11,
+      draftIssues.length ? '#ffc880' : '#8af5bd').setFixedSize(210, 24).setName('design-mode-draft');
+    text(this.scene, this.container, 238, 454, flightIssues.length ? `Полёт: недоступен (${flightIssues.length})` : 'Полёт: доступен', 11,
+      flightIssues.length ? '#ffc880' : '#8af5bd').setFixedSize(210, 24).setName('design-mode-flight');
+    text(this.scene, this.container, 458, 454, battleIssues.length ? `Бой: недоступен (${battleIssues.length})` : 'Бой: доступен', 11,
+      battleIssues.length ? '#ffc880' : '#8af5bd').setFixedSize(224, 24).setName('design-mode-battle');
     text(this.scene, this.container, 18, 493, 'Добыча/ремонт/сканирование не исполняются; Трюм+ увеличивает объём.', 11, '#ffc880');
     text(this.scene, this.container, 18, 518, this.message, 12, this.error ? '#ff9292' : '#9bd8ff').setWordWrapWidth(660);
     button(this.scene, this.container, 18, 560, 'Сохранить', () => this.save(), 'save-design');
