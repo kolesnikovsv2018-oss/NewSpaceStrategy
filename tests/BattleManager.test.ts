@@ -166,6 +166,9 @@ describe('BattleManager', () => {
       const attacker = CombatShipFactory.createFighter('blue');
       const screen = CombatShipFactory.createFighter('red', 0);
       const target = CombatShipFactory.createFighter('red', 1);
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      attacker.weaponStats.accuracy = 1;
+      screen.combatStats.evasion = 0;
       attacker.position = { x: 0, y: 0 };
       screen.position = { x: 150, y: 5 };
       target.position = { x: 300, y: 0 };
@@ -188,9 +191,36 @@ describe('BattleManager', () => {
 
     const covered = resolveShot('line-of-fire');
     expect(covered.attacker.target).toBe(covered.target);
-    expect(covered.event).toMatchObject({ type: 'WeaponFired', targetId: covered.screen.id });
+    expect(covered.event).toMatchObject({ type: 'WeaponFired', targetId: covered.screen.id, hit: true });
     expect(covered.screen.combatStats.currentShield).toBeLessThan(covered.screen.combatStats.maxShield);
     expect(covered.target.combatStats.currentHull).toBe(covered.target.combatStats.maxHull * 0.2);
+  });
+
+  it('retreats below the configured hull ratio while preserving the default approach', () => {
+    const createRetreatBattle = (retreatHullRatio?: number, hullRatio = 0.25) => {
+      const blue = CombatShipFactory.createFighter('blue');
+      const red = CombatShipFactory.createFighter('red');
+      blue.position = { x: 0, y: 0 };
+      red.position = { x: 500, y: 0 };
+      blue.combatStats.currentHull = blue.combatStats.maxHull * hullRatio;
+      const move = vi.spyOn(blue, 'moveToTarget').mockImplementation(() => {});
+      const manager = new BattleManager({ factions: [
+        { id: 'blue', name: 'Blue', color: 0, ships: [blue] },
+        { id: 'red', name: 'Red', color: 1, ships: [red] }
+      ], battlefieldWidth: 800, battlefieldHeight: 500, autoTarget: true, friendlyFire: false, retreatHullRatio });
+      manager.start();
+      manager.update(0.01);
+      return { blue, red, move };
+    };
+
+    const defaultBattle = createRetreatBattle();
+    expect(defaultBattle.move.mock.calls[0]).toEqual([defaultBattle.red]);
+
+    const aboveThreshold = createRetreatBattle(0.5, 0.75);
+    expect(aboveThreshold.move.mock.calls[0]).toEqual([aboveThreshold.red]);
+
+    const retreating = createRetreatBattle(0.5, 0.25);
+    expect(retreating.move.mock.calls[0]).toEqual([retreating.red, undefined, undefined, true]);
   });
 
   it('keeps nearest targeting by default and can prioritize the lowest hull ratio', () => {

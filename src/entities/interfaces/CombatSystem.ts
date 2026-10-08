@@ -59,7 +59,7 @@ export interface ICombatant extends ShipView {
   attack(target: ICombatant): IAttackResult | null;
   takeDamage(damage: number, critical?: boolean, damageType?: 'beam' | 'projectile'): IAttackResult;
   findNearestEnemy(enemies: readonly ICombatant[]): ICombatant | undefined;
-  moveToTarget(target: ICombatant, optimalRange?: number, approachOffset?: Readonly<{ x: number; y: number }>): void;
+  moveToTarget(target: ICombatant, optimalRange?: number, approachOffset?: Readonly<{ x: number; y: number }>, retreat?: boolean): void;
 }
 
 export interface IFaction {
@@ -85,6 +85,7 @@ export interface IBattleConfig {
   targetPriority?: BattleTargetPriority;
   formation?: BattleFormation;
   cover?: BattleCoverRule;
+  retreatHullRatio?: number;
 }
 
 /**

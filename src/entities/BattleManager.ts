@@ -133,7 +133,12 @@ export class BattleManager {
       const preferredRange = ship.getPreferredCombatRange?.();
       const weaponRange = ship.weaponStats.range;
       const formationOffset = this.getFormationOffset(ship, ship.target);
-      if (preferredRange !== undefined && Number.isFinite(preferredRange) && preferredRange >= 0 &&
+      const retreatHullRatio = this.config.retreatHullRatio;
+      const shouldRetreat = Number.isFinite(retreatHullRatio) && retreatHullRatio! >= 0 && retreatHullRatio! <= 1 &&
+        ship.combatStats.maxHull > 0 && ship.combatStats.currentHull / ship.combatStats.maxHull <= retreatHullRatio!;
+      if (shouldRetreat) {
+        ship.moveToTarget(ship.target, undefined, formationOffset, true);
+      } else if (preferredRange !== undefined && Number.isFinite(preferredRange) && preferredRange >= 0 &&
         weaponRange > 0 && preferredRange < weaponRange * 0.8) {
         if (formationOffset) ship.moveToTarget(ship.target, preferredRange / weaponRange, formationOffset);
         else ship.moveToTarget(ship.target, preferredRange / weaponRange);

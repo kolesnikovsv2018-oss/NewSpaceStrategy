@@ -75,14 +75,19 @@ abstract class Tactical extends Base implements ICombatant {
     return nearest;
   }
 
-  moveToTarget(target: ICombatant, optimalRange = 0.8, approachOffset: Readonly<{ x: number; y: number }> = { x: 0, y: 0 }): void {
+  moveToTarget(target: ICombatant, optimalRange = 0.8, approachOffset: Readonly<{ x: number; y: number }> = { x: 0, y: 0 }, retreat = false): void {
     if (!nonNegativeFinite(optimalRange) || !finitePosition(target.position) || !finitePosition(this.position) ||
       !finitePosition(approachOffset)) return;
     const distance = this.getDistanceTo(target);
     const targetDistance = this.weaponStats.range * optimalRange;
     const retreatDistance = Math.min(this.weaponStats.range * 0.5, targetDistance * 0.75);
     if (!Number.isFinite(distance) || !nonNegativeFinite(targetDistance)) return;
-    if (distance > targetDistance) {
+    if (retreat) {
+      const dx = this.position.x - target.position.x;
+      const dy = this.position.y - target.position.y;
+      const angle = Math.atan2(dy, dx);
+      this.startMoving(this.position.x + Math.cos(angle) * 50, this.position.y + Math.sin(angle) * 50);
+    } else if (distance > targetDistance) {
       this.startMoving(target.position.x + approachOffset.x, target.position.y + approachOffset.y);
     } else if (distance < retreatDistance) {
       const dx = this.position.x - target.position.x;

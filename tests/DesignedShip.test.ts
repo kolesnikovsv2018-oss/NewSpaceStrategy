@@ -145,4 +145,17 @@ describe('design to runtime', () => {
 
     expect(ship.isMoving).toBe(false);
   });
+
+  it('moves away from the target when retreat is requested', () => {
+    const ship = new DesignedShip(createDesign('corvette', true), 'blue');
+    const target = new DesignedShip(createDesign('corvette', true), 'red');
+    ship.position = { x: 0, y: 0 };
+    target.position = { x: 100, y: 0 };
+
+    ship.moveToTarget(target, undefined, undefined, true);
+
+    expect(ship.isMoving).toBe(true);
+    expect(ship.velocity.x).toBeLessThan(0);
+    expect(ship.velocity.y).toBeCloseTo(0);
+  });
 });
