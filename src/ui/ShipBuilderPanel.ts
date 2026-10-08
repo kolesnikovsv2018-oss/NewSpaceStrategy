@@ -14,6 +14,7 @@ export class ShipBuilderPanel {
   private design: ShipDesign;
   private savedDesign?: ShipDesign;
   private disposed = false;
+  private importToken?: object;
   private catalogue: ComponentDefinition[] = [];
   private message = '';
   private error = false;
@@ -161,25 +162,38 @@ export class ShipBuilderPanel {
   }
 
   private import(): void {
+    if (this.disposed) return;
+    const token = {};
+    this.importToken = token;
     const input = document.createElement('input');
     input.type = 'file'; input.accept = '.json,application/json';
     input.onchange = async () => {
+      if (!this.isCurrentImport(token)) return;
       const file = input.files?.[0];
       if (!file) return;
       try {
         if (file.size > 5_000_000) throw new Error('Файл превышает 5 МБ');
         const json = await file.text();
-        if (!this.scene.sys.isActive()) return;
+        if (!this.isCurrentImport(token)) return;
         this.perform(() => { this.repository.importJSON(json); this.scene.events.emit('shipyard-library-changed'); }, 'Импорт завершён; используйте «Загрузить»');
       } catch (error) {
-        if (this.scene.sys.isActive()) this.showMessage(`Ошибка импорта: ${error instanceof Error ? error.message : String(error)}`, true);
+        if (this.isCurrentImport(token)) this.showMessage(`Ошибка импорта: ${error instanceof Error ? error.message : String(error)}`, true);
+      } finally {
+        if (this.importToken === token) this.importToken = undefined;
       }
     };
     input.click();
   }
 
-  showMessage(message: string, error = false): void { this.message = message.slice(0, 240); this.error = error; this.render(); }
+  private isCurrentImport(token: object): boolean {
+    return !this.disposed && this.importToken === token && this.scene.sys.isActive();
+  }
+
+  showMessage(message: string, error = false): void {
+    if (this.disposed) return;
+    this.message = message.slice(0, 240); this.error = error; this.render();
+  }
   setAvailableComponents(components: ComponentDefinition[]): void { this.catalogue = components.map(item => componentSchema.parse(item)); }
   getConfiguration(): ShipDesign { return designSchema.parse(this.design); }
-  destroy(): void { this.disposed = true; closeShipyardModal(this.scene); this.container.destroy(); }
+  destroy(): void { this.disposed = true; this.importToken = undefined; closeShipyardModal(this.scene); this.container.destroy(); }
 }

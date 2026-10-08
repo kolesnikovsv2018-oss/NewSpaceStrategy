@@ -103,4 +103,18 @@ describe('CombatShip equipment', () => {
     expect(ship.powerSource.currentEnergy).toBe(0);
     expect(ship.weaponStats.currentCooldown).toBe(1);
   });
+
+  it('fires at an exact fixed-step boundary without floating-point extra delay', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    const attacker = CombatShipFactory.createFighter('blue');
+    const target = CombatShipFactory.createFighter('red');
+    attacker.weaponStats.fireRate = 2;
+    attacker.weaponStats.cooldown = 0.5;
+    expect(attacker.attack(target)).not.toBeNull();
+    for (let step = 0; step < 9; step++) attacker.update(0.05);
+    expect(attacker.attack(target)).toBeNull();
+    attacker.update(0.05);
+    expect(attacker.weaponStats.currentCooldown).toBe(0);
+    expect(attacker.attack(target)).not.toBeNull();
+  });
 });

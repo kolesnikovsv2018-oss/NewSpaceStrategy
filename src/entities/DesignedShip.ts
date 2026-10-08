@@ -4,6 +4,7 @@ import { DesignCompatibilityViews } from '../legacy/DesignCompatibilityViews';
 import { legacyCargoLot, legacyCargoView } from '../legacy/cargoCompatibility';
 import { noDamageResult } from './interfaces/CombatSystem';
 import { positiveFinite } from '../domain/runtimeNumbers';
+import { advanceCombatCooldown } from '../domain/combatSimulation';
 import { formatFlightEstimate } from '../domain/flightEstimate';
 import { createDesignState, type WeaponState } from '../domain/shipState';
 import { cargoTotals, type CargoLimits } from '../domain/cargo';
@@ -139,7 +140,9 @@ export class DesignedShip extends TacticalShip {
       this.combatStats.maxShield - this.combatStats.currentShield, this.getEnergy() / 3);
     this.consumeEnergy(restored * 3);
     this.combatStats.currentShield += restored;
-    this.state.weapons.forEach(state => { state.cooldown = Math.max(0, state.cooldown - deltaTime); });
+    this.state.weapons.forEach((state, index) => {
+      state.cooldown = advanceCombatCooldown(state.cooldown, deltaTime, 1 / this.stats.weapons[index].definition.fireRate);
+    });
   }
 
   override getInfo(): string {

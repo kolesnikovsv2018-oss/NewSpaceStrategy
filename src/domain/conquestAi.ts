@@ -1,5 +1,5 @@
 import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
-import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
+import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP, getCombatCooldownSteps } from './combatSimulation';
 import type { Treasury } from './campaignEconomy';
 import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable,
   type ResearchState, type ResearchTree } from './campaignResearch';
@@ -104,7 +104,7 @@ export function calculateConquestDesignScore(design: ShipDesign, available: Trea
   let expectedDamage = 0;
 
   for (const weapon of stats.weapons) {
-    const cooldownSteps = Math.max(1, Math.ceil(1 / weapon.definition.fireRate / COMBAT_SIMULATION_STEP - 1e-9));
+    const cooldownSteps = getCombatCooldownSteps(1 / weapon.definition.fireRate);
     const possibleShots = activeSteps === 0 ? 0 : Math.floor((activeSteps - 1) / cooldownSteps) + 1;
     const ammunition = weapon.definition.kind === 'projectile' ? weapon.definition.ammoCapacity : possibleShots;
     expectedDamage += weapon.definition.damage * weapon.definition.accuracy * Math.min(possibleShots, ammunition);

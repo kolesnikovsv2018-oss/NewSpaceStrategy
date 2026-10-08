@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type Phaser from 'phaser';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createComponent, createDesign, designSchema, installComponent, type ShipDesign } from '../src/domain/shipDesign';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { ShipBuilderPanel } from '../src/ui/ShipBuilderPanel';
@@ -317,5 +317,100 @@ describe('shipyard navigation and trial return', () => {
     f.yard.init(); f.yard.create();
     expect(f.keyboard.listenerCount('keydown-ESC')).toBe(1);
     f.events.emit('shutdown');
+  });
+});
+
+describe('shipyard asynchronous import lifecycle', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function importFixture() {
+    const r = repository();
+    return { ...yardFixture(r), ...r };
+  }
+
+  function fileRead() {
+    let resolve!: (value: string) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<string>((success, failure) => { resolve = success; reject = failure; });
+    const input = { type: '', accept: '', click: vi.fn(), files: [{ size: 100, text: () => promise }],
+      onchange: undefined as (() => Promise<void>) | undefined };
+    vi.stubGlobal('document', { createElement: () => input });
+    return { input, resolve, reject };
+  }
+
+  function startRead(fixture: ReturnType<typeof yardFixture>) {
+    const read = fileRead();
+    fixture.click('import-designs');
+    if (!read.input.onchange) throw new Error('Missing import handler');
+    return { ...read, completion: read.input.onchange() };
+  }
+
+  const library = (name: string) => JSON.stringify({
+    schemaVersion: 2, designs: [], components: [{ ...createComponent('beam'), id: name, name }]
+  });
+
+  it.each([
+    ['resolve', false], ['reject', false], ['resolve', true], ['reject', true]
+  ] as const)('ignores %s after shutdown (reentry=%s)', async (outcome, reentry) => {
+    const f = importFixture();
+    const read = startRead(f);
+    const notify = vi.spyOn(f.panel, 'showMessage');
+    f.events.emit('shutdown');
+    f.fake.sys.isActive = () => reentry;
+    if (reentry) { f.yard.init(); f.yard.create(); }
+    const count = f.nodes.length;
+    const changed = vi.fn();
+    f.events.on('shipyard-library-changed', changed);
+    if (outcome === 'resolve') read.resolve(library('stale'));
+    else read.reject(new Error('Late file read failed'));
+    await read.completion;
+    expect(f.store.setItem).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(f.nodes).toHaveLength(count);
+  });
+
+  it('reports a current read failure without writes and allows a subsequent import', async () => {
+    const f = importFixture();
+    const read = startRead(f);
+    read.reject(new Error('File read failed'));
+    await read.completion;
+    expect(f.nodes.filter(node => !node.destroyed).some(node => node.text.includes('Ошибка импорта: File read failed'))).toBe(true);
+    expect(f.store.setItem).not.toHaveBeenCalled();
+    const retry = startRead(f);
+    retry.resolve(library('retry'));
+    await retry.completion;
+    expect(f.repo.load().components).toMatchObject([{ id: 'retry' }]);
+    expect(f.store.setItem).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['resolve', false], ['reject', false], ['resolve', true], ['reject', true]
+  ] as const)('ignores superseded %s (newer completes first=%s)', async (outcome, newerFirst) => {
+    const f = importFixture();
+    const first = startRead(f), second = startRead(f);
+    const settleFirst = async () => {
+      if (outcome === 'resolve') first.resolve(library('first'));
+      else first.reject(new Error('Superseded read failed'));
+      await first.completion;
+    };
+    if (newerFirst) { second.resolve(library('second')); await second.completion; }
+    await settleFirst();
+    if (!newerFirst) {
+      expect(f.store.setItem).not.toHaveBeenCalled();
+      second.resolve(library('second'));
+      await second.completion;
+    }
+    expect(f.repo.load().components).toMatchObject([{ id: 'second' }]);
+    expect(f.store.setItem).toHaveBeenCalledTimes(1);
+    expect(f.nodes.filter(node => !node.destroyed).some(node => node.text.includes('Superseded'))).toBe(false);
+  });
+
+  it('does not render messages addressed to a destroyed panel', () => {
+    const f = panelFixture();
+    f.panel.destroy();
+    const count = f.nodes.length;
+    f.panel.showMessage('Late error', true);
+    expect(f.nodes).toHaveLength(count);
   });
 });

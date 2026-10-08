@@ -2,6 +2,7 @@ import { withTactics } from './TacticalShip';
 import { Ship } from './Ship';
 import { noDamageResult } from './interfaces/CombatSystem';
 import { positiveFinite } from '../domain/runtimeNumbers';
+import { advanceCombatCooldown } from '../domain/combatSimulation';
 import type { ICombatStats, IWeaponStats, IAttackResult, ICombatant } from './interfaces/CombatSystem';
 import { IPowerSource, IEngine, ICargo, IEquipment, EquipmentType } from './interfaces/ShipComponents';
 
@@ -220,7 +221,7 @@ export class CombatShip extends withTactics(Ship) {
 
     // Уменьшаем перезарядку
     if (this.weaponStats.currentCooldown > 0) {
-      this.weaponStats.currentCooldown = Math.max(0, this.weaponStats.currentCooldown - deltaTime);
+      this.weaponStats.currentCooldown = advanceCombatCooldown(this.weaponStats.currentCooldown, deltaTime, this.weaponStats.cooldown);
     }
   }
 

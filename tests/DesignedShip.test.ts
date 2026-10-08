@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DesignedShip } from '../src/entities/DesignedShip';
 import { BattleManager } from '../src/entities/BattleManager';
 import { calculateShipStats, componentSchema, createComponent, createDesign, installComponent } from '../src/domain/shipDesign';
+import { calculateConquestDesignScore } from '../src/domain/conquestAi';
 
 describe('design to runtime', () => {
   it('instantiates independent ships with exactly the calculated stats', () => {
@@ -65,6 +66,54 @@ describe('design to runtime', () => {
     expect(attacker.attack(target)).toBeNull();
     attacker.update(0.5);
     expect(attacker.attack(target)?.damage).toBe(45);
+  });
+
+  it.each([
+    [0.1, 12], [1, 120], [1.5, 172], [2, 240], [4, 480], [5, 600], [20, 2400]
+  ])('fireRate %s produces exactly %s opportunities in 120s, matching AI', (fireRate, shots) => {
+    const engine = componentSchema.parse({ ...createComponent('engine'), powerGeneration: 4000 });
+    const beam = componentSchema.parse({ ...createComponent('beam'), range: 900, fireRate });
+    let design = installComponent(createDesign('corvette'), 'engine_1', engine);
+    design = installComponent(design, 'beam_1', beam);
+    const attacker = new DesignedShip(design, 'blue', 'battle', { random: () => 0.99 });
+    const target = new DesignedShip(createDesign('corvette', true), 'red');
+    target.position = { x: 100, y: 0 };
+    let opportunities = 0;
+    for (let step = 0; step < 2400; step++) {
+      attacker.update(0.05);
+      if (attacker.attack(target)) opportunities++;
+    }
+    expect(opportunities).toBe(shots);
+    expect(calculateConquestDesignScore(design, { credits: 10000, minerals: 10000 }).expectedDamage)
+      .toBe(shots * 25 * 0.8);
+    expect(target.combatStats.currentHull).toBe(target.combatStats.maxHull);
+  });
+
+  it('keeps mixed cooldowns and ammo independent, including when energy prevents a shot', () => {
+    const beam = componentSchema.parse({ ...createComponent('beam'), fireRate: 0.1, accuracy: 0 });
+    const projectile = componentSchema.parse({ ...createComponent('projectile'), fireRate: 2, ammoCapacity: 3, accuracy: 0 });
+    let design = installComponent(createDesign('corvette', true), 'beam_1', beam);
+    design = installComponent(design, 'projectile_1', projectile);
+    const attacker = new DesignedShip(design, 'blue');
+    const target = new DesignedShip(createDesign('corvette', true), 'red');
+    vi.spyOn(attacker, 'getEnergyGeneration').mockReturnValue(0);
+    attacker.setEnergy(0);
+    attacker.update(0.05);
+    expect(attacker.attack(target)).toBeNull();
+    expect(attacker.getWeaponState()).toMatchObject([{ cooldown: 0, ammo: null }, { cooldown: 0, ammo: 3 }]);
+    attacker.setEnergy(attacker.getEnergyCapacity());
+    expect(attacker.attack(target)).not.toBeNull();
+    expect(attacker.attack(target)).not.toBeNull();
+    for (let shot = 0; shot < 2; shot++) {
+      for (let step = 0; step < 9; step++) attacker.update(0.05);
+      expect(attacker.attack(target)).toBeNull();
+      attacker.update(0.05);
+      expect(attacker.attack(target)).not.toBeNull();
+    }
+    expect(attacker.getWeaponState()).toMatchObject([{ ammo: null }, { cooldown: 0.5, ammo: 0 }]);
+    expect(attacker.getWeaponState()[0].cooldown).toBeGreaterThan(8);
+    for (let step = 0; step < 10; step++) attacker.update(0.05);
+    expect(attacker.attack(target)).toBeNull();
   });
 
   it('consumes ammunition per shot including misses, never mutating the saved design', () => {
