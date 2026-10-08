@@ -248,6 +248,9 @@ describe('purity and integration boundary', () => {
     expect(imports.get(plannerPath)).toEqual(new Set([executorPath]));
     const runPath = resolve(root, 'src/domain/campaignRun.ts');
     expect(imports.get(executorPath)).toEqual(new Set([runPath]));
-    expect(imports.get(runPath)).toContain(resolve(root, 'src/scenes/MainScene.ts'));
+    const matchPath = resolve(root, 'src/domain/campaignMatch.ts');
+    expect(imports.get(runPath)).toContain(matchPath);
+    expect(imports.get(matchPath)).toContain(resolve(root, 'src/scenes/MainScene.ts'));
+    expect(imports.get(runPath)).not.toContain(resolve(root, 'src/scenes/MainScene.ts'));
   });
 });

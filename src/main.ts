@@ -5,6 +5,7 @@ import { MenuScene } from './scenes/MenuScene';
 import { ShipTestScene } from './scenes/ShipTestScene';
 import { BattleScene } from './scenes/BattleScene';
 import { ShipyardScene } from './scenes/ShipyardScene';
+import { ConquestScene } from './scenes/ConquestScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -18,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false
     }
   },
-  scene: [LoadingScene, MenuScene, MainScene, ShipTestScene, BattleScene, ShipyardScene],
+  scene: [LoadingScene, MenuScene, MainScene, ConquestScene, ShipTestScene, BattleScene, ShipyardScene],
   backgroundColor: '#000000',
   scale: {
     mode: Phaser.Scale.FIT,

@@ -40,7 +40,7 @@ export function isServiceComponent(component: ComponentDefinition): component is
 }
 export function componentStatus(component: ComponentDefinition): string {
   if (component.kind === 'cargoExpansion') return 'Расширение объёма действует; предел массы корпуса прежний';
-  return isServiceComponent(component) ? 'Параметры сохранены; добыча/ремонт/сканирование ещё не исполняются' : '';
+  return isServiceComponent(component) ? 'В испытании действия ещё не исполняются; действуют в военной кампании' : '';
 }
 
 export type ComponentDefinition = z.infer<typeof componentSchema>;
@@ -131,7 +131,10 @@ export const COMPONENT_NAMES: Record<ComponentKind, string> = {
 let sequence = 0;
 export const newId = (prefix: string): string => `${prefix}_${Date.now()}_${++sequence}`;
 export function createComponent(kind: ComponentKind): ComponentDefinition {
-  const identity = { id: newId(kind), name: COMPONENT_NAMES[kind] };
+  return createComponentWithId(kind, newId(kind));
+}
+export function createComponentWithId(kind: ComponentKind, id: string): ComponentDefinition {
+  const identity = { id, name: COMPONENT_NAMES[kind] };
   switch (kind) {
     case 'beam': return { ...identity, kind, damage: 25, range: 500, fireRate: 2, accuracy: 0.8 };
     case 'projectile': return { ...identity, kind, damage: 30, range: 300, fireRate: 1.5, accuracy: 0.9, ammoCapacity: 20 };

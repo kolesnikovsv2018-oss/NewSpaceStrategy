@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as domain from '../src/domain/campaignSession';
 import { getGalaxyDefinition } from '../src/domain/campaign';
 import * as catalog from '../src/utils/ProductionCatalog';
@@ -12,34 +12,35 @@ import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campa
 import * as aiExecutor from '../src/domain/campaignAiExecutor';
 import * as aiPlanner from '../src/domain/campaignAiPlanner';
 import * as runDomain from '../src/domain/campaignRun';
-import { encodeCampaignRunSave, decodeCampaignRunSave } from '../src/domain/campaignRunSave';
+import { encodeCampaignRunSave } from '../src/domain/campaignRunSave';
+import * as matchDomain from '../src/domain/campaignMatch';
+import { encodeCampaignMatchSave, decodeCampaignMatchSave } from '../src/domain/campaignMatchSave';
 import { CampaignRunSaveManager } from '../src/utils/CampaignRunSaveManager';
 import { known, rich, threeCommands } from './fixtures/campaignAi';
 
 vi.mock('phaser', () => ({ default: { Scene: class {}, Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }));
 const { MainScene } = await import('../src/scenes/MainScene');
 
-/** Observe the real run boundary using the former session-shaped assertions, not a fake executor.
- * This keeps all historical input/result identity, command and receipt assertions meaningful. */
 function observeRunCommands() {
-  const execute = runDomain.executeRunCommand;
-  const observer = vi.fn<(state: unknown, command: unknown) => domain.SessionResult | runDomain.RunFailure>();
-  vi.spyOn(runDomain, 'executeRunCommand').mockImplementation((input, command) => {
+  const execute = matchDomain.executeMatchCommand;
+  const observer = vi.fn<(state: unknown, command: unknown) => domain.SessionResult | matchDomain.MatchFailure>();
+  vi.spyOn(matchDomain, 'executeMatchCommand').mockImplementation((input, command) => {
     const result = execute(input, command);
     observer.mockImplementationOnce(() => result.ok
-      ? { ok: true, state: result.run.session, ...(result.endTurnEconomy ? { endTurnEconomy: result.endTurnEconomy } : {}) }
+      ? { ok: true, state: result.match.run.session, ...(result.endTurnEconomy ? { endTurnEconomy: result.endTurnEconomy } : {}) }
       : result);
-    observer((input as runDomain.CampaignRun).session, command);
+    observer((input as matchDomain.CampaignMatch).run.session, command);
     return result;
   });
   return observer;
 }
 function seedSession(state: domain.CampaignSession) {
   // Explicit diagnostic creator fault/fixture; ordinary paid cycles never call this.
-  vi.spyOn(runDomain, 'createCampaignRun').mockReturnValueOnce({ ok: true, run: { session: state, control: { mode: 'local' } } });
+  vi.spyOn(matchDomain, 'createCampaignMatch').mockReturnValueOnce({ ok: true,
+    match: { run: { session: state, control: { mode: 'local' } }, scenario: 'sandbox' }, outcome: { status: 'ongoing' } });
 }
 function rawRun(state: domain.CampaignSession) {
-  const result = encodeCampaignRunSave({ session: state, control: { mode: 'local' } });
+  const result = encodeCampaignMatchSave({ run: { session: state, control: { mode: 'local' } }, scenario: 'sandbox' });
   if (!result.ok) throw Error(result.message);
   return result.json;
 }
@@ -73,8 +74,10 @@ function fixture() {
   const make = (text = '') => { const node = new Node(text); nodes.push(node); return node; };
   const keyboard = new EventEmitter(), events = new EventEmitter();
   const scene = new MainScene();
-  const owner = scene as unknown as { run?: runDomain.CampaignRun };
-  // Historical diagnostic access redirects to the sole run; there is no duplicate session.
+  const owner = scene as unknown as { match?: matchDomain.CampaignMatch; run?: runDomain.CampaignRun };
+  Object.defineProperty(scene, 'run', { configurable: true,
+    get: () => owner.match?.run,
+    set: (run: runDomain.CampaignRun) => { owner.match = { run, scenario: owner.match?.scenario ?? 'sandbox' }; } });
   Object.defineProperty(scene, 'campaign', { configurable: true,
     get: () => owner.run?.session,
     set: (session: domain.CampaignSession) => { owner.run = { session, control: owner.run?.control ?? { mode: 'local' } }; } });
@@ -102,9 +105,278 @@ function fixture() {
     message: () => find('campaign-message').text };
 }
 
+describe('S3.39 match scene integration', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  type Runtime = {
+    match: matchDomain.CampaignMatch; run: runDomain.CampaignRun; aiPhase: string; aiSummary?: aiExecutor.AiTurnSummary;
+    factionId: 'blue' | 'red'; selectedId: string; generation: number; pending?: string; ticket?: unknown;
+    operation?: { candidate?: matchDomain.CampaignMatch }; productionOpen: boolean; budgetOpen: boolean;
+    render(): void; execute(command: domain.SessionCommand): void; replaceMatch(match: matchDomain.CampaignMatch): void;
+    requestOperation(action: string, request?: aiPlanner.AiTurnRequest): void;
+  };
+  const runtime = (fixture: ReturnType<typeof fixtureFactory>) => fixture.scene as unknown as Runtime;
+  const key = CampaignRunSaveManager.STORAGE_KEY;
+  const capture = (fixture: ReturnType<typeof fixtureFactory>, name: string) => fixture.find(name).listeners('pointerdown')[0] as () => void;
+  const absent = (fixture: ReturnType<typeof fixtureFactory>, name: string) => expect(fixture.nodes.some(node => !node.destroyed && node.name === name)).toBe(false);
+  function slot() {
+    const contents = new Map<string, string>([['unrelated', 'keep']]);
+    const storage = { getItem: vi.fn((key: string) => contents.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { contents.set(key, value); }) };
+    vi.stubGlobal('localStorage', storage); return { contents, storage };
+  }
+  function start(ai = false, scenario: matchDomain.CampaignScenario = 'joint-survey-v1') {
+    const fixture = fixtureFactory(); fixture.click('campaign-new');
+    if (ai) fixture.click('campaign-mode-ai');
+    if (scenario === 'joint-survey-v1') fixture.click('campaign-scenario-survey');
+    fixture.click('campaign-confirm'); return fixture;
+  }
+  const fixtureFactory = fixture;
+  function explore(fixture: ReturnType<typeof fixtureFactory>, systemId: string): void {
+    fixture.click(`system-${systemId}`); fixture.click('campaign-explore');
+  }
+  function survey(match: matchDomain.CampaignMatch): void {
+    match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
+  }
+  function load(fixture: ReturnType<typeof fixtureFactory>, match: matchDomain.CampaignMatch, contents: Map<string, string>): void {
+    const encoded = encodeCampaignMatchSave(match); if (!encoded.ok) throw Error(encoded.message);
+    contents.set(key, encoded.json); fixture.click('campaign-load'); fixture.click('campaign-confirm');
+    expect(runtime(fixture).match).toEqual(match);
+  }
+  function localComplete() {
+    const fixture = start();
+    for (const target of ['eden', 'nexus', 'vega', 'dust', 'rift']) explore(fixture, target);
+    fixture.click('campaign-end-turn'); fixture.click('campaign-side-switch');
+    for (const target of ['nexus', 'eden', 'sol', 'rift', 'dust']) explore(fixture, target);
+    return fixture;
+  }
+
+  it.each([false, true].flatMap(ai => (['sandbox', 'joint-survey-v1'] as const).map(scenario => ({ ai, scenario }))))
+  ('new $ai/$scenario is explicit; subsequent defaults local/sandbox and cancel preserve source', ({ ai, scenario }) => {
+    const { storage } = slot(), fixture = start(ai, scenario), owner = runtime(fixture), source = owner.match;
+    expect(owner.match.scenario).toBe(scenario); expect(owner.run.control.mode).toBe(ai ? 'human-vs-ai' : 'local');
+    expect(fixture.find('campaign-progress').text).toBe('Разведано вами: 1/6');
+    fixture.click('campaign-new'); expect(fixture.find('campaign-mode-local').text).toContain('✓');
+    expect(fixture.find('campaign-scenario-sandbox').text).toContain('✓');
+    const oldChoice = capture(fixture, 'campaign-scenario-survey'); fixture.click('campaign-scenario-survey');
+    fixture.keyboard.emit('keydown-ESC'); oldChoice(); expect(owner.match).toBe(source); expect(owner.pending).toBeUndefined();
+    fixture.click('campaign-new'); fixture.click('campaign-confirm'); expect(owner.match.scenario).toBe('sandbox');
+    expect(owner.run.control.mode).toBe('local'); expect(storage.getItem).not.toHaveBeenCalled(); expect(storage.setItem).not.toHaveBeenCalled();
+  });
+  it('real manual completion2 has no red end/income or dispatch after completion; navigation stays available', () => {
+    const fixture = localComplete(), owner = runtime(fixture), before = structuredClone(owner.match), source = owner.match;
+    expect(owner.run.session.turn).toBe(2); expect(owner.run.session.treasuries.red).toEqual({ credits: 100, minerals: 50 });
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена'); expect(owner.ticket).toBeUndefined();
+    const commands = vi.spyOn(domain, 'executeSessionCommand'), ai = vi.spyOn(aiExecutor, 'executeAiTurn');
+    for (const name of ['campaign-explore', 'campaign-colonize', 'campaign-end-turn', 'campaign-ai']) {
+      expect(fixture.find(name).interactive).toBe(false); fixture.click(name);
+    }
+    owner.execute({ kind: 'endTurn', factionId: 'red', expectedTurn: 2 });
+    owner.requestOperation('ai', { factionId: 'red', expectedTurn: 2 }); owner.requestOperation('resume');
+    for (const name of ['campaign-budget', 'campaign-budget', 'system-sol', 'campaign-side-switch', 'campaign-production']) fixture.click(name);
+    expect(fixture.find('production-enqueue').interactive).toBe(false); fixture.click('production-enqueue');
+    expect(owner.match).toBe(source); expect(owner.match).toEqual(before); expect(owner.pending).toBeUndefined();
+    expect(commands).not.toHaveBeenCalled(); expect(ai).not.toHaveBeenCalled(); expect(fixture.tasks).toHaveLength(0);
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена');
+    fixture.keyboard.emit('keydown-ESC'); fixture.keyboard.emit('keydown-ESC'); expect(owner.pending).toBe('menu');
+    fixture.click('campaign-cancel'); expect(owner.match).toBe(source);
+  });
+  it('real AI survey finishes11 after five complete packets with one publication and no further ticket', () => {
+    const fixture = start(true), owner = runtime(fixture);
+    for (const target of ['eden', 'nexus', 'vega', 'dust', 'rift']) explore(fixture, target);
+    const execute = vi.spyOn(matchDomain, 'executeMatchAiTurn'), planner = vi.spyOn(aiPlanner, 'planAiTurn');
+    let current = owner.match, commits = 0;
+    Object.defineProperty(owner, 'match', { configurable: true, get: () => current, set: value => { current = value; commits++; } });
+    for (let round = 0; round < 5; round++) {
+      fixture.click('campaign-end-turn'); const source = owner.match, before = structuredClone(source), previous = commits;
+      expect(fixture.tasks).toHaveLength(round + 1); const task = fixture.tasks[round]; task.callback(); task.callback();
+      expect(commits).toBe(previous + 1); expect(execute).toHaveBeenCalledTimes(round + 1);
+      expect(execute.mock.calls[round][0]).toBe(source); expect(source).toEqual(before); expect(owner.ticket).toBeUndefined();
+      expect(owner.aiPhase).toBe('idle'); absent(fixture, 'campaign-ai-summary'); expect(owner.factionId).toBe('blue');
+      if (round < 4) absent(fixture, 'campaign-outcome');
+    }
+    expect(owner.run.session.turn).toBe(11); expect(planner).toHaveBeenCalledTimes(5);
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена');
+    expect(fixture.find('campaign-resume').interactive).toBe(false); expect(fixture.find('campaign-end-turn').interactive).toBe(false);
+    const completed = owner.match; fixture.tasks.forEach(task => task.callback()); owner.requestOperation('resume');
+    expect(owner.match).toBe(completed); expect(fixture.tasks).toHaveLength(5); expect(execute).toHaveBeenCalledTimes(5);
+  });
+  it.each([false, true].flatMap(ai => [1, 2].flatMap(turn => (['sandbox', 'joint-survey-v1'] as const).map(scenario => ({ ai, turn, scenario })))))
+  ('load surveyed $scenario/$ai/turn$turn preserves outcome and takes over without commands', ({ ai, turn, scenario }) => {
+    const { contents, storage } = slot(), fixture = start(), match: matchDomain.CampaignMatch = {
+      run: { session: rich(turn, 5), control: ai ? { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } : { mode: 'local' } }, scenario
+    }; survey(match);
+    const commands = vi.spyOn(domain, 'executeSessionCommand'), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
+    load(fixture, match, contents); const owner = runtime(fixture), before = structuredClone(owner.match), completed = scenario === 'joint-survey-v1';
+    expect(owner.aiPhase).toBe(ai && turn === 2 && !completed ? 'paused' : 'idle'); expect(fixture.tasks).toHaveLength(0);
+    if (completed) expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена'); else absent(fixture, 'campaign-outcome');
+    fixture.click('campaign-save'); const candidate = owner.operation!.candidate!;
+    expect(candidate).toEqual(before); expect(candidate).not.toBe(owner.match);
+    fixture.click('campaign-confirm'); expect(decodeCampaignMatchSave(contents.get(key))).toEqual({ ok: true, match: before });
+    if (ai) {
+      fixture.click('campaign-takeover'); fixture.click('campaign-confirm');
+      expect(owner.match.run.control).toEqual({ mode: 'local' }); expect(owner.match.run.session).toEqual(before.run.session);
+      expect(owner.match.scenario).toBe(scenario);
+      expect(fixture.find('campaign-ai').interactive).toBe(!completed);
+    }
+    expect(commands).not.toHaveBeenCalled(); expect(executor).not.toHaveBeenCalled(); expect(storage.setItem).toHaveBeenCalledTimes(1);
+  });
+  it.each(['production', 'travel', 'fleets', 'fleetTravel', 'budget'])('completed %s remains browsable but its mutation controls are inert', panel => {
+    const { contents } = slot(), fixture = start(), match: matchDomain.CampaignMatch = {
+      run: { session: rich(1, 5), control: { mode: 'local' } }, scenario: 'joint-survey-v1'
+    }; survey(match); load(fixture, match, contents); const owner = runtime(fixture), before = structuredClone(owner.match);
+    const commands = vi.spyOn(matchDomain, 'executeMatchCommand');
+    fixture.click(panel === 'budget' ? 'campaign-budget' : 'campaign-production');
+    if (panel === 'travel') fixture.click('production-travel');
+    if (panel === 'fleets' || panel === 'fleetTravel') fixture.click('production-fleets');
+    if (panel === 'fleetTravel') fixture.click('fleet-travel');
+    const forbidden = /^(production-enqueue|production-deploy|production-cancel-|travel-send|travel-refuel|fleet-select|fleet-clear|fleet-create|fleet-disband|fleet-travel-send)/;
+    const controls = fixture.nodes.filter(node => !node.destroyed && forbidden.test(node.name));
+    if (panel !== 'budget') expect(controls.length).toBeGreaterThan(0);
+    for (const node of controls) { expect(node.interactive).toBe(false); node.emit('pointerdown'); }
+    expect(owner.match).toEqual(before); expect(commands).not.toHaveBeenCalled();
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена');
+    fixture.keyboard.emit('keydown-ESC'); expect(owner.pending).toBeUndefined();
+    expect(fixture.keyboard.listenerCount('keydown-ESC')).toBe(1);
+  });
+  it.each(['before', 'during'] as const)('same run in a replacement match invalidates old ticket %s execution', phase => {
+    const fixture = start(true), owner = runtime(fixture); fixture.click('campaign-end-turn'); const task = fixture.tasks[0];
+    const original = matchDomain.executeMatchAiTurn;
+    const replacement = { run: owner.run, scenario: 'sandbox' as const };
+    const execute = vi.spyOn(matchDomain, 'executeMatchAiTurn').mockImplementation((match, request) => {
+      const result = original(match, request); owner.match = replacement; return result;
+    });
+    if (phase === 'before') owner.match = replacement;
+    task.callback(); task.callback(); expect(owner.match).toBe(replacement); expect(owner.run.session.turn).toBe(2);
+    expect(execute).toHaveBeenCalledTimes(phase === 'before' ? 0 : 1); expect(owner.ticket).toBeUndefined();
+    expect(owner.aiPhase).toBe('paused');
+  });
+  it.each(['save', 'load', 'new', 'ai', 'takeover'] as const)('same run/new match invalidates captured %s confirmation', action => {
+    const { contents, storage } = slot(), fixture = start(action === 'takeover'), owner = runtime(fixture);
+    const encoded = encodeCampaignMatchSave(owner.match); if (!encoded.ok) throw Error(encoded.message); contents.set(key, encoded.json);
+    fixture.click(`campaign-${action}`); const old = capture(fixture, 'campaign-confirm');
+    const replacement = { run: owner.run, scenario: 'sandbox' as const }; owner.match = replacement;
+    const execute = vi.spyOn(matchDomain, 'executeMatchAiTurn'), commands = vi.spyOn(matchDomain, 'executeMatchCommand');
+    old(); old(); expect(owner.match).toBe(replacement); expect(owner.pending).toBeUndefined();
+    expect(storage.setItem).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled(); expect(commands).not.toHaveBeenCalled();
+  });
+  it.each(['cancel', 'read-failure', 'write-failure', 'unknown-scenario'] as const)('completed $0 failure/cancel keeps its result and slot', failure => {
+    const { contents, storage } = slot(), fixture = localComplete(), owner = runtime(fixture), source = owner.match;
+    const encoded = encodeCampaignMatchSave(source); if (!encoded.ok) throw Error(encoded.message); contents.set(key, encoded.json);
+    if (failure === 'cancel') { fixture.click('campaign-load'); fixture.click('campaign-cancel'); }
+    if (failure === 'read-failure') { storage.getItem.mockImplementationOnce(() => { throw Error('PRIVATE'); }); fixture.click('campaign-load'); }
+    if (failure === 'write-failure') { storage.setItem.mockImplementationOnce(() => { throw Error('PRIVATE'); }); fixture.click('campaign-save'); fixture.click('campaign-confirm'); }
+    if (failure === 'unknown-scenario') {
+      const invalid = JSON.parse(encoded.json); invalid.scenario = 'future-goal'; contents.set(key, JSON.stringify(invalid));
+      fixture.click('campaign-load'); expect(fixture.message()).toContain('Сценарий');
+    }
+    expect(owner.match).toBe(source); expect(owner.ticket).toBeUndefined(); expect(owner.pending).toBeUndefined();
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена'); expect(fixture.message()).not.toContain('PRIVATE');
+    expect(contents.get('unrelated')).toBe('keep');
+    if (failure !== 'unknown-scenario') expect(contents.get(key)).toBe(encoded.json);
+  });
+  it('panel receives only own projection/progress and minimal public outcome, never hidden match', async () => {
+    const panels = await import('../src/ui/CampaignPanel'), Original = panels.CampaignPanel;
+    const rendered = vi.spyOn(panels, 'CampaignPanel').mockImplementation(function (...args) { return new Original(...args); });
+    const fixture = start(true), owner = runtime(fixture);
+    for (const system of owner.run.session.galaxy.systems) if (!system.exploredBy.includes('red')) system.exploredBy.push('red');
+    owner.run.session.treasuries.red.credits = 987654321; owner.render();
+    expect(fixture.find('campaign-progress').text).toBe('Разведано вами: 1/6'); absent(fixture, 'campaign-outcome');
+    for (const [, view, state] of rendered.mock.calls) {
+      expect(view.galaxy.factionId).toBe('blue');
+      expect(state).not.toHaveProperty('match'); expect(state).not.toHaveProperty('run'); expect(state).not.toHaveProperty('enemyProgress');
+      expect(JSON.stringify([view, state])).not.toMatch(/987654321|exploredBy|treasuries|lastOrderId|lastFleetId/);
+    }
+    for (const target of ['eden', 'nexus', 'vega', 'dust', 'rift']) explore(fixture, target);
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена'); expect(fixture.tasks).toHaveLength(0);
+    const last = rendered.mock.calls.at(-1)!; expect(last[2].outcome).toEqual({ status: 'completed', reason: 'joint-survey-complete' });
+    expect(last[1].treasury.credits).toBe(100); expect(last[2].aiSummary).toBeUndefined();
+  });
+  it.each(['credits', 'minerals'] as const)('late AI %s cap rolls back terminal exploration and pauses failed without retry', resource => {
+    const { contents } = slot(), fixture = start(true), match = matchDomain.createCampaignMatch({ mode: 'human-vs-ai', aiPolicy: 'expansion-v1' }, 'joint-survey-v1');
+    if (!match.ok) throw Error(match.message); survey(match.match); match.match.run.session.turn = 2;
+    match.match.run.session.galaxy.systems.find(system => system.id === 'dust')!.exploredBy = ['blue'];
+    match.match.run.session.treasuries.red[resource] = domain.MAX_RESOURCE - (resource === 'credits' ? 10 : 5);
+    load(fixture, match.match, contents); const owner = runtime(fixture), before = owner.match;
+    fixture.click('campaign-resume'); fixture.click('campaign-confirm'); fixture.tasks[0].callback(); fixture.tasks[0].callback();
+    expect(owner.match).toBe(before); expect(owner.aiPhase).toBe('failed'); expect(owner.ticket).toBeUndefined();
+    absent(fixture, 'campaign-outcome'); expect(fixture.tasks).toHaveLength(1);
+    expect(owner.run.session.galaxy.systems.find(system => system.id === 'dust')!.exploredBy).toEqual(['blue']);
+  });
+  it.each(['preset', 'library'].flatMap(source => [false, true].map(diagnosticAi => ({ source, diagnosticAi }))))
+  ('paid $source completed save/reentry/load with diagnostic AI=$diagnosticAi preserves snapshots and accepted outcome on quota failure', ({ source, diagnosticAi }) => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-08T00:00:00.000Z'));
+    const { storage, contents } = slot(), library = new ShipDesignManager(storage), design = createCombatDesign('fighter');
+    if (source === 'library') library.saveDesign(design);
+    const choice = catalog.loadProductionCatalog(library).choices.find(choice => source === 'library'
+      ? choice.source === 'Библиотека' && choice.design.id === design.id : choice.source === 'Пресет' && choice.design.hullId === 'fighter')!;
+    const snapshot = structuredClone(choice.design), fixture = start(), owner = runtime(fixture);
+    let expected = structuredClone(owner.match);
+    const request = () => ({ factionId: owner.run.session.turn % 2 ? 'blue' as const : 'red' as const, expectedTurn: owner.run.session.turn });
+    const command = (payload: domain.SessionCommand) => {
+      const result = matchDomain.executeMatchCommand(expected, payload); if (!result.ok) throw Error(result.message);
+      owner.execute(payload); expect(owner.match).toEqual(result.match); expected = result.match;
+    };
+    const end = () => command({ kind: 'endTurn', ...request() });
+    const checkpoint = () => {
+      const before = owner.match, old = fixture.find('campaign-end-turn');
+      fixture.click('campaign-save'); if (owner.pending) fixture.click('campaign-confirm');
+      expect(owner.match).toBe(before); expect(decodeCampaignMatchSave(contents.get(key))).toEqual({ ok: true, match: expected });
+      const reads = storage.getItem.mock.calls.length;
+      fixture.events.emit('shutdown'); fixture.scene.create(); expect(storage.getItem).toHaveBeenCalledTimes(reads);
+      fixture.click('campaign-load'); fixture.click('campaign-confirm'); old.emit('pointerdown');
+      expect(owner.match).toEqual(expected); expect(storage.getItem).toHaveBeenCalledTimes(reads + 1);
+      expect(owner.ticket).toBeUndefined(); expect(fixture.keyboard.listenerCount('keydown-ESC')).toBe(1);
+    };
+    for (const systemId of ['eden', 'nexus'] as const) {
+      for (const kind of ['explore', 'colonize'] as const) command({ kind, ...request(), systemId }); end();
+    }
+    while (owner.run.session.turn < 29) end();
+    expect(owner.run.session.treasuries).toEqual({ blue: { credits: 380, minerals: 190 }, red: { credits: 380, minerals: 190 } });
+    for (const systemId of ['sol', 'vega'] as const) {
+      for (let index = 0; index < 2; index++) command({ kind: 'enqueueProduction', ...request(), systemId, design: snapshot }); end();
+    }
+    checkpoint(); vi.setSystemTime(new Date('2050-01-01T00:00:00.000Z'));
+    if (source === 'library') { library.saveDesign({ ...snapshot, name: 'Changed after payment' }); contents.delete(ShipDesignManager.STORAGE_KEY); }
+    while (owner.run.session.turn < 45) end(); checkpoint();
+    for (const systemId of ['sol', 'vega'] as const) {
+      const records = owner.run.session.production.completed.filter(record => record.systemId === systemId);
+      for (const record of records) command({ kind: 'deployProduction', ...request(), systemId, orderId: record.id });
+      command({ kind: 'createFleet', ...request(), systemId, shipIds: records.map(record => record.id) });
+      command({ kind: 'sendFleet', ...request(), systemId, fleetId: owner.run.session.fleets.lastFleetId, destinationId: systemId === 'sol' ? 'eden' : 'nexus' });
+      checkpoint();
+      if (systemId === 'sol') {
+        for (const systemId of ['nexus', 'vega', 'dust', 'rift'] as const) command({ kind: 'explore', ...request(), systemId }); end();
+      }
+    }
+    for (const systemId of ['eden', 'sol', 'rift'] as const) command({ kind: 'explore', ...request(), systemId });
+    if (diagnosticAi) {
+      expected = { ...expected, run: { ...expected.run, control: { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } } };
+      owner.replaceMatch(structuredClone(expected)); owner.render();
+    }
+    checkpoint(); const previousBytes = contents.get(key);
+    if (diagnosticAi) {
+      const result = matchDomain.executeMatchAiTurn(expected, request()); if (!result.ok) throw Error(result.message);
+      fixture.click('campaign-resume'); fixture.click('campaign-confirm'); fixture.tasks.at(-1)!.callback(); expected = result.match;
+      expect(owner.run.session.turn).toBe(47);
+      expect(owner.run.session.treasuries).toEqual({ blue: { credits: 188, minerals: 258 }, red: { credits: 188, minerals: 258 } });
+      expect(owner.run.session.ships.map(ship => [ship.fuel, ship.transit])).toEqual(Array(4).fill([2, undefined]));
+    } else {
+      command({ kind: 'explore', ...request(), systemId: 'dust' });
+      expect(owner.run.session.turn).toBe(46); expect(owner.run.session.ships.filter(ship => ship.transit)).toHaveLength(2);
+    }
+    expect(owner.match).toEqual(expected); expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена');
+    const accepted = owner.match; storage.setItem.mockImplementationOnce(() => { throw new DOMException('PRIVATE', 'QuotaExceededError'); });
+    fixture.click('campaign-save'); fixture.click('campaign-confirm'); expect(owner.match).toBe(accepted); expect(contents.get(key)).toBe(previousBytes);
+    expect(fixture.find('campaign-outcome').text).toBe('Экспедиция завершена'); checkpoint();
+    expect(owner.run.session.ships.map(ship => ship.design)).toEqual(Array(4).fill(snapshot));
+    expect(owner.aiSummary).toBeUndefined(); expect(owner.aiPhase).toBe('idle'); expect(owner.ticket).toBeUndefined();
+    expect(fixture.find('campaign-end-turn').interactive).toBe(false); expect(contents.get('unrelated')).toBe('keep');
+  });
+});
+
 describe('S3.34 bounded run scene integration', () => {
   type Runtime = {
-    run: runDomain.CampaignRun; aiPhase: string; aiSummary?: aiExecutor.AiTurnSummary;
+    match: matchDomain.CampaignMatch; run: runDomain.CampaignRun; aiPhase: string; aiSummary?: aiExecutor.AiTurnSummary;
     factionId: 'blue' | 'red'; selectedId: string; generation: number; pending?: string;
     ticket?: { consumed: boolean; request: aiPlanner.AiTurnRequest };
     operation?: unknown; executing: boolean;
@@ -177,13 +449,13 @@ describe('S3.34 bounded run scene integration', () => {
         for (let frame = 0; frame < 4; frame++) r.render();
         f.click('campaign-budget'); f.click('campaign-budget'); f.click('system-sol');
         expect(executor).toHaveBeenCalledTimes(calls); expect(f.tasks).toHaveLength(expectedTurn / 2);
-        let current = r.run, commits = 0;
-        Object.defineProperty(r, 'run', { configurable: true, get: () => current, set: value => { current = value; commits++; } });
+        let current = r.match, commits = 0;
+        Object.defineProperty(r, 'match', { configurable: true, get: () => current, set: value => { current = value; commits++; } });
         const commandCount = dispatch.mock.calls.length; task.callback(); task.callback();
         expect(commits).toBe(1); expect(task.remove).toHaveBeenCalledWith(false);
         expect(executor).toHaveBeenCalledTimes(calls + 1); expect(planner).toHaveBeenCalledTimes(calls + 1);
         expect(executor.mock.calls[calls]).toEqual([before, { factionId: 'red', expectedTurn }]);
-        expect(executor.mock.calls[calls][0]).toBe(source); expect(source).toEqual(before);
+        expect(executor.mock.calls[calls][0]).not.toBe(source); expect(source).toEqual(before);
         expect(dispatch.mock.calls.slice(commandCount).map(([, command]) => (command as domain.SessionCommand).kind))
           .toEqual(expectedTurn === 2 ? ['explore', 'endTurn'] : ['colonize', 'explore', 'endTurn']);
         expect(r.run.session.turn).toBe(expectedTurn + 1); expect(r.aiPhase).toBe('idle'); expect(r.ticket).toBeUndefined();
@@ -233,14 +505,15 @@ describe('S3.34 bounded run scene integration', () => {
       expect(r.pending).toBe(action); const old = capture(f, 'campaign-confirm');
       const buttons = f.nodes.filter(n => !n.destroyed && n.interactive).map(n => n.name);
       expect(buttons.sort()).toEqual((action === 'new' ? ['campaign-mode-local', 'campaign-mode-ai', 'campaign-cancel', 'campaign-confirm']
-        : ['campaign-cancel', 'campaign-confirm']).sort());
+        : ['campaign-cancel', 'campaign-confirm']).concat(action === 'new'
+          ? ['campaign-scenario-sandbox', 'campaign-scenario-survey'] : []).sort());
       f.click('campaign-cancel'); old(); task.callback(); r.render();
       expect(r.run).toBe(source); expect(r.aiPhase).toBe('paused'); expect(executor).not.toHaveBeenCalled();
       expect(f.tasks).toHaveLength(1); expect(storage.setItem).not.toHaveBeenCalled();
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it.each(['save', 'load'] as const)('%s read failure remains paused; empty save writes full save2 and never auto-resumes', action => {
+  it.each(['save', 'load'] as const)('%s read failure remains paused; empty save writes full save3 and never auto-resumes', action => {
     const { storage, contents } = slot();
     try {
       const f = redScheduled(), r = runtime(f), source = r.run, task = f.tasks[0];
@@ -250,8 +523,8 @@ describe('S3.34 bounded run scene integration', () => {
       task.callback(); f.click('campaign-save');
       expect(r.run).toBe(source); expect(r.aiPhase).toBe('paused'); expect(storage.setItem).toHaveBeenCalledTimes(1);
       const json = contents.get(CampaignRunSaveManager.STORAGE_KEY)!;
-      expect(Object.keys(JSON.parse(json)).sort()).toEqual(['format', 'schemaVersion', 'rulesVersion', 'session', 'control'].sort());
-      expect(JSON.parse(json).schemaVersion).toBe(2); expect(decodeCampaignRunSave(json)).toEqual({ ok: true, run: source });
+      expect(Object.keys(JSON.parse(json)).sort()).toEqual(['format', 'schemaVersion', 'rulesVersion', 'session', 'control', 'scenario'].sort());
+      expect(JSON.parse(json).schemaVersion).toBe(3); expect(decodeCampaignMatchSave(json)).toEqual({ ok: true, match: { run: source, scenario: 'sandbox' } });
       expect(f.tasks).toHaveLength(1); expect(contents.get('unrelated')).toBe('keep');
     } finally { vi.unstubAllGlobals(); }
   });
@@ -268,9 +541,9 @@ describe('S3.34 bounded run scene integration', () => {
       contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
       f.click('campaign-production'); f.click('production-fleets');
       Object.assign(r, { fleetShipIds: [77, 88], fleetPage: 12, fleetMemberPage: 2, choiceIndex: 6, completedPage: 3 });
-      f.click('campaign-load'); const operation = r.operation as { candidate: runDomain.CampaignRun };
+      f.click('campaign-load'); const operation = r.operation as { candidate: matchDomain.CampaignMatch };
       const reads = storage.getItem.mock.calls.length; contents.delete(CampaignRunSaveManager.STORAGE_KEY);
-      f.click('campaign-confirm'); expect(r.run).toBe(operation.candidate); expect(r.run).toEqual(run);
+      f.click('campaign-confirm'); expect(r.match).toBe(operation.candidate); expect(r.run).toEqual(run);
       expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(storage.setItem).not.toHaveBeenCalled();
       expect(r.factionId).toBe(variant.startsWith('ai') ? 'blue' : variant.endsWith('red') ? 'red' : 'blue');
       expect(r.aiPhase).toBe(variant === 'ai-red' ? 'paused' : 'idle'); expect(f.tasks).toHaveLength(0);
@@ -280,7 +553,7 @@ describe('S3.34 bounded run scene integration', () => {
       if (variant.startsWith('legacy')) {
         contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
         f.click('campaign-save'); expect(r.pending).toBe('save'); expect(storage.setItem).not.toHaveBeenCalled();
-        f.click('campaign-confirm'); expect(JSON.parse(contents.get(CampaignRunSaveManager.STORAGE_KEY)!).schemaVersion).toBe(2);
+        f.click('campaign-confirm'); expect(JSON.parse(contents.get(CampaignRunSaveManager.STORAGE_KEY)!).schemaVersion).toBe(3);
         expect(r.run.control).toEqual({ mode: 'local' });
       }
     } finally { vi.unstubAllGlobals(); }
@@ -292,8 +565,8 @@ describe('S3.34 bounded run scene integration', () => {
       const f = redScheduled(), r = runtime(f), before = structuredClone(r.run);
       contents.set(CampaignRunSaveManager.STORAGE_KEY, 'occupied');
       f.click('campaign-save'); r.run.control = { mode: 'local' }; r.run.session.treasuries.red.credits = 234;
-      f.click('campaign-confirm'); expect(decodeCampaignRunSave(contents.get(CampaignRunSaveManager.STORAGE_KEY)))
-        .toEqual({ ok: true, run: before });
+      f.click('campaign-confirm'); expect(decodeCampaignMatchSave(contents.get(CampaignRunSaveManager.STORAGE_KEY)))
+        .toEqual({ ok: true, match: { run: before, scenario: 'sandbox' } });
       expect(storage.getItem).toHaveBeenCalledTimes(1); expect(storage.setItem).toHaveBeenCalledTimes(1);
       expect(f.tasks).toHaveLength(1);
     } finally { vi.unstubAllGlobals(); }
@@ -344,14 +617,14 @@ describe('S3.34 bounded run scene integration', () => {
   it('consumes before synchronous AI; running blocks commands, repeat callbacks, Resume/IO/new/menu/takeover and ESC', () => {
     const { storage } = slot();
     try {
-      const f = redScheduled(), r = runtime(f), task = f.tasks[0], original = runDomain.executeRunAiTurn;
-      const execute = vi.spyOn(runDomain, 'executeRunAiTurn').mockImplementation((run, request) => {
+      const f = redScheduled(), r = runtime(f), task = f.tasks[0], original = matchDomain.executeMatchAiTurn;
+      const execute = vi.spyOn(matchDomain, 'executeMatchAiTurn').mockImplementation((match, request) => {
         expect(r.aiPhase).toBe('running'); expect(r.ticket?.consumed).toBe(true); expect(task.removed).toBe(true);
         expect(f.nodes.filter(n => !n.destroyed && n.interactive)).toHaveLength(0);
         for (const action of ['resume', 'ai', 'save', 'load', 'new', 'menu', 'takeover']) r.requestOperation(action, { factionId: 'red', expectedTurn: 2 });
         r.execute({ kind: 'endTurn', factionId: 'red', expectedTurn: 2 }); task.callback(); f.keyboard.emit('keydown-ESC');
-        expect(r.pending).toBeUndefined(); expect(r.run).toBe(run); expect(storage.getItem).not.toHaveBeenCalled();
-        return original(run, request);
+        expect(r.pending).toBeUndefined(); expect(r.match).toBe(match); expect(storage.getItem).not.toHaveBeenCalled();
+        return original(match, request);
       });
       task.callback(); expect(execute).toHaveBeenCalledTimes(1); expect(r.aiPhase).toBe('idle');
       expect(r.run.session.turn).toBe(3); expect(storage.setItem).not.toHaveBeenCalled();
@@ -380,7 +653,7 @@ describe('S3.34 bounded run scene integration', () => {
       expect(visible(f)).not.toContain('red-target-and-finance-secret'); expect(f.tasks).toHaveLength(1);
       expect(source.session.treasuries.blue).toEqual({ credits: 110, minerals: 55 });
       f.click('campaign-save'); expect(r.aiPhase).toBe('failed');
-      expect(decodeCampaignRunSave(contents.get(CampaignRunSaveManager.STORAGE_KEY))).toEqual({ ok: true, run: before });
+      expect(decodeCampaignMatchSave(contents.get(CampaignRunSaveManager.STORAGE_KEY))).toEqual({ ok: true, match: { run: before, scenario: 'sandbox' } });
       f.click('campaign-resume'); f.click('campaign-cancel'); expect(r.aiPhase).toBe('failed');
       expect(executor).toHaveBeenCalledTimes(1);
     } finally { vi.unstubAllGlobals(); }
@@ -413,9 +686,9 @@ describe('S3.34 bounded run scene integration', () => {
     f.click('campaign-end-turn'); expect(r.run.session.turn).toBe(before.turn + 1); expect(r.aiPhase).toBe('idle');
   });
 
-  it('authorizes all eleven manual commands through run API; helper is absent and cannot be forced in AI mode', () => {
+  it('authorizes all eleven manual commands through match API; helper is absent and cannot be forced in AI mode', () => {
     const f = redScheduled(), r = runtime(f); f.click('campaign-pause');
-    const source = r.run, low = vi.spyOn(domain, 'executeSessionCommand'), execute = vi.spyOn(runDomain, 'executeRunCommand');
+    const source = r.run, low = vi.spyOn(domain, 'executeSessionCommand'), execute = vi.spyOn(matchDomain, 'executeMatchCommand');
     const payloads = [
       { kind: 'endTurn' }, { kind: 'explore', systemId: 'nexus' }, { kind: 'colonize', systemId: 'nexus' },
       { kind: 'enqueueProduction', systemId: 'vega', design: createCombatDesign('fighter') },
@@ -642,9 +915,9 @@ describe('S3.29 confirmed manual AI turn', () => {
     vi.stubGlobal('localStorage', storage);
     try {
       const f = fixture(), r = runtime(f), sceneExecute = vi.spyOn(r, 'execute');
-      const owner = f.scene as unknown as { run: runDomain.CampaignRun };
-      let owned = owner.run, writes = 0;
-      Object.defineProperty(owner, 'run', { configurable: true, get: () => owned, set: value => { writes++; owned = value; } });
+      const owner = f.scene as unknown as { match: matchDomain.CampaignMatch };
+      let owned = owner.match, writes = 0;
+      Object.defineProperty(owner, 'match', { configurable: true, get: () => owned, set: value => { writes++; owned = value; } });
       let current = r.campaign;
       for (let turn = 1; turn <= 4; turn++) {
         const before = structuredClone(current), source = current, factionId = turn % 2 ? 'blue' : 'red';
@@ -703,8 +976,8 @@ describe('S3.29 confirmed manual AI turn', () => {
     expect(r.pending).toBeUndefined(); expect(executor).not.toHaveBeenCalled();
   });
 
-  it.each(['same-side turn', 'other-side turn'] as const)('passes captured request to the real executor after in-place %s becomes stale', change => {
-    const f = fixture(), r = runtime(f), executor = vi.spyOn(runDomain, 'executeRunAiTurn');
+  it.each(['same-side turn', 'other-side turn'] as const)('passes captured request to the match boundary after in-place %s becomes stale', change => {
+    const f = fixture(), r = runtime(f), executor = vi.spyOn(matchDomain, 'executeMatchAiTurn');
     const low = vi.spyOn(aiExecutor, 'executeAiTurn');
     f.click('campaign-ai'); r.campaign.turn = change === 'same-side turn' ? 3 : 2;
     const state = r.campaign, before = structuredClone(state); f.click('campaign-confirm');
@@ -863,7 +1136,7 @@ describe('S3.26 manual campaign slot UI', () => {
   ] as const;
   type Runtime = {
     campaign: domain.CampaignSession; factionId: 'blue' | 'red'; selectedId: string;
-    pending?: string; operation?: { candidate: runDomain.CampaignRun }; generation: number;
+    pending?: string; operation?: { candidate: matchDomain.CampaignMatch }; generation: number;
     productionOpen: boolean; budgetOpen: boolean; catalog?: catalog.ProductionCatalog;
     choiceIndex: number; completedPage: number; shipsPage: number; showShips: boolean;
     travelOpen: boolean; destinationIndex: number; transitPage: number; fleetsOpen: boolean;
@@ -1050,10 +1323,10 @@ describe('S3.26 manual campaign slot UI', () => {
       const oldEnd = capture(f, 'campaign-end-turn'), oldSave = capture(f, 'campaign-save');
       const state = runtime(f).campaign;
       f.click('campaign-load'); const candidate = runtime(f).operation!.candidate;
-      expect(candidate).toEqual({ session: loaded, control: { mode: 'local' } }); expect(candidate.session).not.toBe(state);
+      expect(candidate).toEqual({ run: { session: loaded, control: { mode: 'local' } }, scenario: 'sandbox' }); expect(candidate.run.session).not.toBe(state);
       expect(runtime(f).campaign).toBe(state); contents.delete(key);
       const confirm = capture(f, 'campaign-confirm'); f.click('campaign-confirm');
-      expect(runtime(f).campaign).toBe(candidate.session); expect(runtime(f).campaign).toEqual(loaded);
+      expect(runtime(f).campaign).toBe(candidate.run.session); expect(runtime(f).campaign).toEqual(loaded);
       const generation = runtime(f).generation;
       confirm(); oldEnd(); oldSave();
       expect(runtime(f).generation).toBe(generation); expect(commands).not.toHaveBeenCalled(); expect(library).not.toHaveBeenCalled();
@@ -1221,8 +1494,8 @@ describe('S3.26 manual campaign slot UI', () => {
         const runSnapshot = structuredClone(owner.run);
         click('campaign-save'); if (runtime(f).pending) click('campaign-confirm');
         expect(runtime(f).campaign).toBe(state);
-        const decoded = decodeCampaignRunSave(contents.get(key));
-        expect(decoded).toEqual({ ok: true, run: runSnapshot });
+        const decoded = decodeCampaignMatchSave(contents.get(key));
+        expect(decoded).toEqual({ ok: true, match: { run: runSnapshot, scenario: 'sandbox' } });
         const reads = storage.getItem.mock.calls.length;
         f.events.emit('shutdown'); f.scene.create();
         expect(storage.getItem).toHaveBeenCalledTimes(reads); expect(runtime(f).campaign).toEqual(domain.createCampaignSession());

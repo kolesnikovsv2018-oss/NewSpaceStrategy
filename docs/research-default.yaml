@@ -1,0 +1,30 @@
+version: 1
+id: orion-technologies-v1
+initial:
+  hulls: [fighter, corvette]
+  components: [engine, beam]
+nodes:
+  - id: support
+    name: Флотская инфраструктура
+    prerequisites: []
+    credits: 10
+    turns: 2
+    unlocks:
+      hulls: [frigate]
+      components: [shield, armor, mining, repair, scanner, cargoExpansion]
+  - id: ordnance
+    name: Тяжёлое вооружение
+    prerequisites: [support]
+    credits: 20
+    turns: 3
+    unlocks:
+      hulls: [destroyer, cruiser]
+      components: [projectile]
+  - id: capital
+    name: Линейные корабли
+    prerequisites: [ordnance]
+    credits: 30
+    turns: 4
+    unlocks:
+      hulls: [battleship]
+      components: []

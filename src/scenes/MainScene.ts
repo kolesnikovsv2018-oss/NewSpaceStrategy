@@ -7,35 +7,42 @@ import { designSchema } from '../domain/shipDesign';
 import { isShipAtColony } from '../domain/campaignShips';
 import { getFleetTransit, isFleetAtColony, isShipInFleet, MAX_FLEET_SHIPS } from '../domain/campaignFleets';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
-import { CampaignRunSaveManager } from '../utils/CampaignRunSaveManager';
+import { CampaignMatchSaveManager } from '../utils/CampaignMatchSaveManager';
 import type { AiTurnSummary } from '../domain/campaignAiExecutor';
-import { createCampaignRun, executeRunCommand, executeRunAiTurn, convertRunToLocal,
-  type CampaignRun, type RunAiTurnResult } from '../domain/campaignRun';
+import type { CampaignRun } from '../domain/campaignRun';
+import { createCampaignMatch, executeMatchCommand, executeMatchAiTurn, convertMatchToLocal, getCampaignOutcome,
+  type CampaignMatch, type CampaignScenario, type CampaignOutcome, type MatchAiTurnResult } from '../domain/campaignMatch';
 import type { CampaignControl } from '../domain/campaignControl';
 import type { AiTurnRequest } from '../domain/campaignAiPlanner';
 
 interface PendingOperation {
   action: CampaignConfirmation;
   generation: number;
-  source: CampaignRun;
-  candidate?: CampaignRun;
+  source: CampaignMatch;
+  candidate?: CampaignMatch;
   aiRequest?: AiTurnRequest;
   mode?: CampaignControl['mode'];
+  scenario?: CampaignScenario;
 }
 
 type AiPhase = 'idle' | 'scheduled' | 'running' | 'paused' | 'failed';
 interface AiTicket {
   generation: number;
-  source: CampaignRun;
+  source: CampaignMatch;
   request: AiTurnRequest;
   consumed: boolean;
   task?: Phaser.Time.TimerEvent;
 }
 
-/** Sole owner of the run. The session accessor is a derived view, never a second state. */
 export class MainScene extends Phaser.Scene {
-  private run?: CampaignRun;
+  private match?: CampaignMatch;
+  private get run(): CampaignRun | undefined { return this.match?.run; }
   private get campaign(): CampaignSession | undefined { return this.run?.session; }
+  private get outcome(): CampaignOutcome | undefined {
+    if (!this.match) return undefined;
+    const result = getCampaignOutcome(this.match);
+    return result.ok ? result.outcome : undefined;
+  }
   private aiPhase: AiPhase = 'idle';
   private ticket?: AiTicket;
   private executing = false;
@@ -49,7 +56,7 @@ export class MainScene extends Phaser.Scene {
   private operation?: PendingOperation;
   private generation = 0;
   private disposed = true;
-  private readonly saves = new CampaignRunSaveManager();
+  private readonly saves = new CampaignMatchSaveManager();
   private productionOpen = false;
   private budgetOpen = false;
   private catalog?: ProductionCatalog;
@@ -81,7 +88,7 @@ export class MainScene extends Phaser.Scene {
       this.invalidateOperation();
       this.input.keyboard?.off('keydown-ESC', this.onEscape);
       this.panel?.destroy(); this.panel = undefined;
-      this.run = undefined; this.pending = undefined; this.aiPhase = 'idle';
+      this.match = undefined; this.pending = undefined; this.aiPhase = 'idle';
       this.message = ''; this.error = false;
       this.aiSummary = undefined;
       this.catalog = undefined; this.productionOpen = false; this.choiceIndex = 0; this.completedPage = 0;
@@ -91,13 +98,13 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
-  private resetCampaign(mode: CampaignControl['mode'] = 'local'): void {
+  private resetCampaign(mode: CampaignControl['mode'] = 'local', scenario: CampaignScenario = 'sandbox'): void {
     this.invalidateOperation();
     this.aiSummary = undefined;
     this.resetTravel();
-    const result = createCampaignRun(mode === 'local' ? { mode } : { mode, aiPolicy: 'expansion-v1' });
+    const result = createCampaignMatch(mode === 'local' ? { mode } : { mode, aiPolicy: 'expansion-v1' }, scenario);
     if (!result.ok) { this.error = true; this.message = result.message; this.render(); return; }
-    this.run = result.run;
+    this.match = result.match;
     this.aiPhase = 'idle';
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
     this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
@@ -108,12 +115,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   private render(): void {
-    if (!this.run || !this.campaign || this.disposed) return;
+    if (!this.match || !this.run || !this.campaign || this.disposed) return;
     const aiMode = this.run.control.mode === 'human-vs-ai';
     if (aiMode) this.factionId = 'blue';
     this.panel?.destroy();
     const operation = this.operation;
-    const source = this.run, generation = this.generation;
+    const source = this.match, generation = this.generation;
     // Capture what this panel displayed, not mutable scene fields at invocation time.
     const expectedTurn = this.campaign.turn, factionId = this.factionId, systemId = this.selectedId;
     const choice = this.catalog?.choices[this.choiceIndex];
@@ -134,6 +141,8 @@ export class MainScene extends Phaser.Scene {
       aiSummary: aiMode ? undefined : this.aiSummary,
       aiMode, aiPhase: this.aiPhase, running: this.executing,
       newMode: operation?.mode ?? 'local',
+      scenario: this.match.scenario, outcome: this.outcome,
+      newScenario: operation?.scenario ?? 'sandbox',
       budgetOpen: this.budgetOpen,
       production: this.productionOpen && this.catalog ? { catalog: this.catalog, choiceIndex: this.choiceIndex,
         completedPage: this.completedPage, shipsPage: this.shipsPage, showShips: this.showShips,
@@ -240,13 +249,18 @@ export class MainScene extends Phaser.Scene {
         }
       },
       request: action => {
-        if (this.run !== source || this.generation !== generation) return;
+        if (this.match !== source || this.generation !== generation) return;
         this.requestOperation(action, action === 'ai' ? { factionId, expectedTurn } : undefined);
       },
       pause: () => this.pauseAi(),
       chooseMode: mode => {
         if (operation && this.isCurrentOperation(operation) && operation.action === 'new' && !this.executing) {
           operation.mode = mode; this.render();
+        }
+      },
+      chooseScenario: scenario => {
+        if (operation && this.isCurrentOperation(operation) && operation.action === 'new' && !this.executing) {
+          operation.scenario = scenario; this.render();
         }
       },
       cancel: () => { if (operation === this.operation) { this.invalidateOperation(); this.render(); } },
@@ -262,11 +276,12 @@ export class MainScene extends Phaser.Scene {
 
   private isCurrentOperation(operation: PendingOperation): boolean {
     return !this.disposed && this.operation === operation && this.generation === operation.generation &&
-      this.run === operation.source;
+      this.match === operation.source;
   }
 
   private requestOperation(action: CampaignConfirmation, aiRequest?: AiTurnRequest): void {
-    if (this.disposed || !this.run || !this.campaign || this.pending || this.executing) return;
+    if (this.disposed || !this.match || !this.run || !this.campaign || this.pending || this.executing) return;
+    if ((action === 'ai' || action === 'resume') && this.outcome?.status !== 'ongoing') return;
     if (action === 'ai' && (this.run.control.mode !== 'local' || !aiRequest || aiRequest.factionId !== this.factionId ||
       aiRequest.expectedTurn !== this.campaign.turn ||
       getCampaignSessionView(this.campaign, this.factionId).activeFactionId !== aiRequest.factionId)) return;
@@ -274,15 +289,15 @@ export class MainScene extends Phaser.Scene {
     if (action === 'takeover' && this.run.control.mode !== 'human-vs-ai') return;
     // Cancellation precedes both pending creation and any storage access.
     this.invalidateOperation();
-    const operation: PendingOperation = { action, source: this.run, generation: this.generation, aiRequest,
-      mode: action === 'new' ? 'local' : undefined };
+    const operation: PendingOperation = { action, source: this.match, generation: this.generation, aiRequest,
+      mode: action === 'new' ? 'local' : undefined, scenario: action === 'new' ? 'sandbox' : undefined };
     this.operation = operation; this.pending = action;
     if (action === 'save' || action === 'load') {
       // Capture before reading the slot. Never substitute the live session at confirmation.
-      if (action === 'save') operation.candidate = structuredClone(this.run);
+      if (action === 'save') operation.candidate = structuredClone(this.match);
       const result = this.saves.load();
       if (!this.isCurrentOperation(operation)) return;
-      if (action === 'load' && result.ok) operation.candidate = result.run;
+      if (action === 'load' && result.ok) operation.candidate = result.match;
       else if (action === 'load' || (!result.ok && result.code === 'STORAGE_READ_FAILED')) {
         this.invalidateOperation();
         if (!result.ok) { this.error = true; this.message = result.message; }
@@ -305,20 +320,21 @@ export class MainScene extends Phaser.Scene {
     if (action === 'ai' && operation.aiRequest) {
       // One atomic domain call, never publish the package's intermediate commands.
       this.executing = true;
-      let result: RunAiTurnResult;
-      try { result = executeRunAiTurn(operation.source, operation.aiRequest); }
+      let result: MatchAiTurnResult;
+      try { result = executeMatchAiTurn(operation.source, operation.aiRequest); }
       catch { result = { ok: false, code: 'AI_EXECUTION_FAILED', message: 'Не удалось выполнить AI-ход' }; }
       finally { this.executing = false; }
       if (!this.isCurrentOperation(operation)) { this.render(); return; }
       this.invalidateOperation();
       this.error = !result.ok;
       if (result.ok) {
-        this.run = result.run;
+        this.match = result.match;
         this.productionOpen = false; this.budgetOpen = false; this.catalog = undefined;
         this.choiceIndex = 0; this.completedPage = 0; this.shipsPage = 0; this.showShips = false;
         this.resetTravel();
         this.aiSummary = result.summary;
         this.message = 'AI завершил один ход. Наблюдение остаётся за этой стороной.';
+        if (result.outcome.status === 'completed') this.acceptCompleted();
       } else this.message = result.message;
       this.render();
     } else if (action === 'save' && candidate) {
@@ -328,51 +344,51 @@ export class MainScene extends Phaser.Scene {
       this.error = !result.ok; this.message = result.ok ? 'Кампания сохранена.' : result.message;
       this.render();
     } else if (action === 'load' && candidate) {
-      this.replaceRun(candidate);
+      this.replaceMatch(candidate);
       this.message = 'Кампания загружена.'; this.error = false;
       this.render();
     } else if (action === 'resume') {
       this.invalidateOperation();
       this.scheduleAi();
     } else if (action === 'takeover') {
-      const result = convertRunToLocal(operation.source);
+      const result = convertMatchToLocal(operation.source);
       if (!this.isCurrentOperation(operation)) return;
-      if (result.ok) { this.replaceRun(result.run); this.message = 'Локальное управление передано активной стороне.'; this.error = false; }
+      if (result.ok) { this.replaceMatch(result.match); this.message = 'Локальное управление передано активной стороне.'; this.error = false; }
       else { this.invalidateOperation(); this.message = result.message; this.error = true; }
       this.render();
-    } else if (action === 'new') this.resetCampaign(operation.mode);
+    } else if (action === 'new') this.resetCampaign(operation.mode, operation.scenario);
     else if (action === 'menu') {
       this.invalidateOperation(); this.scene.start('MenuScene');
     }
   }
 
   private execute(command: SessionCommand): void {
-    if (this.disposed || !this.run || this.pending || this.executing) return;
+    if (this.disposed || !this.match || this.pending || this.executing) return;
     this.aiSummary = undefined;
-    const source = this.run, generation = this.generation;
-    const result = executeRunCommand(source, command);
-    if (this.disposed || this.run !== source || this.generation !== generation || this.pending) return;
+    const source = this.match, generation = this.generation;
+    const result = executeMatchCommand(source, command);
+    if (this.disposed || this.match !== source || this.generation !== generation || this.pending) return;
     this.error = !result.ok;
     if (result.ok) {
-      this.run = result.run;
+      this.match = result.match;
       if (command.kind === 'endTurn') this.fleetShipIds = [];
       if (command.kind === 'createFleet') {
         this.fleetShipIds = []; this.fleetMemberPage = 0;
-        this.fleetPage = result.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && isFleetAtColony(fleet, result.run.session.ships, command.systemId)).length - 1;
+        this.fleetPage = result.match.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && isFleetAtColony(fleet, result.match.run.session.ships, command.systemId)).length - 1;
       }
       if (command.kind === 'disbandFleet') this.fleetMemberPage = 0;
       if (command.kind === 'sendFleet') {
         this.fleetDestinationIndex = 0; this.fleetMemberPage = 0;
-        this.fleetTransitPage = result.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && getFleetTransit(fleet, result.run.session.ships))
+        this.fleetTransitPage = result.match.run.session.fleets.items.filter(fleet => fleet.factionId === command.factionId && getFleetTransit(fleet, result.match.run.session.ships))
           .findIndex(fleet => fleet.id === command.fleetId);
       }
       if (command.kind === 'sendShip') {
         this.destinationIndex = 0;
-        this.transitPage = result.run.session.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
+        this.transitPage = result.match.run.session.ships.filter(ship => ship.factionId === command.factionId && ship.transit)
           .findIndex(ship => ship.id === command.shipId);
       }
       if (command.kind === 'deployProduction') {
-        this.shipsPage = result.run.session.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
+        this.shipsPage = result.match.run.session.ships.filter(ship => ship.factionId === command.factionId && isShipAtColony(ship, command.systemId)).length - 1;
       }
       const receipt = result.endTurnEconomy;
       this.message = receipt ? `Ход передан. Доход: +${receipt.income.credits} кр. / +${receipt.income.minerals} мин. ` +
@@ -386,6 +402,7 @@ export class MainScene extends Phaser.Scene {
         : command.kind === 'sendFleet' ? 'Группа отправлена; все участники прибудут в конце своего хода.'
         : command.kind === 'disbandFleet' ? 'Группа расформирована. Корабли остаются в колонии.'
         : command.kind === 'deployProduction' ? 'Корабль размещён в колонии.' : 'Корабль отправлен; прибытие при завершении своего хода.';
+      if (result.outcome.status === 'completed') this.acceptCompleted();
     } else {
       // Keep actionable local UI wording; never use a red AI transcript for feedback.
       const messages: Partial<Record<typeof result.code, string>> = {
@@ -405,12 +422,12 @@ export class MainScene extends Phaser.Scene {
       this.message = messages[result.code] ?? result.message;
     }
     this.render();
-    if (result.ok && this.run === result.run && this.generation === generation &&
+    if (result.ok && this.match === result.match && this.generation === generation &&
       command.kind === 'endTurn' && command.factionId === 'blue' && this.isRedAi()) this.scheduleAi();
   }
 
   private isRedAi(): boolean {
-    return this.run?.control.mode === 'human-vs-ai' && this.run.session.turn % 2 === 0;
+    return this.run?.control.mode === 'human-vs-ai' && this.run.session.turn % 2 === 0 && this.outcome?.status === 'ongoing';
   }
 
   private cancelTicket(): void {
@@ -427,14 +444,14 @@ export class MainScene extends Phaser.Scene {
 
   private currentTicket(ticket: AiTicket): boolean {
     return !this.disposed && this.scene.isActive() && this.ticket === ticket &&
-      this.generation === ticket.generation && this.run === ticket.source && !this.pending &&
+      this.generation === ticket.generation && this.match === ticket.source && !this.pending &&
       this.isRedAi() && ticket.request.factionId === 'red' && this.run?.session.turn === ticket.request.expectedTurn;
   }
 
   /** Only called by accepted blue endTurn or the independent Resume confirmation. */
   private scheduleAi(): void {
-    if (!this.run || !this.isRedAi() || this.disposed || this.pending || this.executing || this.ticket) return;
-    const ticket: AiTicket = { source: this.run, generation: this.generation,
+    if (!this.match || !this.run || !this.isRedAi() || this.disposed || this.pending || this.executing || this.ticket) return;
+    const ticket: AiTicket = { source: this.match, generation: this.generation,
       request: { factionId: 'red', expectedTurn: this.run.session.turn }, consumed: false };
     this.ticket = ticket; this.aiPhase = 'scheduled';
     this.aiSummary = undefined; this.message = ''; this.error = false;
@@ -466,8 +483,8 @@ export class MainScene extends Phaser.Scene {
     ticket.task?.remove(false); ticket.task = undefined;
     this.aiPhase = 'running'; this.executing = true;
     this.render();
-    let result: RunAiTurnResult;
-    try { result = executeRunAiTurn(ticket.source, ticket.request); }
+    let result: MatchAiTurnResult;
+    try { result = executeMatchAiTurn(ticket.source, ticket.request); }
     catch { result = { ok: false, code: 'AI_EXECUTION_FAILED', message: 'Не удалось выполнить AI-ход' }; }
     finally { this.executing = false; }
     if (!this.currentTicket(ticket)) {
@@ -479,11 +496,12 @@ export class MainScene extends Phaser.Scene {
     }
     this.ticket = undefined;
     this.aiSummary = undefined;
-    if (result.ok && result.run.control.mode === 'human-vs-ai' &&
-      result.run.session.turn === ticket.request.expectedTurn + 1) {
-      this.run = result.run; // Exactly one publication; never retain the red summary.
+    if (result.ok && result.match.run.control.mode === 'human-vs-ai' &&
+      result.match.run.session.turn === ticket.request.expectedTurn + 1) {
+      this.match = result.match;
       this.clearPanels(); this.aiPhase = 'idle'; this.error = false;
       this.message = 'Компьютер завершил ход. Ваш ход.';
+      if (result.outcome.status === 'completed') this.acceptCompleted();
     } else {
       this.aiPhase = 'failed'; this.error = true;
       this.message = 'Не удалось выполнить ход компьютера.';
@@ -498,8 +516,13 @@ export class MainScene extends Phaser.Scene {
     this.resetTravel();
   }
 
-  private replaceRun(run: CampaignRun): void {
-    this.invalidateOperation(); this.run = run; this.clearPanels();
+  private acceptCompleted(): void {
+    this.invalidateOperation(); this.clearPanels(); this.aiPhase = 'idle'; this.message = '';
+  }
+
+  private replaceMatch(match: CampaignMatch): void {
+    this.invalidateOperation(); this.match = match; this.clearPanels();
+    const run = match.run;
     this.aiPhase = this.isRedAi() ? 'paused' : 'idle';
     this.factionId = run.control.mode === 'human-vs-ai' ? 'blue' : run.session.turn % 2 ? 'blue' : 'red';
     const galaxy = getGalaxyDefinition();

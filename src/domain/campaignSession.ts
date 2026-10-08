@@ -21,7 +21,7 @@ const initialTreasury: Readonly<Treasury> = { credits: 100, minerals: 50 };
 const colonyIncome: Readonly<Treasury> = { credits: 10, minerals: 5 };
 
 /** Turn is a single side's action window: odd=blue, even=red. No duplicated active-side field. */
-export const campaignSessionSchema = z.object({
+function makeSessionSchema(allowHostile: boolean) { return z.object({
   galaxy: campaignStateSchema,
   turn: turnSchema,
   treasuries: z.object({ blue: treasurySchema, red: treasurySchema }).strict(),
@@ -37,7 +37,7 @@ export const campaignSessionSchema = z.object({
   const productionIds = new Set([...state.production.orders, ...state.production.completed].map(record => record.id));
   const shipsById = new Map(state.ships.map(ship => [ship.id, ship]));
   for (const fleet of state.fleets.items) {
-    if (state.galaxy.systems.find(system => system.id === fleet.systemId)?.ownerId !== fleet.factionId) {
+    if (!allowHostile && state.galaxy.systems.find(system => system.id === fleet.systemId)?.ownerId !== fleet.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Группа требует собственную колонию' });
     }
     const route = shipsById.get(fleet.shipIds[0])?.transit;
@@ -54,14 +54,16 @@ export const campaignSessionSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль требует отдельный ранее выданный идентификатор производства' });
     }
     // Travel is restricted to own colonies at both ends; capture is not implemented.
-    if (state.galaxy.systems.find(system => system.id === ship.systemId)?.ownerId !== ship.factionId) {
+    if (!allowHostile && state.galaxy.systems.find(system => system.id === ship.systemId)?.ownerId !== ship.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Размещённый корабль требует собственную колонию' });
     }
-    if (ship.transit && state.galaxy.systems.find(system => system.id === ship.transit!.destinationId)?.ownerId !== ship.factionId) {
+    if (!allowHostile && ship.transit && state.galaxy.systems.find(system => system.id === ship.transit!.destinationId)?.ownerId !== ship.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Цель перелёта требует собственную колонию' });
     }
   }
-});
+}); }
+export const campaignSessionSchema = makeSessionSchema(false);
+export const conquestSessionSchema = makeSessionSchema(true);
 export type CampaignSession = z.infer<typeof campaignSessionSchema>;
 
 export function createCampaignSession(): CampaignSession {
@@ -121,7 +123,15 @@ function economyFor(state: CampaignSession, factionId: CampaignFactionId): Econo
 
 /** Pure session boundary. Callers must keep the returned state; this is not network deduplication. */
 export function executeSessionCommand(inputState: unknown, inputCommand: unknown): SessionResult {
-  const parsedState = campaignSessionSchema.safeParse(inputState);
+  return executeStrategicCommand(inputState, inputCommand, false);
+}
+
+export function executeConquestSessionCommand(inputState: unknown, inputCommand: unknown): SessionResult {
+  return executeStrategicCommand(inputState, inputCommand, true);
+}
+
+function executeStrategicCommand(inputState: unknown, inputCommand: unknown, allowHostile: boolean): SessionResult {
+  const parsedState = (allowHostile ? conquestSessionSchema : campaignSessionSchema).safeParse(inputState);
   if (!parsedState.success) return { ok: false, code: 'INVALID_STATE', message: 'Недопустимое состояние стратегической партии' };
   const parsedCommand = sessionCommandSchema.safeParse(inputCommand);
   if (!parsedCommand.success) return { ok: false, code: 'INVALID_COMMAND', message: 'Недопустимая стратегическая команда' };
@@ -134,7 +144,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
     return { ok: false, code: 'NOT_ACTIVE_FACTION', message: 'Сейчас ход другой стороны' };
   }
   if (command.kind === 'createFleet' || command.kind === 'disbandFleet' || command.kind === 'sendFleet') {
-    if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
+    if (!allowHostile && state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Группировка доступна только в своей колонии' };
     }
     if (command.kind === 'disbandFleet' || command.kind === 'sendFleet') {
@@ -149,7 +159,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
         state.fleets.items.splice(index, 1);
         return { ok: true, state };
       }
-      if (state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
+      if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
         return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
       }
       if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
@@ -186,7 +196,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
     return { ok: true, state };
   }
   if (command.kind === 'sendShip' || command.kind === 'refuelShip') {
-    if (state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
+    if ((!allowHostile || command.kind === 'refuelShip') && state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Операция корабля доступна только в своей колонии' };
     }
     const ship = state.ships.find(item => item.id === command.shipId && item.factionId === command.factionId && item.systemId === command.systemId);
@@ -205,7 +215,7 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
     if (isShipInFleet(state.fleets.items, ship.id)) {
       return { ok: false, code: 'SHIP_IN_FLEET', message: 'Корабль входит в группу; сначала расформируйте её' };
     }
-    if (state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
+    if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
     }
     if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
@@ -309,7 +319,14 @@ export interface CampaignSessionView {
  * Invalid queries throw ZodError; commands instead return typed failure results.
  */
 export function getCampaignSessionView(inputState: CampaignSession, factionId: CampaignFactionId): CampaignSessionView {
-  const state = campaignSessionSchema.parse(inputState);
+  return sessionView(campaignSessionSchema.parse(inputState), factionId);
+}
+
+export function getConquestSessionView(inputState: CampaignSession, factionId: CampaignFactionId): CampaignSessionView {
+  return sessionView(conquestSessionSchema.parse(inputState), factionId);
+}
+
+function sessionView(state: CampaignSession, factionId: CampaignFactionId): CampaignSessionView {
   const faction = factionIdSchema.parse(factionId);
   return { galaxy: getCampaignView(state.galaxy, faction), turn: state.turn,
     activeFactionId: activeFaction(state.turn), treasury: { ...state.treasuries[faction] },

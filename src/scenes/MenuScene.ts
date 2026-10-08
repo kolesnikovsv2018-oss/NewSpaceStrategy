@@ -61,6 +61,11 @@ export class MenuScene extends Phaser.Scene {
     .setInteractive({ useHandCursor: true });
 
     // Button interactions
+    this.add.text(width / 2, height / 2 + 245, 'Военная кампания', {
+      fontSize: '24px', color: '#ffffff', backgroundColor: '#265c50', padding: { x: 20, y: 10 }
+    }).setName('start-conquest').setOrigin(0.5).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.scene.start('ConquestScene'));
+
     startButton
       .on('pointerover', () => startButton.setStyle({ backgroundColor: '#666666' }))
       .on('pointerout', () => startButton.setStyle({ backgroundColor: '#444444' }))

@@ -12,7 +12,7 @@ export class BattleManager {
   private events: BattleEvent[] = [];
   private battleEndCallback?: (stats: IBattleStats) => void;
 
-  constructor(config: IBattleConfig) {
+  constructor(config: IBattleConfig, private readonly environment: { now?: () => number; silent?: boolean } = {}) {
     this.config = config;
     
     // Собираем все корабли
@@ -22,7 +22,7 @@ export class BattleManager {
 
     // Инициализируем статистику
     this.stats = {
-      startTime: Date.now(),
+      startTime: this.environment.now ? this.environment.now() : Date.now(),
       duration: 0,
       totalShips: this.allShips.length,
       shipsDestroyed: 0,
@@ -48,8 +48,8 @@ export class BattleManager {
   start(): void {
     if (this.isActive || this.isFinished) return;
     this.isActive = true;
-    this.stats.startTime = Date.now();
-    console.log('⚔️ Бой начался!');
+    this.stats.startTime = this.environment.now ? this.environment.now() : Date.now();
+    if (!this.environment.silent) console.log('⚔️ Бой начался!');
   }
 
   /**
@@ -59,7 +59,7 @@ export class BattleManager {
     if (!this.isActive) return;
     this.isActive = false;
     this.isFinished = true;
-    console.log('🏁 Бой завершен!');
+    if (!this.environment.silent) console.log('🏁 Бой завершен!');
     if (this.battleEndCallback) {
       this.battleEndCallback(this.stats);
     }
@@ -175,7 +175,7 @@ export class BattleManager {
         position: { ...target.position }
       });
 
-      console.log(`💥 ${target.name} (${target.factionId}) уничтожен кораблем ${attacker.name} (${attacker.factionId})`);
+      if (!this.environment.silent) console.log(`💥 ${target.name} (${target.factionId}) уничтожен кораблем ${attacker.name} (${attacker.factionId})`);
     }
   }
 

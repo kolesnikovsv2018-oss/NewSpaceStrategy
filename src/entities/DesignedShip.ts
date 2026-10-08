@@ -7,6 +7,7 @@ import { positiveFinite } from '../domain/runtimeNumbers';
 import { formatFlightEstimate } from '../domain/flightEstimate';
 import { createDesignState, type WeaponState } from '../domain/shipState';
 import { cargoTotals, type CargoLimits } from '../domain/cargo';
+import { readOperationalState, type OperationalState } from '../domain/campaignOperations';
 import { calculateShipStats, designSchema, HULLS, newId, validateDesign, componentStatus, isServiceComponent,
   type ShipDesign, type ShipStats } from '../domain/shipDesign';
 
@@ -15,18 +16,29 @@ export class DesignedShip extends TacticalShip {
   private readonly design: ShipDesign;
   private readonly stats: ShipStats;
   private readonly compatibility: DesignCompatibilityViews;
+  private readonly random: () => number;
 
-  constructor(input: ShipDesign, factionId: string, mode: 'flight' | 'battle' = 'battle') {
+  constructor(input: ShipDesign, factionId: string, mode: 'flight' | 'battle' = 'battle',
+    options: { id?: string; random?: () => number; operational?: OperationalState } = {}) {
     const issues = validateDesign(input, mode);
     if (issues.length) throw new Error(issues.map(issue => issue.message).join('\n'));
     const design = designSchema.parse(input);
     const stats = calculateShipStats(design);
-    super(newId('ship'), design.name, createDesignState(stats));
+    const initialState = createDesignState(stats);
+    if (options.operational) {
+      const operational = readOperationalState(options.operational, design);
+      initialState.hull = operational.hull;
+      for (const weapon of initialState.weapons) {
+        if (weapon.ammo !== null) weapon.ammo = operational.ammunition.find(item => item.slotId === weapon.slotId)!.amount;
+      }
+    }
+    super(options.id ?? newId('ship'), design.name, initialState);
+    this.random = options.random ?? (() => Math.random());
     this.factionId = factionId;
     this.design = design;
     this.stats = stats;
     this.compatibility = new DesignCompatibilityViews(design, stats, this.state);
-    this.combatStats = { maxHull: stats.hitPoints, currentHull: stats.hitPoints,
+    this.combatStats = { maxHull: stats.hitPoints, currentHull: initialState.hull,
       maxShield: stats.shield, currentShield: stats.shield, shieldRegenRate: stats.shieldRegen,
       armor: stats.armor, evasion: stats.evasion };
     // Aggregate summary is for AI/UI only. Each weapon actually shoots on its own cooldown.
@@ -85,9 +97,9 @@ export class DesignedShip extends TacticalShip {
       if (!this.consumeEnergy(energyPerShot)) continue;
       state.cooldown = 1 / definition.fireRate;
       if (state.ammo !== null) state.ammo--;
-      const hit = Math.random() < definition.accuracy * (1 - target.combatStats.evasion);
+      const hit = this.random() < definition.accuracy * (1 - target.combatStats.evasion);
       if (!hit) return { hit: false, damage: 0, shieldDamage: 0, hullDamage: 0, critical: false, evaded: true };
-      const critical = Math.random() < 0.1;
+      const critical = this.random() < 0.1;
       return target.takeDamage(definition.damage * (critical ? 2 : 1), critical, definition.kind);
     }
     return null;
