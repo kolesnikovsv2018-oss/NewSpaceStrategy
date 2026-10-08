@@ -34,8 +34,8 @@ export class ConquestScene extends Phaser.Scene {
   private frames?: BattleFrame[];
   private fileInput?: HTMLInputElement;
   private dialogToken?: object;
-  private replay?: { graphics: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; seconds: number; paused: boolean;
-    left: number; top: number; scale: number };
+  private replay?: { background: Phaser.GameObjects.Graphics; graphics: Phaser.GameObjects.Graphics;
+    label: Phaser.GameObjects.Text; seconds: number; paused: boolean; left: number; top: number; scale: number };
 
   constructor() { super({ key: 'ConquestScene' }); }
 
@@ -391,13 +391,16 @@ export class ConquestScene extends Phaser.Scene {
     if (!this.frames) return;
     const modal = openShipyardModal(this);
     if (!modal) return;
+    const background = this.add.graphics(); modal.overlay.add(background);
+    background.fillStyle(0x101820).fillRect(160, 120, 960, 480);
     const graphics = this.add.graphics(); modal.overlay.add(graphics);
     const label = text(this, modal.overlay, 180, 80, 'Бой', 20);
     const positions = this.frames.flatMap(frame => frame.ships);
     const left = Math.min(...positions.map(ship => ship.x)), top = Math.min(...positions.map(ship => ship.y));
     const width = Math.max(1, Math.max(...positions.map(ship => ship.x)) - left);
     const height = Math.max(1, Math.max(...positions.map(ship => ship.y)) - top);
-    this.replay = { graphics, label, seconds: 0, paused: false, left, top, scale: Math.min(900 / width, 420 / height) };
+    this.replay = { background, graphics, label, seconds: 0, paused: false, left, top,
+      scale: Math.min(900 / width, 420 / height) };
     modal.overlay.once('destroy', () => { this.replay = undefined; });
     button(this, modal.overlay, 180, 630, 'Пауза / продолжить', () => { if (this.replay) this.replay.paused = !this.replay.paused; }, 'conquest-replay-pause');
     button(this, modal.overlay, 980, 630, 'Закрыть', () => { this.replay = undefined; modal.close(); }, 'conquest-replay-close');
@@ -408,7 +411,7 @@ export class ConquestScene extends Phaser.Scene {
     if (!replay || !this.frames || !isShipyardModalOpen(this)) { this.replay = undefined; return; }
     if (!replay.paused) replay.seconds += delta / 1000 * 8;
     const frame = this.frames.find(item => item.seconds >= replay.seconds) ?? this.frames[this.frames.length - 1];
-    replay.graphics.clear().fillStyle(0x101820).fillRect(160, 120, 960, 480);
+    replay.graphics.clear();
     for (const ship of frame.ships) {
       const xpos = 190 + (ship.x - replay.left) * replay.scale, ypos = 150 + (ship.y - replay.top) * replay.scale;
       replay.graphics.fillStyle(ship.hull > 0 ? ship.factionId === 'blue' ? 0x55baff : 0xf08070 : 0x444444);

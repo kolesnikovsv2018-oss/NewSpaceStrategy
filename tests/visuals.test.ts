@@ -271,6 +271,33 @@ describe('simulation/view boundary', () => {
     expect(controls.simulationAccumulator).toBeCloseTo(0);
   });
 
+  it('samples the battle HUD at 10 Hz in real time and only writes changed text', () => {
+    const scene = new BattleScene();
+    const manager = { update: vi.fn(), drainEvents: vi.fn(() => []), getStats: () => ({
+      duration: 0, totalShips: 2, shipsDestroyed: 0, totalDamage: 0,
+      factionStats: new Map([['blue', { shipsAlive: 1 }], ['red', { shipsAlive: 1 }]])
+    }), getAliveShips: () => [{ factionId: 'blue' }, { factionId: 'red' }] };
+    Object.assign(scene, {
+      isPaused: false, simulationAccumulator: 0, simulationSpeed: 4, uiAccumulator: 0, battleEnded: false,
+      trialDesign: undefined, battleManager: manager, shipSprites: new Map(), renderBattleEvents: vi.fn()
+    });
+    const updateUI = vi.spyOn(scene as unknown as { updateUI(): void }, 'updateUI');
+    const sceneState = scene as unknown as { update(time: number, delta: number): void };
+    for (let frame = 0; frame < 6; frame++) sceneState.update(frame * 16, 16);
+    expect(updateUI).not.toHaveBeenCalled();
+    sceneState.update(96, 16);
+    expect(updateUI).toHaveBeenCalledOnce();
+
+    updateUI.mockClear();
+    const infoText = { setText: vi.fn() }, statsText = { setText: vi.fn() };
+    Object.assign(scene, { battleManager: manager, infoText, statsText, battleSeed: 77,
+      lastInfoText: '', lastStatsText: '' });
+    (scene as unknown as { updateUI(): void }).updateUI();
+    (scene as unknown as { updateUI(): void }).updateUI();
+    expect(infoText.setText).toHaveBeenCalledOnce();
+    expect(statsText.setText).toHaveBeenCalledOnce();
+  });
+
   it('shutdown clears retained state and removes only its own keyboard handlers', () => {
     const scene = new BattleScene();
     const off = vi.fn();

@@ -18,6 +18,9 @@ export class BattleScene extends Phaser.Scene {
   private simulationAccumulator = 0;
   private simulationSpeed: 1 | 2 | 4 = 1;
   private speedButtons = new Map<number, Phaser.GameObjects.Text>();
+  private uiAccumulator = 0;
+  private lastInfoText = '';
+  private lastStatsText = '';
   private battleEnded = false;
   private projectiles: Phaser.GameObjects.Graphics[] = [];
   private trialDesign?: ShipDesign;
@@ -41,6 +44,9 @@ export class BattleScene extends Phaser.Scene {
     this.simulationAccumulator = 0;
     this.simulationSpeed = 1;
     this.speedButtons.clear();
+    this.uiAccumulator = 0;
+    this.lastInfoText = '';
+    this.lastStatsText = '';
     this.battleEnded = false;
     this.shipSprites.clear();
     this.projectiles = [];
@@ -60,6 +66,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Начинаем бой
     this.battleManager?.start();
+    this.updateUI();
 
     // Обработчики клавиш
     this.setupKeyHandlers();
@@ -252,6 +259,9 @@ export class BattleScene extends Phaser.Scene {
     this.simulationAccumulator = 0;
     this.simulationSpeed = 1;
     this.speedButtons.clear();
+    this.uiAccumulator = 0;
+    this.lastInfoText = '';
+    this.lastStatsText = '';
     this.battleEnded = false;
     this.infoText = undefined;
     this.statsText = undefined;
@@ -280,8 +290,12 @@ export class BattleScene extends Phaser.Scene {
     // Представления уже содержат прямую ссылку на модель; поиска по массиву нет.
     this.shipSprites.forEach(sprite => sprite.update(deltaSeconds));
 
-    // Обновляем UI
-    this.updateUI();
+    // HUD is sampled in real time; unchanged text is not re-submitted to Phaser.
+    this.uiAccumulator += deltaSeconds;
+    if (this.uiAccumulator >= 0.1) {
+      this.uiAccumulator %= 0.1;
+      this.updateUI();
+    }
   }
 
   private renderBattleEvents(): void {
@@ -368,14 +382,18 @@ export class BattleScene extends Phaser.Scene {
     const duration = Math.floor(stats.duration / 1000);
 
     // Основная информация
-    this.infoText.setText(`
+    const infoText = `
 ⚔️ СРАЖЕНИЕ
 Время: ${duration}с
 Seed: ${this.battleSeed}
 Кораблей в бою: ${aliveShips.length}/${stats.totalShips}
 Уничтожено: ${stats.shipsDestroyed}
 Урон: ${stats.totalDamage.toFixed(0)}
-    `.trim());
+    `.trim();
+    if (infoText !== this.lastInfoText) {
+      this.infoText.setText(infoText);
+      this.lastInfoText = infoText;
+    }
 
     // Статистика по фракциям
     let statsText = '';
@@ -383,7 +401,11 @@ Seed: ${this.battleSeed}
       statsText += `\n${factionId.toUpperCase()}: ${factionStats.shipsAlive} живых`;
     });
 
-    this.statsText.setText(statsText.trim());
+    statsText = statsText.trim();
+    if (statsText !== this.lastStatsText) {
+      this.statsText.setText(statsText);
+      this.lastStatsText = statsText;
+    }
   }
 
   /**

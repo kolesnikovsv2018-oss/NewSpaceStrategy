@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createConquest, type Conquest } from '../src/domain/conquest';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
+import { closeShipyardModal } from '../src/ui/ShipyardModal';
 import * as ai from '../src/domain/conquestAi';
 
 vi.stubGlobal('Phaser', { Scene: class {} });
@@ -60,6 +61,39 @@ it('creates without storage IO and cleans scene state and handlers on shutdown',
   test.events.emit('shutdown');
   expect(test.nodes.every(node => node.destroyed)).toBe(true);
   expect(test.keyboard.listenerCount('keydown-ESC')).toBe(0);
+});
+
+it('draws the replay backdrop once and only clears the dynamic layer per frame', () => {
+  const test = fixture();
+  const graphics: { clear: ReturnType<typeof vi.fn>; fillStyle: ReturnType<typeof vi.fn>;
+    fillRect: ReturnType<typeof vi.fn>; lineStyle: ReturnType<typeof vi.fn>; lineBetween: ReturnType<typeof vi.fn>;
+    fillTriangle: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[] = [];
+  const add = test.scene.add as unknown as { graphics(): unknown };
+  add.graphics = () => {
+    const object = {} as (typeof graphics)[number];
+    object.clear = vi.fn(); object.destroy = vi.fn();
+    object.fillStyle = vi.fn(() => object); object.fillRect = vi.fn(() => object);
+    object.lineStyle = vi.fn(() => object); object.lineBetween = vi.fn(() => object);
+    object.fillTriangle = vi.fn(() => object);
+    graphics.push(object);
+    return object;
+  };
+  const owner = test.scene as unknown as {
+    frames: { seconds: number; ships: { id: number; factionId: 'blue' | 'red'; x: number; y: number; hull: number }[]; events: [] }[];
+    openReplay(): void; update(time: number, delta: number): void; pauseAi(): void; render(): void;
+  };
+  owner.frames = [{ seconds: 0, ships: [{ id: 1, factionId: 'blue', x: 200, y: 200, hull: 100 }], events: [] }];
+  owner.pauseAi = vi.fn(); owner.render = vi.fn();
+
+  owner.openReplay();
+  owner.update(0, 16); owner.update(16, 16);
+
+  expect(graphics).toHaveLength(2);
+  expect(graphics[0].fillRect).toHaveBeenCalledOnce();
+  expect(graphics[0].clear).not.toHaveBeenCalled();
+  expect(graphics[1].clear).toHaveBeenCalledTimes(2);
+  closeShipyardModal(test.scene);
+  test.events.emit('shutdown');
 });
 
 it('guards obsolete callbacks and consumes each scheduled AI ticket only once', () => {
