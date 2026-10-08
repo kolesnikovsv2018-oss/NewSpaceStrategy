@@ -59,7 +59,7 @@ export interface ICombatant extends ShipView {
   attack(target: ICombatant): IAttackResult | null;
   takeDamage(damage: number, critical?: boolean, damageType?: 'beam' | 'projectile'): IAttackResult;
   findNearestEnemy(enemies: readonly ICombatant[]): ICombatant | undefined;
-  moveToTarget(target: ICombatant, optimalRange?: number): void;
+  moveToTarget(target: ICombatant, optimalRange?: number, approachOffset?: Readonly<{ x: number; y: number }>): void;
 }
 
 export interface IFaction {
@@ -70,6 +70,7 @@ export interface IFaction {
 }
 
 export type BattleTargetPriority = 'nearest' | 'lowest-hull-ratio';
+export type BattleFormation = 'line-abreast';
 
 /**
  * Конфигурация боя
@@ -81,6 +82,7 @@ export interface IBattleConfig {
   autoTarget: boolean;       // Автоматический выбор целей
   friendlyFire: boolean;     // Дружественный огонь
   targetPriority?: BattleTargetPriority;
+  formation?: BattleFormation;
 }
 
 /**

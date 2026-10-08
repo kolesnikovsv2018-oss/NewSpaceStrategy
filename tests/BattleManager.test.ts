@@ -129,6 +129,28 @@ describe('BattleManager', () => {
     expect(order).toEqual(['blue', 'red', 'blue', 'red']);
   });
 
+  it('assigns symmetric lateral approach slots only when line formation is enabled', () => {
+    const blueFirst = CombatShipFactory.createFighter('blue', 0);
+    const blueSecond = CombatShipFactory.createFighter('blue', 1);
+    const red = CombatShipFactory.createFighter('red');
+    blueFirst.position = { x: 0, y: 0 };
+    blueSecond.position = { x: 0, y: 0 };
+    red.position = { x: 500, y: 0 };
+    const firstMove = vi.spyOn(blueFirst, 'moveToTarget').mockImplementation(() => {});
+    const secondMove = vi.spyOn(blueSecond, 'moveToTarget').mockImplementation(() => {});
+    const manager = new BattleManager({ factions: [
+      { id: 'blue', name: 'Blue', color: 0, ships: [blueFirst, blueSecond] },
+      { id: 'red', name: 'Red', color: 1, ships: [red] }
+    ], battlefieldWidth: 800, battlefieldHeight: 500, autoTarget: true, friendlyFire: false,
+    formation: 'line-abreast' });
+
+    manager.start();
+    manager.update(0.05);
+
+    expect(firstMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: -30 });
+    expect(secondMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: 30 });
+  });
+
   it('keeps nearest targeting by default and can prioritize the lowest hull ratio', () => {
     const createPriorityBattle = (targetPriority?: 'nearest' | 'lowest-hull-ratio') => {
       const blue = CombatShipFactory.createFighter('blue');

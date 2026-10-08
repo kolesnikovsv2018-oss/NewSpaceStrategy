@@ -1,5 +1,7 @@
 import type { ICombatant, IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } from './interfaces/CombatSystem';
 
+const LINE_FORMATION_SPACING = 60;
+
 /**
  * Менеджер боевой системы
  */
@@ -129,9 +131,13 @@ export class BattleManager {
       // Двигаемся к цели
       const preferredRange = ship.getPreferredCombatRange?.();
       const weaponRange = ship.weaponStats.range;
+      const formationOffset = this.getFormationOffset(ship, ship.target);
       if (preferredRange !== undefined && Number.isFinite(preferredRange) && preferredRange >= 0 &&
         weaponRange > 0 && preferredRange < weaponRange * 0.8) {
-        ship.moveToTarget(ship.target, preferredRange / weaponRange);
+        if (formationOffset) ship.moveToTarget(ship.target, preferredRange / weaponRange, formationOffset);
+        else ship.moveToTarget(ship.target, preferredRange / weaponRange);
+      } else if (formationOffset) {
+        ship.moveToTarget(ship.target, undefined, formationOffset);
       } else {
         ship.moveToTarget(ship.target);
       }
@@ -152,6 +158,22 @@ export class BattleManager {
         this.processAttack(ship, ship.target, attackResult);
       }
     }
+  }
+
+  private getFormationOffset(ship: ICombatant, target: ICombatant): { x: number; y: number } | undefined {
+    if (this.config.formation !== 'line-abreast') return undefined;
+    const factionShips = this.config.factions.find(faction => faction.id === ship.factionId)?.ships;
+    if (!factionShips || factionShips.length < 2) return { x: 0, y: 0 };
+    const slot = factionShips.indexOf(ship);
+    const lateralPosition = slot - (factionShips.length - 1) / 2;
+    const dx = target.position.x - ship.position.x;
+    const dy = target.position.y - ship.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (!Number.isFinite(distance) || distance === 0) return { x: 0, y: lateralPosition * LINE_FORMATION_SPACING };
+    const offset = lateralPosition * LINE_FORMATION_SPACING;
+    const x = -dy / distance * offset;
+    const y = dx / distance * offset;
+    return { x: x === 0 ? 0 : x, y: y === 0 ? 0 : y };
   }
 
   private selectTarget(ship: ICombatant, enemies: readonly ICombatant[]): ICombatant | undefined {
