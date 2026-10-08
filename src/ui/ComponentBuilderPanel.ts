@@ -3,7 +3,7 @@ import { calculateComponent, componentSchema, COMPONENT_NAMES, createComponent, 
   type ComponentDefinition, type ComponentKind } from '../domain/shipDesign';
 import { button, text, panelBackground } from './ShipyardWidgets';
 
-interface Parameter { key: string; label: string; step: number; min: number; max: number }
+interface Parameter { key: string; label: string; step: number; min: number; max: number; integer?: boolean }
 const parameters: Record<ComponentKind, Parameter[]> = {
   beam: [
     { key: 'damage', label: 'Урон', step: 5, min: 1, max: 100000 },
@@ -40,7 +40,7 @@ const parameters: Record<ComponentKind, Parameter[]> = {
     { key: 'projectileResistance', label: 'Защита от снарядов', step: 0.05, min: 0, max: 1 }
   ]
 };
-parameters.projectile = [...parameters.beam, { key: 'ammoCapacity', label: 'Боекомплект', step: 10, min: 1, max: 10000 }];
+parameters.projectile = [...parameters.beam, { key: 'ammoCapacity', label: 'Боекомплект', step: 10, min: 1, max: 10000, integer: true }];
 
 /** Catalogue editor. Definitions are copied on installation, never consumed from this list. */
 export class ComponentBuilderPanel {
@@ -99,13 +99,18 @@ export class ComponentBuilderPanel {
       const value = Number(values[field.key]);
       const y = 397 + index * 35;
       text(this.scene, this.container, 18, y + 7, `${field.label}: ${value.toFixed(2)}`, 12);
-      for (const [label, sign, x] of [['−', -1, 320], ['+', 1, 365]] as const) {
+      for (const [label, sign, percentage, x] of [
+        ['−10%', -1, 0.1, 280], ['−1%', -1, 0.01, 320], ['+1%', 1, 0.01, 360], ['+10%', 1, 0.1, 400]
+      ] as const) {
         button(this.scene, this.container, x, y, label, () => {
+          const rawStep = Math.abs(value || field.step) * percentage;
+          const step = field.integer ? Math.max(1, Math.round(rawStep)) : rawStep;
+          const adjusted = field.integer ? value + sign * step : Number((value + sign * step).toFixed(4));
           const next = componentSchema.parse({ ...selected,
-            [field.key]: Math.min(field.max, Math.max(field.min, Number((value + sign * field.step).toFixed(4)))) });
+            [field.key]: Math.min(field.max, Math.max(field.min, adjusted)) });
           this.components = this.components.map(item => item.id === selected.id ? next : item);
           this.changed();
-        }, `${field.key}-${sign === 1 ? 'plus' : 'minus'}`);
+        }, `${field.key}-${label.replace('%', '').replace('−', 'minus').replace('+', 'plus')}`).setFixedSize(36, 30);
       }
     });
   }

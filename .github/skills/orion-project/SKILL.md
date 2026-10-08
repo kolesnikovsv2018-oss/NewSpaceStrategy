@@ -14,7 +14,7 @@ description: 'Контекст Orion, стек, карта кода и план 
 - TypeScript strict, ES2020; Phaser 3, WebGL/Canvas; Vite 4; Yarn Classic 1.22.22.
 - На исходном аудите установлены Phaser 3.90.0, TypeScript 5.9.3, Vite 4.5.14. Актуальные диапазоны — в package.json, разрешения — в yarn.lock.
 - `yarn install --frozen-lockfile` — установка; `yarn dev` — запуск на порту 3000; `yarn build` — TypeScript и production-сборка; `yarn preview` — просмотр сборки.
-- Vitest 3.2.7: `yarn test` — однократный прогон, `yarn test:watch` — наблюдение, `yarn typecheck` — типы исходников и тестов. Vitest имеет отдельный vitest.config.ts; основной Vite 4 не обновлялся. Последний полный прогон S4.11a:3204/51, strict/build160 модулей main-34f88437/1841.22 kB gzip448.54 kB; прежний chunk warning. Проверено на Node 24.20.0, рекомендуется Node 22+.
+- Vitest 3.2.7: `yarn test` — однократный прогон, `yarn test:watch` — наблюдение, `yarn typecheck` — типы исходников и тестов. Vitest имеет отдельный vitest.config.ts; основной Vite 4 не обновлялся. Последний полный прогон S4.11b:3207/51, strict/build160 модулей main-f0a7ce2f/1841.42 kB gzip448.64 kB; прежний chunk warning. Проверено на Node 24.20.0, рекомендуется Node 22+.
 - Бэкенда и БД нет. ShipDesignManager подключён к верфи: localStorage, JSON импорт/экспорт, Zod 3.25.76 для проверки схемы и миграции.
 - Arcade Physics настроена, но движение ручное. Не добавлять физику для исправления формул движения.
 
@@ -39,6 +39,7 @@ description: 'Контекст Orion, стек, карта кода и план 
 - src/entities — Ship, CombatShip, фабрики, BattleManager; визуализация отдельно в visuals/ShipSprite.
 - src/domain/shipDesign.ts — ComponentDefinition с kind, ShipDesign, ShipStats, чистые формулы, корпуса и единый валидатор нового пути. `ShipStats.dps` — номинальный ожидаемый damage rate с accuracy до исчерпания снарядов, без critical/защиты цели; не метрика длительного боя или AI-баланса.
 - `ShipBuilderPanel` показывает отдельно draft/flight/battle readiness через тот же `validateDesign` по каждому режиму. Полётный безоружный дизайн может быть разрешён для ShipTestScene и запрещён для BattleScene; обе кнопки сохраняют собственную повторную валидацию.
+- `ComponentBuilderPanel` редактирует числа компонент относительными шагами 1% и 10%; при zero используется descriptor step, schema-int боекомплект округляет минимум до1, component schema остаётся верхней границей. Это не Conquest research cap.
 - src/domain/campaign.ts — чистая фиксированная галактика S3.1; состояния партий, строгие explore/colonize и проекции стороны. Никаких Phaser/кораблей/RNG/часов/localStorage. Контракты ниже и в docs/CAMPAIGN.md; tests/campaign.test.ts — 45 регрессий.
 - src/domain/campaignSession.ts — CampaignSession{galaxy,turn,treasuries,production,ships,fleets}, строгие executeSessionCommand/getCampaignSessionView. Команды карты достигают session через match→run. campaignSession.test.ts —60 регрессий; campaignScene.test.ts —379 контрактов fake Phaser/clock/StoragePort (+37 S3.39), campaignAiIntegration.test.ts —21 (MainScene→match→run→executor→planner).
 - src/ui/FleetPanel.ts — own проекция свободных кораблей/групп/участников, постраничный выбор и create/disband callbacks. ProductionPanel владеет destroy; MainScene хранит только draft выбора и страницы, не дубликат membership.

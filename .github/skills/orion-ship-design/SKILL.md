@@ -29,6 +29,10 @@ S4.10b: `calculateConquestDesignScore` ранжирует доступные п�
 
 S4.11a: ShipBuilderPanel явно отображает три независимые готовности `draft`/`flight`/`battle` по `validateDesign`; невооружённый, но лётно-валидный проект не получает общего статуса «недопустим». ShipyardScene сохраняет отдельную проверку соответствующей кнопки перед запуском. Проверка — `tests/shipyardDraft.test.ts`; это не численная variant policy Conquest. Диапазоны модулей внутри разблокированных семейств остаются не определены.
 
+S4.11b: `ComponentBuilderPanel` использует относительные controls ±1%/±10% для каждого numeric field. Для нуля берётся существующий descriptor step; только поле с integer schema округляется минимум на1, значения ограничиваются `componentSchema`. `tests/shipyardDraft.test.ts` проверяет проценты, ноль, integer ammo и caps. Не меняет library/save schemas и не вводит research limits. Conquest numeric profiles/version migration остаются отдельным открытым S4.11c.
+
+Верфь при этом показывает независимые статусы draft/flight/battle. `validateDesign` вызывается по каждому режиму; безоружный flight-ready проект остаётся недопустимым для battle, а `ShipyardScene.startTrial` повторно проверяет режим перед запуском. Диапазоны численных вариантов в Conquest не реализованы: требуются отдельные caps и явная save/research compatibility policy.
+
 ## Мирный S3.39: история приёмки
 
 2026-10-08 MainScene владеет одним CampaignMatch, использует match API и CampaignMatchSaveManager/save3; run/session/outcome производны. Defaults local/sandbox, joint-survey-v1 завершает общую разведку без победителя. Completed запрещает команды/helper/Resume, но оставляет просмотр/save/load/new/menu/takeover; readOnly передан прежним вложенным панелям без изменения их кода. Captured match identity/blue-only/lifecycle сохранены; completed load без AI, ongoing red-load paused. [Контракт](../../../docs/CAMPAIGN_COMPLETION.md), сервер localhost:3000 оставлен пользователю.

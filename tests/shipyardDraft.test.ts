@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createComponent, createDesign, designSchema, installComponent, type ShipDesign } from '../src/domain/shipDesign';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { ShipBuilderPanel } from '../src/ui/ShipBuilderPanel';
+import { ComponentBuilderPanel } from '../src/ui/ComponentBuilderPanel';
 import { isShipyardModalOpen } from '../src/ui/ShipyardModal';
 
 vi.mock('../src/ui/ShipBlueprint', () => ({ drawBlueprint: vi.fn() }));
@@ -207,6 +208,60 @@ describe('shipyard draft replacement', () => {
     expect(f.panel.getConfiguration()).toEqual(before);
     expect(f.panel.hasUnsavedChanges()).toBe(true);
     expect(isShipyardModalOpen(f.scene)).toBe(false);
+  });
+});
+
+describe('component parameter tuning', () => {
+  it('applies 1% and 10% adjustments relative to the current value', () => {
+    const f = harness(), beam = createComponent('beam');
+    const panel = new ComponentBuilderPanel(f.scene, 0, 0, [beam]);
+    const changed = vi.fn();
+    panel.setOnComponentsChanged(changed);
+    f.click(`component-${beam.id}`);
+
+    f.click('damage-plus1');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: beam.id, damage: 25.25 })]);
+    f.click('damage-plus10');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: beam.id, damage: 27.775 })]);
+  });
+
+  it('uses a nonzero fallback step at zero and respects component bounds', () => {
+    const f = harness(), created = createComponent('engine');
+    if (created.kind !== 'engine') throw new Error('Invalid engine fixture');
+    const engine = { ...created, thrust: 0 };
+    const panel = new ComponentBuilderPanel(f.scene, 0, 0, [engine]);
+    const changed = vi.fn();
+    panel.setOnComponentsChanged(changed);
+    f.click('category-engine');
+    f.click(`component-${engine.id}`);
+
+    f.click('thrust-plus1');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: engine.id, thrust: 1 })]);
+    f.click('thrust-minus10');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: engine.id, thrust: 0.9 })]);
+
+    panel.setComponents([{ ...engine, thrust: 0 }]);
+    f.click(`component-${engine.id}`);
+    f.click('thrust-minus10');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: engine.id, thrust: 0 })]);
+
+    panel.setComponents([{ ...engine, thrust: 100000 }]);
+    f.click(`component-${engine.id}`);
+    f.click('thrust-plus10');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: engine.id, thrust: 100000 })]);
+  });
+
+  it('changes integer ammo by at least one round for a 1% adjustment', () => {
+    const f = harness(), projectile = createComponent('projectile');
+    if (projectile.kind !== 'projectile') throw new Error('Invalid projectile fixture');
+    const panel = new ComponentBuilderPanel(f.scene, 0, 0, [projectile]);
+    const changed = vi.fn();
+    panel.setOnComponentsChanged(changed);
+    f.click('category-projectile');
+    f.click(`component-${projectile.id}`);
+
+    f.click('ammoCapacity-plus1');
+    expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({ id: projectile.id, ammoCapacity: 21 })]);
   });
 });
 
