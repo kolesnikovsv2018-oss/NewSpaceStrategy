@@ -3,6 +3,8 @@ import { BattleManager } from '../entities/BattleManager';
 import { IFaction, IBattleConfig, IBattlePosition } from '../entities/interfaces/CombatSystem';
 import { ShipSprite } from '../entities/visuals/ShipSprite';
 import { createDesign, designSchema, type ShipDesign } from '../domain/shipDesign';
+import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_STEP } from '../domain/combatSimulation';
+import { createSeededRandomStream } from '../domain/seededRandom';
 
 /**
  * Сцена боя
@@ -13,20 +15,33 @@ export class BattleScene extends Phaser.Scene {
   private infoText?: Phaser.GameObjects.Text;
   private statsText?: Phaser.GameObjects.Text;
   private isPaused: boolean = false;
+  private simulationAccumulator = 0;
+  private simulationSpeed: 1 | 2 | 4 = 1;
+  private speedButtons = new Map<number, Phaser.GameObjects.Text>();
+  private battleEnded = false;
   private projectiles: Phaser.GameObjects.Graphics[] = [];
   private trialDesign?: ShipDesign;
+  private battleSeed = 1;
 
   constructor() {
     super({ key: 'BattleScene' });
   }
 
-  init(data: { design?: ShipDesign } = {}): void {
+  init(data: { design?: ShipDesign; seed?: number } = {}): void {
     this.trialDesign = data.design ? designSchema.parse(data.design) : undefined;
+    this.battleSeed = data.seed ?? Math.floor(Math.random() * 0xffffffff) + 1;
+    if (!Number.isInteger(this.battleSeed) || this.battleSeed < 1 || this.battleSeed > 0xffffffff) {
+      throw new Error('Недопустимый seed боя');
+    }
     this.sys.settings.data = {};
   }
 
   create() {
     this.isPaused = false;
+    this.simulationAccumulator = 0;
+    this.simulationSpeed = 1;
+    this.speedButtons.clear();
+    this.battleEnded = false;
     this.shipSprites.clear();
     this.projectiles = [];
     this.time.paused = false;
@@ -56,13 +71,18 @@ export class BattleScene extends Phaser.Scene {
   private setupBattle(): void {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
+    const randomForShip = (factionId: string, index: number) =>
+      createSeededRandomStream(this.battleSeed, `${factionId}:${index}`);
+    const fleetOptions = { randomForShip, idPrefix: `battle-${this.battleSeed}` };
 
     // Создаем фракцию 1 (Синие)
-    const faction1Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(this.trialDesign, 'blue')] : CombatShipFactory.createFleet('blue', {
+    const faction1Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(this.trialDesign, 'blue', {
+      random: randomForShip('blue', 0), id: `battle-${this.battleSeed}-blue-0`
+    })] : CombatShipFactory.createFleet('blue', {
       fighters: 5,
       frigates: 2,
       cruisers: 1
-    });
+    }, fleetOptions);
 
     // Позиционируем корабли фракции 1 слева
     faction1Ships.forEach((ship, index) => {
@@ -80,11 +100,13 @@ export class BattleScene extends Phaser.Scene {
     };
 
     // Создаем фракцию 2 (Красные)
-    const faction2Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(createDesign('corvette', true), 'red')] : CombatShipFactory.createFleet('red', {
+    const faction2Ships = this.trialDesign ? [CombatShipFactory.createFromDesign(createDesign('corvette', true), 'red', {
+      random: randomForShip('red', 0), id: `battle-${this.battleSeed}-red-0`
+    })] : CombatShipFactory.createFleet('red', {
       fighters: 6,
       frigates: 1,
       cruisers: 1
-    });
+    }, fleetOptions);
 
     // Позиционируем корабли фракции 2 справа
     faction2Ships.forEach((ship, index) => {
@@ -115,6 +137,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Callback на завершение боя
     this.battleManager.onBattleEnd((_stats) => {
+      this.battleEnded = true;
       console.log(this.battleManager?.getBattleReport());
       this.showBattleResults();
     });
@@ -181,6 +204,23 @@ export class BattleScene extends Phaser.Scene {
       backgroundColor: '#000000',
       padding: { x: 10, y: 5 }
     }).setOrigin(0.5, 0);
+
+    this.add.text(12, this.cameras.main.height - 43, 'Скорость симуляции', {
+      fontSize: '14px', color: '#ffffff', backgroundColor: '#000000', padding: { x: 6, y: 4 }
+    }).setName('battle-speed-label');
+    ([1, 2, 4] as const).forEach((speed, index) => {
+      const control = this.add.text(166 + index * 58, this.cameras.main.height - 48, `${speed}×`, {
+        fontSize: '15px', color: '#ffffff', backgroundColor: speed === 1 ? '#336a71' : '#233e58',
+        padding: { x: 12, y: 8 }
+      }).setName(`battle-speed-${speed}`).setFixedSize(48, 34).setInteractive({ useHandCursor: true });
+      control.on('pointerdown', () => this.setSimulationSpeed(speed));
+      this.speedButtons.set(speed, control);
+    });
+  }
+
+  private setSimulationSpeed(speed: 1 | 2 | 4): void {
+    this.simulationSpeed = speed;
+    this.speedButtons.forEach((control, value) => control.setBackgroundColor(value === speed ? '#336a71' : '#233e58'));
   }
 
   /**
@@ -209,6 +249,10 @@ export class BattleScene extends Phaser.Scene {
     this.shipSprites.clear();
     this.projectiles = [];
     this.battleManager = undefined;
+    this.simulationAccumulator = 0;
+    this.simulationSpeed = 1;
+    this.speedButtons.clear();
+    this.battleEnded = false;
     this.infoText = undefined;
     this.statsText = undefined;
     this.isPaused = false;
@@ -221,12 +265,16 @@ export class BattleScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this.isPaused) return;
 
-    const deltaSeconds = delta / 1000;
-
-    // Обновляем менеджер боя
-    this.battleManager?.update(deltaSeconds);
-    // Trial can stalemate (armor, shields, exhausted ammo). Always allow a bounded experiment.
-    if (this.trialDesign && (this.battleManager?.getStats().duration ?? 0) >= 120000) this.battleManager?.stop();
+    const deltaSeconds = Number.isFinite(delta) && delta > 0 ? delta / 1000 : 0;
+    const manager = this.battleManager;
+    this.simulationAccumulator += deltaSeconds * this.simulationSpeed;
+    while (manager && !this.battleEnded &&
+      this.simulationAccumulator + 1e-10 >= COMBAT_SIMULATION_STEP) {
+      manager.update(COMBAT_SIMULATION_STEP);
+      this.simulationAccumulator -= COMBAT_SIMULATION_STEP;
+      // Trial can stalemate (armor, shields, exhausted ammo); keep its limit simulation-based.
+      if (this.trialDesign && manager.getStats().duration >= COMBAT_SIMULATION_MAX_SECONDS * 1000) manager.stop();
+    }
     this.renderBattleEvents();
 
     // Представления уже содержат прямую ссылку на модель; поиска по массиву нет.
@@ -323,6 +371,7 @@ export class BattleScene extends Phaser.Scene {
     this.infoText.setText(`
 ⚔️ СРАЖЕНИЕ
 Время: ${duration}с
+Seed: ${this.battleSeed}
 Кораблей в бою: ${aliveShips.length}/${stats.totalShips}
 Уничтожено: ${stats.shipsDestroyed}
 Урон: ${stats.totalDamage.toFixed(0)}
@@ -344,6 +393,7 @@ export class BattleScene extends Phaser.Scene {
     const stats = this.battleManager?.getStats();
     const winner = this.battleManager?.getWinner();
     const report = `${winner ? `Победитель: ${winner.name}` : 'Испытание завершено без победителя'}\n\n` +
+      `Seed: ${this.battleSeed}\n` +
       `Время: ${((stats?.duration ?? 0) / 1000).toFixed(1)} с\n` +
       `Потери: ${stats?.shipsDestroyed ?? 0} / ${stats?.totalShips ?? 0}\n\n` +
       [...(stats?.factionStats ?? [])].map(([id, faction]) =>
@@ -380,10 +430,20 @@ export class BattleScene extends Phaser.Scene {
       }
     ).setOrigin(0.5, 0);
 
+    const replayButton = this.add.text(
+      this.cameras.main.width / 2,
+      this.cameras.main.height / 2 + 150,
+      `Повторить бой · seed ${this.battleSeed}`,
+      { fontSize: '16px', color: '#ffffff', backgroundColor: '#315b68', padding: { x: 14, y: 8 } }
+    ).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    replayButton.on('pointerdown', () => this.scene.restart({
+      ...(this.trialDesign ? { design: this.trialDesign } : {}), seed: this.battleSeed
+    }));
+
     // Кнопка возврата в меню
     const button = this.add.text(
       this.cameras.main.width / 2,
-      this.cameras.main.height / 2 + 200,
+      this.cameras.main.height / 2 + 215,
       this.trialDesign ? 'Вернуться в верфь' : 'Вернуться в меню',
       {
         fontSize: '24px',

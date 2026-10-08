@@ -35,12 +35,16 @@ const PRESETS: Record<CombatPresetId, CombatPreset> = {
   ] },
   dreadnought: { hullId: 'battleship', modules: [
     { slotId: 'engine_1', component: { kind: 'engine', name: 'Линейный двигатель', thrust: 4500, maxSpeed: 130, maneuverability: 0.3, powerGeneration: 3000 } },
-    { slotId: 'beam_1', component: { kind: 'beam', name: 'Линейный лазер', damage: 120, range: 600, fireRate: 1.5, accuracy: 0.85 } },
-    { slotId: 'beam_2', component: { kind: 'beam', name: 'Линейный лазер', damage: 120, range: 600, fireRate: 1.5, accuracy: 0.85 } },
-    { slotId: 'projectile_1', component: { kind: 'projectile', name: 'Линейная пушка', damage: 100, range: 600, fireRate: 1, accuracy: 0.8, ammoCapacity: 20 } },
+    { slotId: 'beam_1', component: { kind: 'beam', name: 'Линейный лазер', damage: 120, range: 600, fireRate: 1.5, accuracy: 0.75 } },
+    { slotId: 'beam_2', component: { kind: 'beam', name: 'Линейный лазер', damage: 120, range: 600, fireRate: 1.5, accuracy: 0.75 } },
+    { slotId: 'projectile_1', component: { kind: 'projectile', name: 'Линейная пушка', damage: 100, range: 600, fireRate: 1, accuracy: 0.71, ammoCapacity: 20 } },
     { slotId: 'shield_1', component: { kind: 'shield', name: 'Линейный щит', capacity: 900, rechargeRate: 20, rechargeDelay: 4, beamResistance: 0.25 } },
     { slotId: 'armor_1', component: { kind: 'armor', name: 'Тяжёлая броня', armorPoints: 300, beamResistance: 0.2, projectileResistance: 0.3 } }
   ] }
+};
+
+const legacyDreadnoughtAccuracy: Record<string, number> = {
+  beam_1: 0.85, beam_2: 0.85, projectile_1: 0.8
 };
 
 export function isCombatPresetDesign(design: ShipDesign): boolean {
@@ -51,7 +55,9 @@ export function isCombatPresetDesign(design: ShipDesign): boolean {
       const expected = modules.get(slot.id), actual = slot.component;
       if (!expected || !actual || expected.kind !== actual.kind) return !expected && !actual;
       const actualValues = actual as unknown as Record<string, unknown>;
-      return Object.entries(expected).filter(([key]) => key !== 'name')
+      const expectedValues = preset.hullId === 'battleship' && legacyDreadnoughtAccuracy[slot.id]
+        ? { ...expected, accuracy: legacyDreadnoughtAccuracy[slot.id] } : expected;
+      return Object.entries(expectedValues).filter(([key]) => key !== 'name')
         .every(([key, value]) => actualValues[key] === value);
     });
   });

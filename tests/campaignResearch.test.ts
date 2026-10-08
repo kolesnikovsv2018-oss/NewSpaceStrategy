@@ -76,6 +76,20 @@ describe('campaign research', () => {
   });
   it('applies versioned numeric tiers to custom values while preserving stock blueprints', () => {
     const tree = getDefaultResearchTree(), state = createResearchState();
+    const grandfatheredDreadnought = createCombatDesign('dreadnought');
+    for (const slot of grandfatheredDreadnought.slots) {
+      if (slot.id === 'beam_1' || slot.id === 'beam_2') {
+        const component = slot.component;
+        if (component?.kind !== 'beam') throw new Error('Invalid legacy beam fixture');
+        slot.component = { ...component, accuracy: 0.85 };
+      }
+      if (slot.id === 'projectile_1') {
+        const component = slot.component;
+        if (component?.kind !== 'projectile') throw new Error('Invalid legacy projectile fixture');
+        slot.component = { ...component, accuracy: 0.8 };
+      }
+    }
+    const capitalState = { completed: ['support', 'ordnance', 'capital'], active: null };
     const factoryDesign = createDesign('corvette', true);
     const changedBeam = factoryDesign.slots.find(slot => slot.id === 'beam_1')!.component;
     if (changedBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
@@ -84,6 +98,7 @@ describe('campaign research', () => {
     expect(tree.version).toBe(2);
     expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
     expect(isCampaignDesignAvailable(createCivilianDesign('scout'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(grandfatheredDreadnought, capitalState, tree)).toBe(true);
     expect(isCampaignDesignAvailable(custom, state, tree)).toBe(false);
     state.completed.push('support');
     expect(isCampaignDesignAvailable(custom, state, tree)).toBe(true);

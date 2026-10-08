@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CombatShipFactory } from '../src/entities/CombatShipFactory';
+import type { BattleManager } from '../src/entities/BattleManager';
+import type { DesignedShip } from '../src/entities/DesignedShip';
 import { createComponent, createDesign, installComponent, type ShipDesign } from '../src/domain/shipDesign';
+import { COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from '../src/domain/combatSimulation';
 import { drawBlueprint } from '../src/ui/ShipBlueprint';
 import type { ShipView } from '../src/entities/interfaces/ShipView';
 
@@ -139,6 +142,56 @@ describe('simulation/view boundary', () => {
     expect(internal.trialDesign ?? internal.initial).toBeUndefined();
   });
 
+  it('validates an explicit BattleScene seed and repeats identical combat without global RNG', () => {
+    const scene = new BattleScene();
+    const settings = { data: { seed: 4242 } };
+    Object.assign(scene, { sys: { settings } });
+    scene.init(settings.data);
+    expect((scene as unknown as { battleSeed: number }).battleSeed).toBe(4242);
+    expect(settings.data).toEqual({});
+    expect(() => scene.init({ seed: 0 })).toThrow('Недопустимый seed боя');
+
+    const run = (seed: number, frameDelta: number) => {
+      const battleScene = new BattleScene();
+      Object.assign(battleScene, {
+        battleSeed: seed,
+        trialDesign: undefined,
+        isPaused: false,
+        simulationAccumulator: 0,
+        battleEnded: false,
+        shipSprites: new Map(),
+        cameras: { main: { width: 1280, height: 720 } },
+        showBattleResults: vi.fn(),
+        renderBattleEvents: () => manager?.drainEvents(),
+        updateUI: vi.fn()
+      });
+      (battleScene as unknown as { setupBattle(): void }).setupBattle();
+      const manager = (battleScene as unknown as { battleManager: BattleManager }).battleManager;
+      manager.start();
+      const sceneState = battleScene as unknown as { battleEnded: boolean; update(time: number, delta: number): void };
+      const frameCount = COMBAT_SIMULATION_MAX_STEPS * COMBAT_SIMULATION_STEP * 1000 / frameDelta;
+      for (let frame = 0; frame < frameCount && !sceneState.battleEnded; frame++) {
+        sceneState.update(frame * frameDelta, frameDelta);
+      }
+      return {
+        duration: manager.getStats().duration,
+        report: manager.getBattleReport(),
+        ships: manager.getAllShips().map(ship => ({ id: ship.id, position: ship.position,
+          hull: ship.combatStats.currentHull, shield: ship.combatStats.currentShield,
+          weapons: (ship as DesignedShip).getWeaponState() }))
+      };
+    };
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('global RNG used'); });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const at40Fps = run(4242, 25);
+      const at20Fps = run(4242, 50);
+      expect(at40Fps.duration).toBeGreaterThan(0);
+      expect(at40Fps.duration).toBeLessThanOrEqual(COMBAT_SIMULATION_MAX_STEPS * COMBAT_SIMULATION_STEP * 1000);
+      expect(at40Fps).toEqual(at20Fps);
+    } finally { random.mockRestore(); log.mockRestore(); }
+  });
+
   it('ShipSprite only synchronizes visuals, without advancing the model', () => {
     const ship = CombatShipFactory.createFighter('blue');
     ship.position = { x: 20, y: 40 };
@@ -193,6 +246,29 @@ describe('simulation/view boundary', () => {
     scene.update(0, 100);
     expect(update).not.toHaveBeenCalled();
     expect(drainEvents).not.toHaveBeenCalled();
+  });
+
+  it('accelerates simulation by accumulating more fixed steps, not by enlarging the step', () => {
+    const scene = new BattleScene();
+    const update = vi.fn();
+    Object.assign(scene, {
+      isPaused: false, simulationAccumulator: 0, simulationSpeed: 1, battleEnded: false,
+      trialDesign: undefined, battleManager: { update, drainEvents: () => [] },
+      shipSprites: new Map(), speedButtons: new Map()
+    });
+    const controls = scene as unknown as {
+      setSimulationSpeed(speed: 1 | 2 | 4): void;
+      update(time: number, delta: number): void;
+      simulationAccumulator: number;
+    };
+
+    controls.setSimulationSpeed(4);
+    controls.update(0, 100);
+
+    expect(update).toHaveBeenCalledTimes(8);
+    expect(update).toHaveBeenNthCalledWith(1, COMBAT_SIMULATION_STEP);
+    expect(update).toHaveBeenNthCalledWith(8, COMBAT_SIMULATION_STEP);
+    expect(controls.simulationAccumulator).toBeCloseTo(0);
   });
 
   it('shutdown clears retained state and removes only its own keyboard handlers', () => {
