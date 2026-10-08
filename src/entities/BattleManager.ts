@@ -162,7 +162,8 @@ export class BattleManager {
 
   private getFormationOffset(ship: ICombatant, target: ICombatant): { x: number; y: number } | undefined {
     if (this.config.formation !== 'line-abreast') return undefined;
-    const factionShips = this.config.factions.find(faction => faction.id === ship.factionId)?.ships;
+    const factionShips = this.config.factions.find(faction => faction.id === ship.factionId)?.ships
+      .filter(member => !member.isDestroyed);
     if (!factionShips || factionShips.length < 2) return { x: 0, y: 0 };
     const slot = factionShips.indexOf(ship);
     const lateralPosition = slot - (factionShips.length - 1) / 2;

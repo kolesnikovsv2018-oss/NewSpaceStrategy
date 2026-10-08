@@ -132,14 +132,17 @@ describe('BattleManager', () => {
   it('assigns symmetric lateral approach slots only when line formation is enabled', () => {
     const blueFirst = CombatShipFactory.createFighter('blue', 0);
     const blueSecond = CombatShipFactory.createFighter('blue', 1);
+    const blueThird = CombatShipFactory.createFighter('blue', 2);
     const red = CombatShipFactory.createFighter('red');
     blueFirst.position = { x: 0, y: 0 };
     blueSecond.position = { x: 0, y: 0 };
+    blueThird.position = { x: 0, y: 0 };
     red.position = { x: 500, y: 0 };
     const firstMove = vi.spyOn(blueFirst, 'moveToTarget').mockImplementation(() => {});
     const secondMove = vi.spyOn(blueSecond, 'moveToTarget').mockImplementation(() => {});
+    const thirdMove = vi.spyOn(blueThird, 'moveToTarget').mockImplementation(() => {});
     const manager = new BattleManager({ factions: [
-      { id: 'blue', name: 'Blue', color: 0, ships: [blueFirst, blueSecond] },
+      { id: 'blue', name: 'Blue', color: 0, ships: [blueFirst, blueSecond, blueThird] },
       { id: 'red', name: 'Red', color: 1, ships: [red] }
     ], battlefieldWidth: 800, battlefieldHeight: 500, autoTarget: true, friendlyFire: false,
     formation: 'line-abreast' });
@@ -147,8 +150,15 @@ describe('BattleManager', () => {
     manager.start();
     manager.update(0.05);
 
-    expect(firstMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: -30 });
-    expect(secondMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: 30 });
+    expect(firstMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: -60 });
+    expect(secondMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: 0 });
+    expect(thirdMove).toHaveBeenCalledWith(red, undefined, { x: 0, y: 60 });
+
+    blueSecond.isDestroyed = true;
+    manager.update(0.05);
+    expect(firstMove).toHaveBeenLastCalledWith(red, undefined, { x: 0, y: -30 });
+    expect(thirdMove).toHaveBeenLastCalledWith(red, undefined, { x: 0, y: 30 });
+    expect(secondMove).toHaveBeenCalledTimes(1);
   });
 
   it('keeps nearest targeting by default and can prioritize the lowest hull ratio', () => {
