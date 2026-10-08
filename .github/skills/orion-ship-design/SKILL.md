@@ -19,6 +19,8 @@ S3 завершён в минимальных границах, [военный 
 
 `CombatShipFactory.createFromDesign` принимает необязательный `{random,id}`, `createFleet`/`createFighterSquadron` — `{random,randomForShip,idPrefix}`. Defaults прежние. `createSeededRandomStream` даёт независимые потоки; `runCombatSeries` для1..100 seed seed-выбирает первую сторону и чередует инициативу каждого шага, но урон остаётся последовательным. Проверки в `tests/CombatShipFactory.test.ts`, `tests/combatSeries.test.ts`, `tests/BattleManager.test.ts`; полный прогон3190/51, typecheck и build160 модулей прошли. Это не UI replay/BattleScene seed entry.
 
+`runPairedCombatSeries` принимает композиции first/second и30..100 уникальных seed, для каждого выполняет оба назначения сторон с общими lineup/ship RNG streams; считает paired score, side-bias и approximate95% CI. Это не равностоимостный баланс: цены составов не ограничиваются. Полный прогон3192/51, typecheck/build160 прошли; детали/ограничения указаны в отчёте S4.3.
+
 ## Мирный S3.39: история приёмки
 
 2026-10-08 MainScene владеет одним CampaignMatch, использует match API и CampaignMatchSaveManager/save3; run/session/outcome производны. Defaults local/sandbox, joint-survey-v1 завершает общую разведку без победителя. Completed запрещает команды/helper/Resume, но оставляет просмотр/save/load/new/menu/takeover; readOnly передан прежним вложенным панелям без изменения их кода. Captured match identity/blue-only/lifecycle сохранены; completed load без AI, ongoing red-load paused. [Контракт](../../../docs/CAMPAIGN_COMPLETION.md), сервер localhost:3000 оставлен пользователю.

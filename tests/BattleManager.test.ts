@@ -118,6 +118,17 @@ describe('BattleManager', () => {
     expect(order).toEqual(['red', 'blue', 'blue', 'red']);
   });
 
+  it('preserves configured faction order when initiative alternation is disabled', () => {
+    const { blue, red, manager } = createBattle(false);
+    const order: string[] = [];
+    vi.spyOn(blue, 'update').mockImplementation(() => { order.push('blue'); });
+    vi.spyOn(red, 'update').mockImplementation(() => { order.push('red'); });
+    manager.start();
+    manager.update(0.05);
+    manager.update(0.05);
+    expect(order).toEqual(['blue', 'red', 'blue', 'red']);
+  });
+
   it.each([0, -1, NaN, Infinity])('ignores invalid delta %s', delta => {
     const { blue, manager } = createBattle(false);
     const update = vi.spyOn(blue, 'update');

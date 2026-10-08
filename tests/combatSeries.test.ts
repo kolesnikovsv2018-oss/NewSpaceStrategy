@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runCombatSeries } from '../src/domain/combatSeries';
+import { runCombatSeries, runPairedCombatSeries } from '../src/domain/combatSeries';
 import { createSeededRandomStream } from '../src/domain/seededRandom';
 
 describe('seeded combat series', () => {
@@ -46,5 +46,28 @@ describe('seeded combat series', () => {
     const blueStarts = result.battles.filter(battle => battle.firstFactionId === 'blue').length;
     expect(blueStarts).toBeGreaterThanOrEqual(40);
     expect(blueStarts).toBeLessThanOrEqual(60);
+  });
+
+  it('runs mirrored common-seed pairs and reports bounded paired confidence intervals', () => {
+    const request = {
+      first: { fighters: 2 },
+      second: { fighters: 1 },
+      seeds: Array.from({ length: 30 }, (_, index) => index + 1)
+    };
+    const result = runPairedCombatSeries(request);
+
+    expect(runPairedCombatSeries(request)).toEqual(result);
+    expect(result.pairs).toHaveLength(30);
+    expect(result.summary.battles).toBe(60);
+    expect(result.summary.firstWins + result.summary.secondWins + result.summary.draws).toBe(60);
+    expect(result.summary.meanFirstScore).toBeGreaterThan(0.5);
+    expect(result.summary.firstScore95CI.lower).toBeLessThanOrEqual(result.summary.meanFirstScore);
+    expect(result.summary.firstScore95CI.upper).toBeGreaterThanOrEqual(result.summary.meanFirstScore);
+    expect(result.summary.sideBias95CI.lower).toBeLessThanOrEqual(result.summary.meanSideBias);
+    expect(result.summary.sideBias95CI.upper).toBeGreaterThanOrEqual(result.summary.meanSideBias);
+    expect(result.pairs.every(pair => pair.firstWhenBlue.seed === pair.seed &&
+      pair.firstWhenRed.seed === pair.seed && pair.firstWhenBlue.firstFactionId === pair.firstWhenRed.firstFactionId)).toBe(true);
+    expect(() => runPairedCombatSeries({ ...request, seeds: request.seeds.slice(0, 29) })).toThrow();
+    expect(() => runPairedCombatSeries({ ...request, seeds: [...request.seeds.slice(0, 29), request.seeds[0]] })).toThrow();
   });
 });
