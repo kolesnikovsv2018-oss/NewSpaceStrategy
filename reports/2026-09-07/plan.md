@@ -350,7 +350,7 @@ TypeScript strict, Phaser 3, Vite 4, Yarn Classic, browser-only. Установ�
   - [x] S4.16: профиль Conquest resolver на 1/4/16/50/100 кораблях на сторону и max-duration 100v100; replay проверен в Phaser на реальных resolver frames (200 кораблей, до256 событий). Замеры не выявили необходимости оптимизировать текущие циклы; это не замер общего FPS. [Отчёт](../2026-10-08/26-s4-fleet-performance-profile.md).
   - [x] S4.17: BattleScene HUD sampling ограничен10Hz по real-time и не вызывает `setText` для неизменившихся строк; Conquest replay рисует backdrop один раз отдельным Graphics layer. Проверено тестами и браузерным программным шагом; это не естественный RAF/FPS benchmark. [Отчёт](../2026-10-08/30-s4-ui-render-cadence.md).
 - [-] Пулы эффектов, spatial index и Worker сейчас не нужны: профиль до100v100 и replay workload не показал bottleneck; пересмотреть при росте целевых флотов или выявленном RAF/render stall.
-- [ ] После тестового покрытия планово обновить устаревшие инструменты сборки; не смешивать апгрейд стека с исправлением механики.
+- [x] S4.18: обновить build/test toolchain без изменения runtime-зависимостей: Yarn Classic1.22.22, Node24.21, TypeScript6.0.3, Vite8.3.3, Vitest5.0.3, @types/node24.19.1. `yarn.lock` пересобран; app остаётся ES2020, test libs используют ES2022 для существующих `Array.at`. TypeScript7 не выбран: он удалил compiler API, используемый regression tests. [Отчёт](../2026-10-08/31-s4-toolchain-upgrade.md).
 
 ## Правила выполнения
 

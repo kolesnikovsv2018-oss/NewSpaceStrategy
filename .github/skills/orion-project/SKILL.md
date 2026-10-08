@@ -12,10 +12,10 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 ## Стек и команды
 
-- TypeScript strict, ES2020; Phaser 3, WebGL/Canvas; Vite 4; Yarn Classic 1.22.22.
-- На исходном аудите установлены Phaser 3.90.0, TypeScript 5.9.3, Vite 4.5.14. Актуальные диапазоны — в package.json, разрешения — в yarn.lock.
+- TypeScript strict, production target ES2020; Phaser 3, WebGL/Canvas; Vite8; Yarn Classic1.22.22.
+- Актуальный toolchain: Node24.21, TypeScript6.0.3, Vite8.3.3, Vitest5.0.3, `@types/node`24.19.1, Phaser3.90.0. Диапазоны в package.json, resolutions — только в yarn.lock; npm/pnpm lockfiles нет. TypeScript7 не принят: его package удалил compiler API, который используют static dependency-graph regression tests. `tsconfig.test.json` добавляет ES2022 lib для существующих `.at()` в тестах; приложение остаётся target/lib ES2020. Vite config использует `import.meta.dirname` для native loader.
 - `yarn install --frozen-lockfile` — установка; `yarn dev` — запуск на порту 3000; `yarn build` — TypeScript и production-сборка; `yarn preview` — просмотр сборки.
-- Vitest 3.2.7: `yarn test` — однократный прогон, `yarn test:watch` — наблюдение, `yarn typecheck` — типы исходников и тестов. Vitest имеет отдельный vitest.config.ts; основной Vite 4 не обновлялся. Последний полный прогон S4 fleet UI/cache:3220/51, strict typecheck и build160 модулей main-b4f868fe/1849.05 kB gzip450.85 kB; прежний chunk warning. Проверено на Node 24.21.0, рекомендуется Node 22+.
+- `yarn test` — однократный Vitest run, `yarn test:watch` — наблюдение, `yarn typecheck` — strict source+tests, `yarn build` — TypeScript и Vite production build. Vitest config остаётся отдельным `vitest.config.ts`. Последний полный прогон S4.18 toolchain upgrade:3220/51, strict typecheck и build159 модулей `main-DW5IdQr-`/1576.52 kB gzip424.99 kB. Chunk warning >500 kB сохраняется; Vitest сообщает о worker startup overhead, isolate semantics не менялись. Проверено на Node24.21.0.
 - Бэкенда и БД нет. ShipDesignManager подключён к верфи: localStorage, JSON импорт/экспорт, Zod 3.25.76 для проверки схемы и миграции.
 - Arcade Physics настроена, но движение ручное. Не добавлять физику для исправления формул движения.
 
