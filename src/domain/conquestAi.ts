@@ -1,7 +1,8 @@
 import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
 import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
 import type { Treasury } from './campaignEconomy';
-import { getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable, type ResearchState, type ResearchTree } from './campaignResearch';
+import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable,
+  type ResearchState, type ResearchTree } from './campaignResearch';
 import { getProductionQuote } from './production';
 import { getRefuelQuote } from './campaignShips';
 import { createOperationalState } from './campaignOperations';
@@ -25,7 +26,7 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
   }
   for (const hullId of access.hulls) for (let variant = 0; variant < 8; variant++) {
     const profile = tree.version === 2
-      ? tree.variantPolicy.tiers[Math.min(unlockedTier, 1 + Math.floor(variant / 2)) - 1]
+      ? getCampaignVariantProfile(tree, Math.min(unlockedTier, 1 + Math.floor(variant / 2)))
       : undefined;
     const variantComponents = new Map<string, ComponentDefinition>();
     for (const [kind, component] of components) {

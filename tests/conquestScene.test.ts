@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createConquest, type Conquest } from '../src/domain/conquest';
+import { conquestSchema, createConquest, executeConquestCommand, type Conquest } from '../src/domain/conquest';
+import { createDesign } from '../src/domain/shipDesign';
+import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { closeShipyardModal } from '../src/ui/ShipyardModal';
@@ -42,7 +44,8 @@ function fixture(storage = new Map<string, string>()) {
   vi.stubGlobal('localStorage', { getItem: read, setItem: write });
   const tasks: { callback: () => void; remove: ReturnType<typeof vi.fn> }[] = [];
   const scene = new ConquestScene();
-  const owner = scene as unknown as { state: Conquest; phase: string; replace(state: Conquest): void; render(): void };
+  const owner = scene as unknown as { state: Conquest; phase: string; page: number; tab: string;
+    observer: 'blue' | 'red'; selected: string; replace(state: Conquest): void; render(): void };
   Object.assign(scene, { cameras: { main: { width: 1280, height: 720 } }, input: { keyboard }, events,
     scene: { start: () => events.emit('shutdown') }, time: { delayedCall: (_delay: number, callback: () => void) => {
       const task = { callback, remove: vi.fn() }; tasks.push(task); return task;
@@ -152,4 +155,73 @@ it('completed campaigns remain readonly while save and inspection stay available
   test.click('conquest-tab-fleet'); test.click('conquest-save'); test.click('conquest-confirm');
   expect(test.owner.state).toEqual(completed);
   expect(test.write).toHaveBeenCalledTimes(1);
+});
+
+it('clamps production and fleet pages immediately after deploy, arrival and battle losses', () => {
+  const test = fixture();
+  const design = createDesign('fighter', true);
+  const state = test.owner.state;
+  state.session.production.lastOrderId = 5;
+  state.session.production.completed = Array.from({ length: 5 }, (_, index) => ({
+    id: index + 1, factionId: 'blue' as const, systemId: 'sol' as const, design: structuredClone(design)
+  }));
+  test.owner.state = conquestSchema.parse(state);
+  test.click('conquest-tab-production');
+  test.click('conquest-page-next');
+  expect(test.nodes.some(node => !node.destroyed && node.text === '2 / 2')).toBe(true);
+  test.click('conquest-order-5');
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+  expect(test.find('conquest-order-4')).toBeDefined();
+  expect(() => test.find('conquest-order-5')).toThrow();
+  for (const id of [4, 3, 2, 1]) test.click(`conquest-order-${id}`);
+  expect(test.owner.state.session.ships.map(ship => ship.id)).toEqual([5, 4, 3, 2, 1]);
+  test.owner.page = 1;
+  test.owner.render();
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+
+  test.click('conquest-tab-fleet');
+  test.owner.page = 1;
+  test.owner.render();
+  expect(test.nodes.some(node => !node.destroyed && node.text === '2 / 2')).toBe(true);
+  const movement = executeConquestCommand(test.owner.state, {
+    kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 5, destinationId: 'eden'
+  });
+  if (!movement.ok) throw new Error(movement.message);
+  test.owner.state = movement.state;
+  test.owner.render();
+  test.click('conquest-end');
+  expect(test.owner.state.session.ships.find(ship => ship.id === 5)?.systemId).toBe('eden');
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+
+  const casualtyDesign = structuredClone(design);
+  casualtyDesign.slots.find(slot => slot.id === 'beam_1')!.component = null;
+  for (let id = 6; id <= 10; id++) {
+    test.owner.state.session.ships.push({ id, factionId: 'red', systemId: 'sol', fuel: 3, design: structuredClone(casualtyDesign) });
+    const operation = createOperationalState(casualtyDesign);
+    operation.hull = 1;
+    test.owner.state.operations[String(id)] = operation;
+  }
+  test.owner.state.session.production.lastOrderId = 10;
+  test.owner.state = conquestSchema.parse(test.owner.state);
+  test.owner.observer = 'red';
+  test.owner.selected = 'sol';
+  test.owner.page = 1;
+  test.owner.render();
+  expect(test.nodes.some(node => !node.destroyed && node.text === '2 / 2')).toBe(true);
+  const battle = executeConquestCommand(test.owner.state, { kind: 'endTurn', factionId: 'red', expectedTurn: 2 });
+  if (!battle.ok) throw new Error(battle.message);
+  test.owner.state = battle.state;
+  test.owner.page = 1;
+  test.owner.render();
+  expect(battle.state.session.ships.filter(ship => ship.factionId === 'red' && ship.systemId === 'sol')).toHaveLength(0);
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+  test.owner.tab = 'battles';
+  test.owner.page = 1;
+  test.owner.render();
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+  test.owner.tab = 'research';
+  test.owner.page = 1;
+  test.owner.render();
+  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+  test.events.emit('shutdown');
 });

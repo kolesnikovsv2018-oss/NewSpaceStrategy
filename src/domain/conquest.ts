@@ -14,6 +14,7 @@ export const conquestControlSchema = z.union([
   z.object({ mode: z.literal('human-vs-ai'), aiPolicy: z.literal('conquest-v1') }).strict()
 ]);
 export const conquestVictorySchema = z.object({ kind: z.literal('all-planets-v1') }).strict();
+export const conquestBattlePolicySchema = z.enum(['campaign-v1', 'campaign-v2']);
 export type ConquestOutcome = { status: 'ongoing' } | { status: 'completed'; winner: CampaignFactionId; reason: 'all-planets' };
 const battleReportSchema = z.object({ id: z.number().int().positive().max(MAX_TURN), turn: z.number().int().positive().max(MAX_TURN),
   systemId: systemIdSchema, winner: factionIdSchema.nullable(), timedOut: z.boolean(),
@@ -21,6 +22,7 @@ const battleReportSchema = z.object({ id: z.number().int().positive().max(MAX_TU
   destroyed: z.array(z.number().int().positive()).max(200) }).strict();
 export const conquestSchema = z.object({
   scenario: z.literal('conquest-v1'), victory: conquestVictorySchema, control: conquestControlSchema,
+  battlePolicy: conquestBattlePolicySchema.default('campaign-v1'),
   session: conquestSessionSchema, researchTree: researchTreeSchema,
   research: z.object({ blue: researchStateSchema, red: researchStateSchema }).strict(),
   operations: z.record(operationalStateSchema), seed: z.number().int().min(1).max(0xffffffff),
@@ -54,6 +56,7 @@ class ConquestRuleError extends Error {}
 
 export function createConquest(control: unknown = { mode: 'local' }, tree: unknown = getDefaultResearchTree(), seed = 1): Conquest {
   return conquestSchema.parse({ scenario: 'conquest-v1', victory: { kind: 'all-planets-v1' }, control,
+    battlePolicy: 'campaign-v2',
     session: createCampaignSession(), researchTree: tree, research: { blue: createResearchState(), red: createResearchState() },
     operations: {}, seed, lastBattleId: 0, battles: [] });
 }
@@ -128,7 +131,7 @@ function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefi
     if (new Set(present.map(ship => ship.factionId)).size > 1) {
       if (state.lastBattleId === MAX_TURN) throw new ConquestRuleError('Достигнут предел идентификаторов боёв');
       const seed = ((state.seed ^ Math.imul(turn, 2654435761) ^ (state.lastBattleId + 1)) >>> 0) || 1;
-      const result = resolveConquestBattle(present, state.operations, seed);
+      const result = resolveConquestBattle(present, state.operations, seed, state.battlePolicy);
       frames = result.frames;
       state.battles.push({ id: ++state.lastBattleId, turn, systemId: definition.id, winner: result.winner,
         timedOut: result.timedOut, participants: present.map(ship => ({ id: ship.id, factionId: ship.factionId })), destroyed: result.destroyed });

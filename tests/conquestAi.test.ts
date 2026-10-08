@@ -11,8 +11,9 @@ import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSav
 function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
   const score = (winner: string | null, firstFaction: 'blue' | 'red') =>
     winner === null ? 0.5 : winner === firstFaction ? 1 : 0;
+  const seeds = Array.from({ length: 30 }, (_, index) => (((index + 1) * 2654435761) >>> 0) || 1);
   let total = 0;
-  for (let seed = 1; seed <= 30; seed++) {
+  for (const seed of seeds) {
     const run = (firstFaction: 'blue' | 'red') => {
       const firstId = firstFaction === 'blue' ? 1 : 2;
       const secondFaction = firstFaction === 'blue' ? 'red' : 'blue';
@@ -22,11 +23,11 @@ function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
         { id: secondId, factionId: secondFaction, systemId: 'eden', design: second, fuel: 3 }
       ];
       const operations = Object.fromEntries(ships.map(ship => [String(ship.id), createOperationalState(ship.design)]));
-      return resolveConquestBattle(ships, operations, seed).winner;
+      return resolveConquestBattle(ships, operations, seed, 'campaign-v2').winner;
     };
     total += (score(run('blue'), 'blue') + score(run('red'), 'red')) / 2;
   }
-  return total / 30;
+  return total / seeds.length;
 }
 
 it('constructs legal deterministic candidates without clocks or random factories', () => {
@@ -51,6 +52,16 @@ it('preserves legacy AI component values for version1 trees', () => {
   expect(design.slots.find(slot => slot.id === 'beam_1')?.component).toMatchObject({
     kind: 'beam', damage: 8, range: 300, fireRate: 1, accuracy: 0.85
   });
+});
+
+it('builds candidates from cumulative unlocked ranges in grandfathered v2 snapshots', () => {
+  const tree = getDefaultResearchTree();
+  if (tree.version !== 2) throw new Error('Expected profiled research tree');
+  tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[2], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
+  const research = { completed: ['support', 'ordnance'], active: null };
+  const designs = buildConquestDesigns(research, tree);
+  expect(designs.every(design => isCampaignDesignAvailable(design, research, tree))).toBe(true);
+  expect(designs.some(design => design.slots.some(slot => slot.component?.kind === 'beam' && slot.component.damage === 30))).toBe(true);
 });
 
 it('caps projectile output by ammo, reflects resource scarcity, defense and engagement range', () => {
@@ -88,7 +99,7 @@ it('caps projectile output by ammo, reflects resource scarcity, defense and enga
     .toBeCloseTo((600 - 300) / (2 * mixedStats.speed));
 });
 
-it('ranks the twin-beam candidate above a single beam in a mirrored 30-seed Conquest series', () => {
+it('ranks twin-beam above single-beam on mirrored dispersed seeds with campaign-v2 policy', () => {
   const state = createConquest();
   const candidates = buildConquestDesigns(state.research.blue, state.researchTree).filter(design => design.hullId === 'fighter');
   const singleBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component === null)!;

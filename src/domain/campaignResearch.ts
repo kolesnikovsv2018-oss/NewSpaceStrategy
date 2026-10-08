@@ -53,10 +53,15 @@ export const researchTreeSchema = z.union([legacyResearchTreeSchema, profiledRes
 export type ResearchTree = z.infer<typeof researchTreeSchema>;
 export type ProfiledResearchTree = Extract<ResearchTree, { version: 2 }>;
 
-/** Tree v1 remains valid only as an embedded legacy-save snapshot. */
+/** New imports require v2 with monotonic profiles; saved v2 snapshots remain structurally readable. */
 export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree {
   const tree = researchTreeSchema.parse(input);
   if (tree.version !== 2) throw new Error('Новая кампания требует дерево с профилями вариантов');
+  const fields = ['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const;
+  if (tree.variantPolicy.tiers.some((tier, index, tiers) => index > 0 &&
+    fields.some(field => tier[field] < tiers[index - 1][field]))) {
+    throw new Error('Диапазоны вариантов не могут сужаться в новом дереве исследований');
+  }
   return tree;
 }
 
@@ -114,6 +119,18 @@ export function getCampaignVariantTier(state: ResearchState, tree: ResearchTree)
     tier.researchId && state.completed.includes(tier.researchId) ? tier.level : level, 1);
 }
 
+export function getCampaignVariantProfile(tree: ProfiledResearchTree, tier: number) {
+  if (!Number.isInteger(tier) || tier < 1 || tier > tree.variantPolicy.tiers.length) {
+    throw new RangeError('Недопустимый уровень профиля вариантов');
+  }
+  return tree.variantPolicy.tiers.slice(0, tier).reduce((effective, profile) => ({
+    magnitude: Math.max(effective.magnitude, profile.magnitude),
+    ratioStep: Math.max(effective.ratioStep, profile.ratioStep),
+    ammo: Math.max(effective.ammo, profile.ammo),
+    rechargeDelay: Math.max(effective.rechargeDelay, profile.rechargeDelay)
+  }), { magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 });
+}
+
 const magnitudeFields: Partial<Record<ComponentKind, readonly string[]>> = {
   beam: ['damage', 'range', 'fireRate'], projectile: ['damage', 'range', 'fireRate'],
   engine: ['thrust', 'maxSpeed', 'powerGeneration'], shield: ['capacity', 'rechargeRate'],
@@ -127,7 +144,7 @@ const ratioFields: Partial<Record<ComponentKind, readonly string[]>> = {
 
 function componentWithinVariantTier(component: ComponentDefinition, tier: number, tree: ResearchTree): boolean {
   if (tree.version === 1) return true;
-  const profile = tree.variantPolicy.tiers[tier - 1];
+  const profile = getCampaignVariantProfile(tree, tier);
   const defaults = createComponentWithId(component.kind, 'campaign-variant-default') as unknown as Record<string, number>;
   const values = component as unknown as Record<string, number>;
   for (const key of magnitudeFields[component.kind] ?? []) {
@@ -158,8 +175,10 @@ export function isCampaignDesignAvailable(design: ShipDesign, state: ResearchSta
   if (!designSchema.safeParse(design).success || validateDesign(design, 'flight').length) return false;
   const access = getResearchAccess(state, tree);
   if (!access.hulls.includes(design.hullId)) return false;
+  const components = design.slots.flatMap(slot => slot.component ? [slot.component] : []);
+  if (components.some(component => !access.components.includes(component.kind))) return false;
   if (tree.version === 1 || isCombatPresetDesign(design) || isCivilianPresetDesign(design)) return true;
-  return design.slots.every(slot => !slot.component || isCampaignComponentVariantAvailable(slot.component, state, tree));
+  return components.every(component => componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree));
 }
 
 export function advanceResearch(state: ResearchState, tree: ResearchTree): ResearchState {

@@ -47,20 +47,27 @@ const legacyDreadnoughtAccuracy: Record<string, number> = {
   beam_1: 0.85, beam_2: 0.85, projectile_1: 0.8
 };
 
-export function isCombatPresetDesign(design: ShipDesign): boolean {
-  return Object.values(PRESETS).some(preset => {
-    if (design.hullId !== preset.hullId) return false;
-    const modules = new Map(preset.modules.map(module => [module.slotId, module.component]));
-    return design.slots.every(slot => {
+function matchesPreset(design: ShipDesign, preset: CombatPreset, legacyDreadnought: boolean): boolean {
+  if (design.hullId !== preset.hullId) return false;
+  const modules = new Map(preset.modules.map(module => [module.slotId, module.component]));
+  return preset.modules.every(module => design.slots.some(slot => slot.id === module.slotId)) &&
+    design.slots.every(slot => {
       const expected = modules.get(slot.id), actual = slot.component;
       if (!expected || !actual || expected.kind !== actual.kind) return !expected && !actual;
-      const actualValues = actual as unknown as Record<string, unknown>;
-      const expectedValues = preset.hullId === 'battleship' && legacyDreadnoughtAccuracy[slot.id]
-        ? { ...expected, accuracy: legacyDreadnoughtAccuracy[slot.id] } : expected;
-      return Object.entries(expectedValues).filter(([key]) => key !== 'name')
-        .every(([key, value]) => actualValues[key] === value);
+      const expectedValues = Object.entries(expected).filter(([key]) => key !== 'name');
+      const actualKeys = Object.keys(actual).filter(key => key !== 'id' && key !== 'name');
+      return actualKeys.length === expectedValues.length && expectedValues.every(([key, value]) => {
+        const historicalAccuracy = legacyDreadnought && key === 'accuracy'
+          ? legacyDreadnoughtAccuracy[slot.id] : undefined;
+        return Reflect.get(actual, key) === (historicalAccuracy ?? value);
+      });
     });
-  });
+}
+
+export function isCombatPresetDesign(design: ShipDesign): boolean {
+  return Object.values(PRESETS).some(preset =>
+    matchesPreset(design, preset, false) ||
+    (preset.hullId === 'battleship' && matchesPreset(design, preset, true)));
 }
 
 /** A fresh, fully validated blueprint suitable for the yard, storage or runtime. */

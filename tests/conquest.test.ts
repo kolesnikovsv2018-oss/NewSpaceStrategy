@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { createConquest, executeConquestCommand, getConquestOutcome, getConquestView, conquestSchema, type Conquest } from '../src/domain/conquest';
 import { createDesign, createComponentWithId, installComponent, validateDesign } from '../src/domain/shipDesign';
+import { createCombatDesign } from '../src/domain/combatPresets';
 import { getDefaultResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
 import { buildConquestDesigns } from '../src/domain/conquestAi';
 import { createOperationalState } from '../src/domain/campaignOperations';
@@ -116,6 +117,75 @@ it('rejects free remote exploration and locked library projects', () => {
   expect(view).not.toHaveProperty('treasuries');
   expect(view.enemies).toEqual([]);
 });
+it('accepts current and legacy dreadnought presets for paid production after full unlock', () => {
+  for (const legacy of [false, true]) {
+    const state = createConquest();
+    state.research.blue.completed = ['support', 'ordnance', 'capital'];
+    state.session.treasuries.blue = { credits: 1_000_000, minerals: 1_000_000 };
+    const design = createCombatDesign('dreadnought');
+    if (legacy) {
+      for (const slot of design.slots) {
+        const component = slot.component;
+        if (component?.kind === 'beam') slot.component = { ...component, accuracy: 0.85 };
+        if (component?.kind === 'projectile') slot.component = { ...component, accuracy: 0.8 };
+      }
+    }
+    const result = executeConquestCommand(state, {
+      kind: 'enqueueProduction', factionId: 'blue', systemId: 'sol', expectedTurn: 1, design
+    });
+    expect(result.ok, legacy ? 'legacy dreadnought order' : 'current dreadnought order').toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.state.session.production.orders[0].design).toEqual(design);
+  }
+});
+it('rejects a preset order when its hull is open but an installed module family is locked', () => {
+  const tree = getDefaultResearchTree();
+  tree.initial.hulls.push('frigate');
+  tree.nodes[0].unlocks.hulls = [];
+  const state = createConquest({ mode: 'local' }, tree);
+  const before = structuredClone(state);
+  const result = executeConquestCommand(state, {
+    kind: 'enqueueProduction', factionId: 'blue', systemId: 'sol', expectedTurn: 1,
+    design: createCombatDesign('frigate')
+  });
+  expect(result.ok).toBe(false);
+  expect(state).toEqual(before);
+});
+it('preserves unlocked variant ranges through research, production, ships and save round-trips', () => {
+  const tree = getDefaultResearchTree();
+  if (tree.version !== 2) throw new Error('Expected profiled research tree');
+  tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[2], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
+  tree.variantPolicy.tiers[3] = { ...tree.variantPolicy.tiers[3], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
+  const state = createConquest({ mode: 'local' }, tree);
+  state.research.blue.completed = ['support'];
+  state.research.blue.active = { id: 'ordnance', progress: 2 };
+  const base = createDesign('corvette', true);
+  const beam = base.slots.find(slot => slot.id === 'beam_1')!.component;
+  if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+  const design = installComponent(base, 'beam_1', { ...beam, damage: 30 });
+  state.session.production.lastOrderId = 3;
+  state.session.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
+  state.session.production.orders.push({ id: 3, factionId: 'blue', systemId: 'sol', design, remainingTurns: 1 });
+  state.session.ships.push({ id: 2, factionId: 'blue', systemId: 'sol', fuel: 3, design });
+  state.operations['2'] = createOperationalState(design);
+
+  const saved = decodeConquestSave(encodeConquestSave(state));
+  const inputSnapshot = structuredClone(saved);
+  const result = executeConquestCommand(saved, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+  if (!result.ok) throw new Error(result.message);
+  expect(saved).toEqual(inputSnapshot);
+  expect(result.state.research.blue).toEqual({ completed: ['support', 'ordnance'], active: null });
+  expect(result.state.session.production.orders).toEqual([]);
+  expect(result.state.session.production.completed.map(record => record.id)).toEqual([1, 3]);
+  expect(result.state.session.ships[0].design).toEqual(design);
+  expect(decodeConquestSave(encodeConquestSave(result.state))).toEqual(result.state);
+
+  const blocked = structuredClone(saved);
+  blocked.session.treasuries.blue.credits = 1_000_000_000;
+  const blockedSnapshot = structuredClone(blocked);
+  expect(executeConquestCommand(blocked, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
+  expect(blocked).toEqual(blockedSnapshot);
+});
 it('resolves arrival, captures, removes lost groups and cannot apply a stale end twice', () => {
   const state = createConquest(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 2;
@@ -146,8 +216,12 @@ it('validates before storage access and preserves previous bytes on write failur
 it('versions campaign variant profiles and grandfathers v4/rules1 ship designs', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 4, rulesVersion: 2, conquest: { researchTree: { version: 2 } } });
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 4, rulesVersion: 2,
+    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 2 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
+  const { battlePolicy: _battlePolicy, ...oldState } = current;
+  const oldEnvelope = { ...currentEnvelope, conquest: oldState };
+  expect(decodeConquestSave(JSON.stringify(oldEnvelope)).battlePolicy).toBe('campaign-v1');
 
   const currentTree = getDefaultResearchTree();
   if (currentTree.version !== 2) throw new Error('Expected profiled research tree');

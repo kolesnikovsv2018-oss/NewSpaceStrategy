@@ -186,6 +186,10 @@ export class ConquestScene extends Phaser.Scene {
 
   private shorten(value: string, maximum = 45): string { return value.length > maximum ? `${value.slice(0, maximum - 1)}…` : value; }
 
+  private normalizePage(total: number, size: number): void {
+    this.page = Math.max(0, Math.min(this.page, Math.max(0, Math.ceil(total / size) - 1)));
+  }
+
   private control(x: number, y: number, label: string, action: () => void, name: string, enabled = true, width = 145): void {
     const root = this.root!;
     const item = button(this, root, x, y, label, () => {
@@ -279,6 +283,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private renderResearch(view: ConquestView, manual: boolean): void {
+    this.normalizePage(view.researchTree.nodes.length, 4);
     text(this, this.root!, 24, 385, `Технологии · ${view.researchTree.id}`, 17);
     view.researchTree.nodes.slice(this.page * 4, this.page * 4 + 4).forEach((node, index) => {
       const ypos = 420 + index * 48, completed = view.research.completed.includes(node.id), active = view.research.active?.id === node.id;
@@ -315,6 +320,7 @@ export class ConquestScene extends Phaser.Scene {
     this.control(320, 516, 'Обновить библиотеку', () => { this.catalog = loadProductionCatalog(); this.render(); }, 'conquest-catalog', true, 225);
     text(this, this.root!, 24, 568, this.shorten(this.catalog?.notice ?? '', 65), 13).setWordWrapWidth(550);
     const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === this.selected);
+    this.normalizePage(records.length, 4);
     text(this, this.root!, 655, 385, 'Очередь и готовые корабли', 17);
     records.slice(this.page * 4, this.page * 4 + 4).forEach((record, index) => {
       const ypos = 420 + index * 48, order = view.production.orders.find(item => item.id === record.id);
@@ -329,6 +335,7 @@ export class ConquestScene extends Phaser.Scene {
 
   private renderFleet(view: ConquestView, manual: boolean): void {
     const ships = view.ships.filter(ship => ship.systemId === this.selected);
+    this.normalizePage(ships.length, 4);
     this.selectedShips = this.selectedShips.filter(id => ships.some(ship => ship.id === id));
     text(this, this.root!, 24, 385, 'Собственные корабли', 17);
     ships.slice(this.page * 4, this.page * 4 + 4).forEach((ship, index) => {
@@ -378,6 +385,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private renderBattles(view: ConquestView): void {
+    this.normalizePage(view.battles.length, 4);
     text(this, this.root!, 24, 385, 'Последние бои своей стороны', 17);
     [...view.battles].reverse().slice(this.page * 4, this.page * 4 + 4).forEach((battle, index) => {
       text(this, this.root!, 24, 426 + index * 45, `#${battle.id} · ход ${battle.turn} · ${battle.systemId} · ${battle.timedOut ? 'Лимит времени, без захвата' : battle.winner === this.observer ? 'Победа в бою' : battle.winner ? 'Поражение в бою' : 'Без победителя'} · потери: ${battle.destroyed.length}`, 16);

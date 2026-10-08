@@ -2,7 +2,7 @@ import { DesignedShip } from '../entities/DesignedShip';
 import { BattleManager } from '../entities/BattleManager';
 import { campaignShipsSchema, type CampaignShip } from './campaignShips';
 import { readOperationalState, type OperationalState } from './campaignOperations';
-import { createSeededRandom } from './seededRandom';
+import { createSeededRandom, createSeededRandomStream } from './seededRandom';
 import { COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
 import type { CampaignFactionId } from './campaign';
 import type { BattleEvent } from '../entities/interfaces/CombatSystem';
@@ -22,23 +22,37 @@ export interface ConquestBattleResult {
   frames: BattleFrame[];
 }
 
-export function resolveConquestBattle(input: CampaignShip[], operations: Record<string, OperationalState>, seed: number): ConquestBattleResult {
+export function resolveConquestBattle(input: CampaignShip[], operations: Record<string, OperationalState>, seed: number,
+  policy: 'campaign-v1' | 'campaign-v2' = 'campaign-v1'): ConquestBattleResult {
   const ships = campaignShipsSchema.parse(input).sort((left, right) => left.id - right.id);
-  const random = createSeededRandom(seed);
+  const legacyRandom = createSeededRandom(seed);
   if (!ships.length || ships.some(ship => ship.transit || ship.systemId !== ships[0].systemId)) throw new Error('Недопустимые участники боя');
+  const factionRanks = new Map<CampaignFactionId, number>();
+  const sideRank = new Map<number, number>();
+  for (const ship of ships) {
+    sideRank.set(ship.id, factionRanks.get(ship.factionId) ?? 0);
+    factionRanks.set(ship.factionId, (factionRanks.get(ship.factionId) ?? 0) + 1);
+  }
   const models = ships.map((ship, index) => {
     const operational = readOperationalState(operations[String(ship.id)], ship.design);
     const armed = ship.design.slots.some(slot => slot.component?.kind === 'beam' || slot.component?.kind === 'projectile');
+    const random = policy === 'campaign-v2'
+      ? createSeededRandomStream(seed, `campaign-ship:${ship.factionId}:${ship.id}`)
+      : legacyRandom;
     const model = new DesignedShip(ship.design, ship.factionId, armed ? 'battle' : 'flight',
       { id: `campaign-${ship.id}`, random, operational });
-    model.position = { x: ship.factionId === 'blue' ? 200 : 800, y: 100 + index * 5 };
+    const row = policy === 'campaign-v2' ? sideRank.get(ship.id)! : index;
+    model.position = { x: ship.factionId === 'blue' ? 200 : 800, y: 100 + row * 5 };
     return model;
   });
+  const firstFactionId = policy === 'campaign-v2'
+    ? createSeededRandomStream(seed, 'initiative')() < 0.5 ? 'blue' : 'red'
+    : undefined;
   const manager = new BattleManager({
     factions: (['blue', 'red'] as const).map(id => ({ id, name: id, color: id === 'blue' ? 0x44bbff : 0xff6655,
       ships: models.filter(model => model.factionId === id) })),
     battlefieldWidth: 1000, battlefieldHeight: 1200, autoTarget: true, friendlyFire: false
-  }, { now: () => 0, silent: true });
+  }, { now: () => 0, silent: true, ...(firstFactionId ? { alternateFactionOrder: true, firstFactionId } : {}) });
   const frames: BattleFrame[] = [];
   let events: BattleEvent[] = [];
   const frame = (step: number) => {

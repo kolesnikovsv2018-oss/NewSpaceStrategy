@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { advanceResearch, createResearchState, getDefaultResearchTree, getResearchAccess,
-  isCampaignComponentVariantAvailable, isCampaignDesignAvailable, isResearchStateValid, loadResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
+  isCampaignComponentVariantAvailable, isCampaignDesignAvailable, isResearchStateValid, loadResearchTree,
+  parseProfiledResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
 import { componentSchema, createDesign, createComponentWithId, installComponent } from '../src/domain/shipDesign';
-import { createCombatDesign } from '../src/domain/combatPresets';
+import { createCombatDesign, isCombatPresetDesign } from '../src/domain/combatPresets';
 import { createCivilianDesign } from '../src/domain/civilianPresets';
 import { parseResearchTreeYaml } from '../src/utils/ResearchTreeYaml';
 import { stringify } from 'yaml';
@@ -27,6 +28,18 @@ describe('campaign research', () => {
     expect(() => parseResearchTreeYaml(JSON.stringify(legacy))).toThrow('профилями вариантов');
     await expect(loadResearchTree({ load: async () => legacy })).rejects.toThrow('профилями вариантов');
   });
+  it.each(['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const)(
+    'rejects narrowing the %s profile on new imports without rejecting saved snapshots', async field => {
+      const tree = getDefaultResearchTree();
+      if (tree.version !== 2) throw new Error('Expected profiled default tree');
+      const narrowed = structuredClone(tree);
+      narrowed.variantPolicy.tiers[2][field] = narrowed.variantPolicy.tiers[1][field] / 2;
+
+      expect(researchTreeSchema.safeParse(narrowed).success).toBe(true);
+      expect(() => parseProfiledResearchTree(narrowed)).toThrow('не могут сужаться');
+      expect(() => parseResearchTreeYaml(JSON.stringify(narrowed))).toThrow('не могут сужаться');
+      await expect(loadResearchTree({ load: async () => narrowed })).rejects.toThrow('не могут сужаться');
+    });
   it('provides independent complete default trees', () => {
     const tree = getDefaultResearchTree();
     tree.nodes[0].name = 'changed';
@@ -74,8 +87,28 @@ describe('campaign research', () => {
     expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(true);
     expect(getResearchAccess(state, tree).components).toContain('repair');
   });
+  it('requires component-family unlocks before preset exemptions in v2 and legacy trees', () => {
+    const profiled = getDefaultResearchTree();
+    if (profiled.version !== 2) throw new Error('Expected profiled default tree');
+    profiled.initial.hulls.push('frigate');
+    profiled.nodes[0].unlocks.hulls = [];
+    const { variantPolicy: _policy, ...legacyFields } = profiled;
+    const legacy = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-early-frigate' });
+    const frigate = createCombatDesign('frigate');
+    const miner = createCivilianDesign('miner');
+
+    for (const tree of [profiled, legacy]) {
+      const state = createResearchState();
+      expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(false);
+      expect(isCampaignDesignAvailable(miner, state, tree)).toBe(false);
+      state.completed.push('support');
+      expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(true);
+      expect(isCampaignDesignAvailable(miner, state, tree)).toBe(true);
+    }
+  });
   it('applies versioned numeric tiers to custom values while preserving stock blueprints', () => {
     const tree = getDefaultResearchTree(), state = createResearchState();
+    const currentDreadnought = createCombatDesign('dreadnought');
     const grandfatheredDreadnought = createCombatDesign('dreadnought');
     for (const slot of grandfatheredDreadnought.slots) {
       if (slot.id === 'beam_1' || slot.id === 'beam_2') {
@@ -90,15 +123,23 @@ describe('campaign research', () => {
       }
     }
     const capitalState = { completed: ['support', 'ordnance', 'capital'], active: null };
+    const changedDreadnought = structuredClone(currentDreadnought);
+    const changedBeam = changedDreadnought.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (changedBeam?.kind !== 'beam') throw new Error('Invalid current beam fixture');
+    changedDreadnought.slots.find(slot => slot.id === 'beam_1')!.component = { ...changedBeam, accuracy: 0.99 };
     const factoryDesign = createDesign('corvette', true);
-    const changedBeam = factoryDesign.slots.find(slot => slot.id === 'beam_1')!.component;
-    if (changedBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
-    const custom = installComponent(factoryDesign, 'beam_1', { ...changedBeam, damage: 27.6 });
+    const factoryBeam = factoryDesign.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (factoryBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+    const custom = installComponent(factoryDesign, 'beam_1', { ...factoryBeam, damage: 27.6 });
 
     expect(tree.version).toBe(2);
     expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
     expect(isCampaignDesignAvailable(createCivilianDesign('scout'), state, tree)).toBe(true);
+    expect(isCombatPresetDesign(currentDreadnought)).toBe(true);
     expect(isCampaignDesignAvailable(grandfatheredDreadnought, capitalState, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(currentDreadnought, capitalState, tree)).toBe(true);
+    expect(isCombatPresetDesign(changedDreadnought)).toBe(false);
+    expect(isCampaignDesignAvailable(changedDreadnought, capitalState, tree)).toBe(false);
     expect(isCampaignDesignAvailable(custom, state, tree)).toBe(false);
     state.completed.push('support');
     expect(isCampaignDesignAvailable(custom, state, tree)).toBe(true);
