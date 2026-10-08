@@ -71,6 +71,7 @@ export interface IFaction {
 
 export type BattleTargetPriority = 'nearest' | 'lowest-hull-ratio';
 export type BattleFormation = 'line-abreast';
+export type BattleCoverRule = 'line-of-fire';
 
 /**
  * Конфигурация боя
@@ -83,6 +84,7 @@ export interface IBattleConfig {
   friendlyFire: boolean;     // Дружественный огонь
   targetPriority?: BattleTargetPriority;
   formation?: BattleFormation;
+  cover?: BattleCoverRule;
 }
 
 /**

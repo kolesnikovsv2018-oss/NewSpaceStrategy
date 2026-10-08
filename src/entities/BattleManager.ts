@@ -1,6 +1,7 @@
 import type { ICombatant, IFaction, IBattleConfig, IBattleStats, IAttackResult, BattleEvent } from './interfaces/CombatSystem';
 
 const LINE_FORMATION_SPACING = 60;
+const COVER_CORRIDOR_RADIUS = 20;
 
 /**
  * Менеджер боевой системы
@@ -145,19 +146,49 @@ export class BattleManager {
       // Каждое готовое орудие может выстрелить в этом шаге. Обрабатываем урон сразу,
       // чтобы последующие орудия не засчитали уничтожение цели повторно.
       for (let attempt = 0; attempt < ship.getAttackAttemptsPerStep(); attempt++) {
-        const attackResult = ship.attack(ship.target);
+        const attackTarget = this.getInterceptionTarget(ship, ship.target);
+        const attackResult = ship.attack(attackTarget);
         if (!attackResult) break;
         this.events.push({
           type: 'WeaponFired',
           attackerId: ship.id,
-          targetId: ship.target.id,
+          targetId: attackTarget.id,
           from: { ...ship.position },
-          to: { ...ship.target.position },
+          to: { ...attackTarget.position },
           hit: attackResult.hit
         });
-        this.processAttack(ship, ship.target, attackResult);
+        this.processAttack(ship, attackTarget, attackResult);
       }
     }
+  }
+
+  private getInterceptionTarget(attacker: ICombatant, intendedTarget: ICombatant): ICombatant {
+    if (this.config.cover !== 'line-of-fire') return intendedTarget;
+    const dx = intendedTarget.position.x - attacker.position.x;
+    const dy = intendedTarget.position.y - attacker.position.y;
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length === 0) return intendedTarget;
+    const directionX = dx / length;
+    const directionY = dy / length;
+    let intercept: ICombatant | undefined;
+    let interceptDistance = length;
+
+    for (const candidate of this.allShips) {
+      if (candidate === attacker || candidate === intendedTarget || candidate.isDestroyed ||
+        candidate.factionId !== intendedTarget.factionId) continue;
+      const relativeX = candidate.position.x - attacker.position.x;
+      const relativeY = candidate.position.y - attacker.position.y;
+      const along = relativeX * directionX + relativeY * directionY;
+      if (along <= 0 || along >= length || along > interceptDistance) continue;
+      const nearestX = attacker.position.x + directionX * along;
+      const nearestY = attacker.position.y + directionY * along;
+      const lateralDistance = Math.hypot(candidate.position.x - nearestX, candidate.position.y - nearestY);
+      if (lateralDistance > COVER_CORRIDOR_RADIUS) continue;
+      if (along === interceptDistance && intercept && candidate.id >= intercept.id) continue;
+      intercept = candidate;
+      interceptDistance = along;
+    }
+    return intercept ?? intendedTarget;
   }
 
   private getFormationOffset(ship: ICombatant, target: ICombatant): { x: number; y: number } | undefined {

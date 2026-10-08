@@ -161,6 +161,38 @@ describe('BattleManager', () => {
     expect(secondMove).toHaveBeenCalledTimes(1);
   });
 
+  it('lets a living ally intercept a shot only when line-of-fire cover is enabled', () => {
+    const resolveShot = (cover?: 'line-of-fire') => {
+      const attacker = CombatShipFactory.createFighter('blue');
+      const screen = CombatShipFactory.createFighter('red', 0);
+      const target = CombatShipFactory.createFighter('red', 1);
+      attacker.position = { x: 0, y: 0 };
+      screen.position = { x: 150, y: 5 };
+      target.position = { x: 300, y: 0 };
+      target.combatStats.currentHull = target.combatStats.maxHull * 0.2;
+      const manager = new BattleManager({ factions: [
+        { id: 'blue', name: 'Blue', color: 0, ships: [attacker] },
+        { id: 'red', name: 'Red', color: 1, ships: [screen, target] }
+      ], battlefieldWidth: 600, battlefieldHeight: 300, autoTarget: true, friendlyFire: false,
+      targetPriority: 'lowest-hull-ratio', cover });
+      manager.start();
+      manager.update(0.01);
+      const event = manager.drainEvents().find(item => item.type === 'WeaponFired' && item.attackerId === attacker.id);
+      return { attacker, screen, target, event };
+    };
+
+    const uncovered = resolveShot();
+    expect(uncovered.attacker.target).toBe(uncovered.target);
+    expect(uncovered.event).toMatchObject({ type: 'WeaponFired', targetId: uncovered.target.id });
+    expect(uncovered.screen.combatStats.currentShield).toBe(uncovered.screen.combatStats.maxShield);
+
+    const covered = resolveShot('line-of-fire');
+    expect(covered.attacker.target).toBe(covered.target);
+    expect(covered.event).toMatchObject({ type: 'WeaponFired', targetId: covered.screen.id });
+    expect(covered.screen.combatStats.currentShield).toBeLessThan(covered.screen.combatStats.maxShield);
+    expect(covered.target.combatStats.currentHull).toBe(covered.target.combatStats.maxHull * 0.2);
+  });
+
   it('keeps nearest targeting by default and can prioritize the lowest hull ratio', () => {
     const createPriorityBattle = (targetPriority?: 'nearest' | 'lowest-hull-ratio') => {
       const blue = CombatShipFactory.createFighter('blue');
