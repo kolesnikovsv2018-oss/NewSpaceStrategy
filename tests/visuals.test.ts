@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CombatShipFactory } from '../src/entities/CombatShipFactory';
-import { createDesign, type ShipDesign } from '../src/domain/shipDesign';
+import { createComponent, createDesign, installComponent, type ShipDesign } from '../src/domain/shipDesign';
+import { drawBlueprint } from '../src/ui/ShipBlueprint';
 import type { ShipView } from '../src/entities/interfaces/ShipView';
 
 // Contract tests only: Phaser rendering itself is checked separately in the browser.
@@ -14,6 +15,55 @@ const { ShipInfoPanel } = await import('../src/ui/ShipInfoPanel');
 const panelLayout = ShipInfoPanel.prototype as unknown as { fitInfo(this: object, includeIcons: boolean): void };
 
 describe('simulation/view boundary', () => {
+  it('uses the supplied faction color for legacy ships regardless of their names', () => {
+    const createLegacyView = (name: string): ShipView => ({
+      id: name, name, position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, isMoving: false,
+      powerSource: { name: 'Power', currentEnergy: 100, energyCapacity: 100, energyOutput: 1 },
+      engine: { name: 'Engine', thrust: 10, energyConsumption: 1 },
+      cargoHold: { name: 'Cargo', capacity: 100, usedSpace: 0, currentWeight: 0, maxWeight: 50 },
+      getDesign: () => undefined, getInstalledModuleNames: () => [], getInfo: () => '',
+      getTotalCost: () => 0, getTotalWeight: () => 0, getCurrentMaxSpeed: () => 0, getMaxRange: () => 0,
+      getFlightEstimate: () => ({ kind: 'stationary' })
+    });
+    const colorForName = (name: string) => {
+      const fillStyle = vi.fn();
+      const spritePrototype = ShipSprite.prototype as unknown as {
+        drawShip(this: { ship: ShipView; shipBody: object; hullColor: number; getShipColor(): number }): void;
+        getShipColor(this: { hullColor: number }): number;
+      };
+      const fakeSprite = { ship: createLegacyView(name), shipBody: {
+        clear: vi.fn(), fillStyle, fillTriangle: vi.fn(), fillCircle: vi.fn(), fillRect: vi.fn(),
+        lineStyle: vi.fn(), strokeTriangle: vi.fn()
+      }, hullColor: 0xff6655, getShipColor: spritePrototype.getShipColor };
+      spritePrototype.drawShip.call(fakeSprite);
+      return fillStyle.mock.calls[0][0];
+    };
+
+    expect(colorForName('Разведчик')).toBe(0xff6655);
+    expect(colorForName('Грузовоз')).toBe(0xff6655);
+  });
+
+  it('uses hull scale and component kind for project silhouettes and hardpoint colors', () => {
+    const render = (design: ShipDesign) => {
+      const graphics = {
+        clear: vi.fn(), fillStyle: vi.fn(), fillTriangle: vi.fn(), fillRoundedRect: vi.fn(),
+        lineStyle: vi.fn(), strokeTriangle: vi.fn(), fillRect: vi.fn(), fillCircle: vi.fn()
+      };
+      drawBlueprint(graphics as never, design, 0x4488ff);
+      return graphics;
+    };
+    let fighter = createDesign('fighter');
+    fighter = installComponent(fighter, 'engine_1', createComponent('engine'));
+    fighter = installComponent(fighter, 'beam_1', createComponent('beam'));
+    const battleship = createDesign('battleship');
+    const fighterGraphics = render(fighter), battleshipGraphics = render(battleship);
+
+    expect(fighterGraphics.fillStyle).toHaveBeenCalledWith(0x4488ff, 1);
+    expect(fighterGraphics.fillStyle).toHaveBeenCalledWith(0x80f5b9, 1);
+    expect(fighterGraphics.fillStyle).toHaveBeenCalledWith(0x74e4ff, 1);
+    expect(battleshipGraphics.fillTriangle.mock.calls[0][3]).toBeGreaterThan(fighterGraphics.fillTriangle.mock.calls[0][3]);
+  });
+
   it('renders a structural read-only view without legacy equipment or simulation methods', () => {
     const ship: ShipView = {
       id: 'view', name: 'View', position: { x: 20, y: 40 }, velocity: { x: 0, y: 0 }, isMoving: false,

@@ -56,7 +56,7 @@ export class ShipSprite extends Phaser.GameObjects.Container {
       return;
     }
 
-    // Определяем цвет корабля на основе типа
+    // Legacy ships use the same explicit faction color contract as project ships.
     const color = this.getShipColor();
 
     // Основной корпус корабля
@@ -164,19 +164,7 @@ export class ShipSprite extends Phaser.GameObjects.Container {
    * Определить цвет корабля на основе его типа
    */
   private getShipColor(): number {
-    const name = this.ship.name.toLowerCase();
-    
-    if (name.includes('разведчик') || name.includes('scout')) {
-      return 0x00ff00; // Зеленый
-    } else if (name.includes('грузов') || name.includes('freight')) {
-      return 0xffaa00; // Оранжевый
-    } else if (name.includes('крейсер') || name.includes('war')) {
-      return 0xff0000; // Красный
-    } else if (name.includes('добытчик') || name.includes('miner')) {
-      return 0xffff00; // Желтый
-    }
-    
-    return 0x00aaff; // Синий по умолчанию
+    return this.hullColor ?? 0x00aaff;
   }
 
   /**
