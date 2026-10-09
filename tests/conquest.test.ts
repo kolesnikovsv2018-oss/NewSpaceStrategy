@@ -210,18 +210,22 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":4', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":5', '"schemaVersion":999'))).toThrow();
 });
 
-it('versions campaign variant profiles and grandfathers v4/rules1 ship designs', () => {
+it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 4, rulesVersion: 2,
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 5, rulesVersion: 3,
     conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 2 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };
-  expect(decodeConquestSave(JSON.stringify(oldEnvelope)).battlePolicy).toBe('campaign-v1');
+  expect(() => decodeConquestSave(JSON.stringify(oldEnvelope))).toThrow();
+  for (const schemaVersion of [1, 2, 3, 4, 6]) {
+    expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, schemaVersion }))).toThrow();
+  }
+  expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, rulesVersion: 2 }))).toThrow();
 
   const currentTree = getDefaultResearchTree();
   if (currentTree.version !== 2) throw new Error('Expected profiled research tree');
@@ -236,13 +240,7 @@ it('versions campaign variant profiles and grandfathers v4/rules1 ship designs',
   legacy.session.ships.push({ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design: legacyDesign });
   legacy.operations['1'] = createOperationalState(legacyDesign);
 
-  const legacyBytes = encodeConquestSave(legacy);
-  expect(JSON.parse(legacyBytes)).toMatchObject({ schemaVersion: 4, rulesVersion: 1,
-    conquest: { researchTree: { version: 1 }, session: { ships: [{ design: { slots: expect.any(Array) } }] } } });
-  expect(decodeConquestSave(legacyBytes)).toEqual(legacy);
-  expect(decodeConquestSave(legacyBytes).session.ships[0].design.slots.find(slot => slot.id === 'beam_1')?.component)
-    .toMatchObject({ kind: 'beam', damage: 27.6 });
-  expect(() => decodeConquestSave(legacyBytes.replace('"rulesVersion":1', '"rulesVersion":2'))).toThrow();
+  expect(() => encodeConquestSave(legacy)).toThrow();
 });
 
 it('removes captured production and invalidated groups while preserving surviving IDs', () => {

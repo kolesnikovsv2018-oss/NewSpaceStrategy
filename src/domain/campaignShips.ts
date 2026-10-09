@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { areSystemsAdjacent, factionIdSchema, systemIdSchema, type CampaignFactionId, type SystemId } from './campaign';
+import { factionIdSchema, systemIdSchema, type CampaignFactionId, type SystemId } from './campaign';
 import { flightDesignSchema, orderIdSchema } from './production';
 import type { Treasury } from './campaignEconomy';
 
@@ -20,8 +20,8 @@ export const campaignShipSchema = z.object({
   fuel: campaignFuelSchema,
   transit: z.object({ destinationId: systemIdSchema, remainingTurns: z.literal(1) }).strict().optional()
 }).strict().superRefine((ship, ctx) => {
-  if (ship.transit && !areSystemsAdjacent(ship.systemId, ship.transit.destinationId)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Перелёт требует прямой переход в другую систему' });
+  if (ship.transit && ship.systemId === ship.transit.destinationId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Цель перелёта должна отличаться от исходной системы' });
   }
 });
 export type CampaignShip = z.infer<typeof campaignShipSchema>;

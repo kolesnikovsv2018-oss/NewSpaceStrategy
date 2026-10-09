@@ -5,31 +5,33 @@
 
 ## Промпт и завершённый результат
 
-Обобщи новый режим с двух сторон на утверждённый конечный диапазон P. Участники, ход, наблюдения, AI, договоры и встречи должны реально работать; простого расширения factionIdSchema недостаточно.
+Обобщи единую кампанию с двух сторон на утверждённый конечный диапазон P. Участники, ход, наблюдения, AI, договоры и встречи должны реально работать; простого расширения factionIdSchema недостаточно.
 
 Опоры: [campaign](../../src/domain/campaign.ts), [campaignControl](../../src/domain/campaignControl.ts), [conquest](../../src/domain/conquest.ts), [conquestAi](../../src/domain/conquestAi.ts), [conquestBattle](../../src/domain/conquestBattle.ts), [BattleManager](../../src/entities/BattleManager.ts), [ConquestScene](../../src/scenes/ConquestScene.ts).
 
 ## Работы
 
-1. Утверди максимальный P и минимальные размеры ручных карт. Participant IDs — стабильные ASCII ссылки из snapshot, не enum blue/red для новой policy.
+1. Утверди игровой диапазон P в пределах уже поддержанных генератором 2–8 и текущего minimum worldCount >= 3×P; более широкий диапазон требует отдельного изменения профиля. Participant IDs — стабильные `player-NN` ссылки из snapshot, не enum blue/red для новой policy.
 2. Введи расписание: ordered participants, active index/phase, monotonic revision/turn и round. Активная сторона определяется расписанием, не parity.
 3. Согласуй elimination/пропуск/observer/control takeover. Ноль колоний сам не устраняет сторону с кораблями; полный раунд и сроки договоров не должны застревать при исключённом участнике.
-4. Обобщи ownership, knowledge, treasuries, research, projects, ships/fleets, limits и pair relations. Caps проверяются per faction и globally без множителя «×2».
+4. Обобщи ownership, knowledge, treasuries, research, projects, ships/fleets, limits и pair relations. Включи каталоги корабельных проектов Н05а и контекст конструктора: владельцы/ID/доступность/own-view/save без привязки к blue/red. Caps проверяются per faction и globally без множителя «×2».
 5. Контроллеры могут быть local либо человек + несколько AI; последовательность одного bounded пакета на активного AI, один captured cancellable ticket, без рекурсивной синхронной цепочки всех сторон.
 6. Обобщи encounters: три/более сторон могут присутствовать в одной системе. До кода согласуй versioned политику разрешения с реальным BattleManager: multi-faction hostile selection либо deterministic pairwise порядок. Не объявляй одновременный бой, если результат последовательный.
 7. Treaty rules Н16 фильтруют допустимые противники. При coexistence/timeout захват выполняется только если все его условия соблюдены, не просто «в системе >1».
 8. RNG streams привязываются к stable faction/ship IDs; порядок input arrays не даёт необоснованную инициативу. Актуальная policy должна корректно обслуживать как двух, так и несколько участников без отдельных форматов.
 9. UI: выбор наблюдателя/следующей local стороны, цвета по faction metadata, own-only человек в AI mode, сообщения/standings без скрытой казны.
-10. Save содержит participants/schedule/controls и полный снимок; import maps с P вне поддержанного диапазона rejected. Генератор опционален и переиспользует формат Н05.
+10. Save содержит participants/schedule/controls и полный снимок; доменная граница карт с P вне поддержанного диапазона rejected. Генератор уже обязателен для старта: разблокируй выбор P в существующих настройках, согласуй предел worldCount и mapping всех participants без текущего «первый blue, остальные red». CLI/browser/codec/checker сохраняют один актуальный формат и метрический профиль Н14; новый импорт карт в UI не требуется.
 
 ## Приёмка и проверки
 
 - P=2 сохраняет новую принятую двухстороннюю механику; P=3 и согласованный max имеют ровно одно начисление каждому на цикл.
 - Elimination/skip/last faction/переход round и истечение договора проверены; ни один load не запускает scheduler сам.
 - Человек не командует чужим AI; observers не меняют active/control.
+- Каждый участник видит только собственные проекты и доступное оборудование; редактор/заказ не используют каталог другой стороны, save/load сохраняет все каталоги без смешивания.
 - Три стороны в системе: разные treaty графы, уничтожение/timeout, корректные losses/operations/groups и один легальный capture.
 - Перестановки массивов и зеркальные starts проверяют стабильность policy/streams в оговорённых границах.
 - Save/load на каждом участнике/в пути/перед встречей равен следующему oracle; browser local+несколько AI, tests/typecheck/build.
+- Генерация/start/save/load для P=2/3/max сохраняют отдельные дома и две ближайшие доступные цели **каждого** участника; не только человеческой стороны. Ошибка записи карты/отмена не заменяет партию; load не читает latest-map и не генерирует.
 
 ## Не входит и независимая поставка
 

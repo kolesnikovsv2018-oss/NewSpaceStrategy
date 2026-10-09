@@ -236,7 +236,7 @@ describe('purity and integration boundary', () => {
         const specifier = statement.moduleSpecifier.text;
         if (!specifier.startsWith('.')) continue;
         if (ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly) continue;
-        const target = resolve(dirname(path), specifier + '.ts');
+        const target = resolve(dirname(path), specifier.endsWith('.ts') ? specifier : specifier + '.ts');
         const parents = imports.get(target) ?? new Set<string>(); parents.add(path); imports.set(target, parents);
         visit(target);
       }

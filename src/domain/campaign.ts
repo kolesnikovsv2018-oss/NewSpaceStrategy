@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { validateGalaxyMap, type GalaxyMap } from './galaxyMap';
 
 export const factionIdSchema = z.enum(['blue', 'red']);
-export const systemIdSchema = z.enum(['sol', 'eden', 'rift', 'nexus', 'dust', 'vega']);
+export const systemIdSchema = z.union([z.enum(['sol', 'eden', 'rift', 'nexus', 'dust', 'vega']),
+  z.string().regex(/^world-[0-9]{3}$/)]);
 export type CampaignFactionId = z.infer<typeof factionIdSchema>;
 export type SystemId = z.infer<typeof systemIdSchema>;
 
@@ -36,7 +38,19 @@ const galaxy: GalaxyDefinition = {
 };
 
 /** Detached definition; callers cannot change the scenario used by commands. */
-export function getGalaxyDefinition(): GalaxyDefinition {
+export function getGalaxyDefinition(state?: { map?: GalaxyMap }): GalaxyDefinition {
+  if (state?.map) {
+    const map = state.map;
+    return {
+      factions: map.participants.map((participant, index) => ({
+        id: index === 0 ? 'blue' : 'red', name: participant.name, homeSystemId: participant.homeWorldId
+      })),
+      systems: map.worlds.map(world => ({
+        id: world.id, name: world.name, x: world.x, y: world.y, habitable: world.type === 'habitable'
+      })),
+      lanes: map.lanes.map(([from, to]) => [from, to])
+    };
+  }
   return {
     factions: galaxy.factions.map(faction => ({ ...faction })),
     systems: galaxy.systems.map(system => ({ ...system })),
@@ -50,11 +64,23 @@ const systemStateSchema = z.object({
   exploredBy: z.array(factionIdSchema).max(2)
 }).strict();
 
-/** Runtime invariants for this fixed scenario, not a versioned campaign save format. */
+const campaignMapSchema = z.unknown().transform((input, ctx) => {
+  const checked = validateGalaxyMap(input);
+  if (!checked.ok || checked.map.participants.length !== 2) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Кампания требует проверенную карту для двух участников' });
+    return z.NEVER;
+  }
+  return checked.map;
+});
+
 export const campaignStateSchema = z.object({
-  systems: z.array(systemStateSchema).length(galaxy.systems.length)
+  map: campaignMapSchema.optional(),
+  systems: z.array(systemStateSchema).min(1).max(256)
 }).strict().superRefine((state, ctx) => {
-  if (new Set(state.systems.map(system => system.id)).size !== galaxy.systems.length) {
+  const definition = getGalaxyDefinition(state);
+  if (state.systems.length !== definition.systems.length ||
+    new Set(state.systems.map(system => system.id)).size !== definition.systems.length ||
+    state.systems.some(system => !definition.systems.some(item => item.id === system.id))) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Нужна ровно одна запись каждой системы' });
   }
   for (const system of state.systems) {
@@ -62,17 +88,20 @@ export const campaignStateSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Стороны разведки не должны повторяться' });
     }
     if (system.ownerId !== null && (!system.exploredBy.includes(system.ownerId) ||
-      !galaxy.systems.find(definition => definition.id === system.id)!.habitable)) {
+      !definition.systems.find(item => item.id === system.id)?.habitable)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Колония требует пригодную систему, разведанную владельцем' });
     }
   }
 });
 export type CampaignState = z.infer<typeof campaignStateSchema>;
 
-export function createCampaignState(): CampaignState {
+export function createCampaignState(map?: GalaxyMap): CampaignState {
+  const snapshot = map ? campaignMapSchema.parse(map) : undefined;
+  const definition = getGalaxyDefinition({ map: snapshot });
   return {
-    systems: galaxy.systems.map(system => {
-      const ownerId = galaxy.factions.find(faction => faction.homeSystemId === system.id)?.id ?? null;
+    ...(snapshot ? { map: snapshot } : {}),
+    systems: definition.systems.map(system => {
+      const ownerId = definition.factions.find(faction => faction.homeSystemId === system.id)?.id ?? null;
       return { id: system.id, ownerId, exploredBy: ownerId === null ? [] : [ownerId] };
     })
   };
@@ -89,14 +118,14 @@ export type CampaignErrorCode = 'INVALID_STATE' | 'INVALID_COMMAND' | 'ALREADY_E
 export type CampaignCommandResult = { ok: true; state: CampaignState } |
   { ok: false; code: CampaignErrorCode; message: string };
 
-function hasNeighbour(systemId: SystemId, candidates: readonly SystemId[]): boolean {
-  return galaxy.lanes.some(([from, to]) =>
+function hasNeighbour(systemId: SystemId, candidates: readonly SystemId[], state?: { map?: GalaxyMap }): boolean {
+  return getGalaxyDefinition(state).lanes.some(([from, to]) =>
     (from === systemId && candidates.includes(to)) || (to === systemId && candidates.includes(from)));
 }
 
-/** Fixed undirected topology shared by travel validation and commands. */
-export function areSystemsAdjacent(from: SystemId, to: SystemId): boolean {
-  return hasNeighbour(systemIdSchema.parse(from), [systemIdSchema.parse(to)]);
+/** Party topology; without a snapshot, only the immutable peaceful scenario is used. */
+export function areSystemsAdjacent(from: SystemId, to: SystemId, state?: { map?: GalaxyMap }): boolean {
+  return hasNeighbour(systemIdSchema.parse(from), [systemIdSchema.parse(to)], state);
 }
 
 /** Pure atomic command: validate first, then change only the target in a detached state. */
@@ -107,13 +136,14 @@ export function executeCampaignCommand(inputState: unknown, inputCommand: unknow
   if (!parsedCommand.success) return { ok: false, code: 'INVALID_COMMAND', message: 'Недопустимая команда, сторона или система' };
   const state = parsedState.data;
   const { kind, factionId, systemId } = parsedCommand.data;
-  const target = state.systems.find(system => system.id === systemId)!;
+  const target = state.systems.find(system => system.id === systemId);
+  if (!target) return { ok: false, code: 'INVALID_COMMAND', message: 'Система отсутствует на карте партии' };
   if (kind === 'explore') {
     if (target.exploredBy.includes(factionId)) {
       return { ok: false, code: 'ALREADY_EXPLORED', message: 'Система уже разведана этой стороной' };
     }
     const explored = state.systems.filter(system => system.exploredBy.includes(factionId)).map(system => system.id);
-    if (!hasNeighbour(systemId, explored)) {
+    if (!hasNeighbour(systemId, explored, state)) {
       return { ok: false, code: 'OUT_OF_REACH', message: 'Нет перехода из разведанной системы' };
     }
     target.exploredBy.push(factionId);
@@ -123,11 +153,11 @@ export function executeCampaignCommand(inputState: unknown, inputCommand: unknow
       return { ok: false, code: 'NOT_EXPLORED', message: 'Сначала разведайте систему' };
     }
     if (target.ownerId !== null) return { ok: false, code: 'OCCUPIED', message: 'Система уже колонизирована' };
-    if (!galaxy.systems.find(system => system.id === systemId)!.habitable) {
+    if (!getGalaxyDefinition(state).systems.find(system => system.id === systemId)!.habitable) {
       return { ok: false, code: 'UNINHABITABLE', message: 'Система непригодна для колонизации' };
     }
     const owned = state.systems.filter(system => system.ownerId === factionId).map(system => system.id);
-    if (!hasNeighbour(systemId, owned)) {
+    if (!hasNeighbour(systemId, owned, state)) {
       return { ok: false, code: 'OUT_OF_REACH', message: 'Нет перехода из собственной колонии' };
     }
     target.ownerId = factionId;
@@ -153,15 +183,16 @@ export interface CampaignView {
 export function getCampaignView(inputState: CampaignState, factionId: CampaignFactionId): CampaignView {
   const state = campaignStateSchema.parse(inputState);
   const faction = factionIdSchema.parse(factionId);
+  const definition = getGalaxyDefinition(state);
   return {
     factionId: faction,
-    systems: galaxy.systems.map(definition => {
+    systems: definition.systems.map(definition => {
       const system = state.systems.find(item => item.id === definition.id)!;
       const { id, name, x, y } = definition;
       return system.exploredBy.includes(faction)
         ? { id, name, x, y, visibility: 'explored', habitable: definition.habitable, ownerId: system.ownerId }
         : { id, name, x, y, visibility: 'unknown' };
     }),
-    lanes: galaxy.lanes.map(([from, to]) => [from, to])
+    lanes: definition.lanes.map(([from, to]) => [from, to])
   };
 }

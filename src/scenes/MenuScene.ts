@@ -1,89 +1,71 @@
 export class MenuScene extends Phaser.Scene {
+  private root?: Phaser.GameObjects.Container;
+  private demonstrations = false;
+  private generation = 0;
+  private readonly onEscape = () => {
+    if (this.demonstrations) this.render(false);
+  };
+
   constructor() {
     super({ key: 'MenuScene' });
   }
 
   create() {
+    this.render(false);
+    this.input.keyboard?.on('keydown-ESC', this.onEscape);
+    this.events.once('shutdown', () => {
+      this.generation++;
+      this.input.keyboard?.off('keydown-ESC', this.onEscape);
+      this.root?.destroy(true);
+      this.root = undefined;
+    });
+  }
+
+  private render(demonstrations: boolean) {
+    this.generation++;
+    this.demonstrations = demonstrations;
+    this.root?.destroy(true);
+    this.root = this.add.container();
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    // Title
-    this.add.text(width / 2, height / 4, 'ORION', {
+    this.root.add(this.add.text(width / 2, height / 4, 'ORION', {
       fontSize: '64px',
       color: '#ffffff',
       fontStyle: 'bold'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5));
 
-    // Subtitle
-    this.add.text(width / 2, height / 3, 'Space Strategy', {
+    this.root.add(this.add.text(width / 2, height / 3, 'Space Strategy', {
       fontSize: '32px',
       color: '#ffffff'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5));
 
-    // Start button
-    const startButton = this.add.text(width / 2, height / 2, 'Галактика', {
-      fontSize: '32px',
-      color: '#ffffff',
-      backgroundColor: '#444444',
-      padding: { x: 20, y: 10 }
-    })
-    .setName('start-campaign').setOrigin(0.5)
-    .setInteractive({ useHandCursor: true });
+    if (!demonstrations) {
+      this.button('start-conquest', 'Новая кампания', height / 2, () => this.scene.start('ConquestScene'), '#265c50', 32);
+      this.button('open-shipyard', 'Верфь', height / 2 + 75, () => this.scene.start('ShipyardScene'), '#226622');
+      this.button('open-demonstrations', 'Демонстрации', height / 2 + 150, () => this.render(true));
+      return;
+    }
 
-    // Ship Test button
-    const testButton = this.add.text(width / 2, height / 2 + 60, 'Ship Test', {
-      fontSize: '24px',
-      color: '#ffffff',
-      backgroundColor: '#444444',
-      padding: { x: 20, y: 10 }
-    })
-    .setOrigin(0.5)
-    .setInteractive({ useHandCursor: true });
+    this.root.add(this.add.text(width / 2, height / 2 - 50, 'Демонстрации', {
+      fontSize: '28px', color: '#ffffff'
+    }).setName('demonstrations-title').setOrigin(0.5));
+    this.button('start-campaign', 'Мирная песочница', height / 2 + 10, () => this.scene.start('MainScene'));
+    this.button('start-ship-test', 'Испытание кораблей', height / 2 + 75, () => this.scene.start('ShipTestScene'));
+    this.button('start-battle-test', 'Испытание боя', height / 2 + 140, () => this.scene.start('BattleScene'), '#662222');
+    this.button('demonstrations-back', 'Назад', height / 2 + 215, () => this.render(false));
+  }
 
-    // Shipyard button
-    const shipyardButton = this.add.text(width / 2, height / 2 + 120, 'Shipyard', {
-      fontSize: '24px',
-      color: '#ffffff',
-      backgroundColor: '#226622',
-      padding: { x: 20, y: 10 }
-    })
-    .setOrigin(0.5)
-    .setInteractive({ useHandCursor: true });
-
-    // Battle Test button
-    const battleButton = this.add.text(width / 2, height / 2 + 180, 'Battle Test', {
-      fontSize: '24px',
-      color: '#ffffff',
-      backgroundColor: '#662222',
-      padding: { x: 20, y: 10 }
-    })
-    .setOrigin(0.5)
-    .setInteractive({ useHandCursor: true });
-
-    // Button interactions
-    this.add.text(width / 2, height / 2 + 245, 'Военная кампания', {
-      fontSize: '24px', color: '#ffffff', backgroundColor: '#265c50', padding: { x: 20, y: 10 }
-    }).setName('start-conquest').setOrigin(0.5).setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.scene.start('ConquestScene'));
-
-    startButton
-      .on('pointerover', () => startButton.setStyle({ backgroundColor: '#666666' }))
-      .on('pointerout', () => startButton.setStyle({ backgroundColor: '#444444' }))
-      .on('pointerdown', () => this.scene.start('MainScene'));
-    
-    testButton
-      .on('pointerover', () => testButton.setStyle({ backgroundColor: '#666666' }))
-      .on('pointerout', () => testButton.setStyle({ backgroundColor: '#444444' }))
-      .on('pointerdown', () => this.scene.start('ShipTestScene'));
-
-    shipyardButton
-      .on('pointerover', () => shipyardButton.setStyle({ backgroundColor: '#338833' }))
-      .on('pointerout', () => shipyardButton.setStyle({ backgroundColor: '#226622' }))
-      .on('pointerdown', () => this.scene.start('ShipyardScene'));
-
-    battleButton
-      .on('pointerover', () => battleButton.setStyle({ backgroundColor: '#882222' }))
-      .on('pointerout', () => battleButton.setStyle({ backgroundColor: '#662222' }))
-      .on('pointerdown', () => this.scene.start('BattleScene'));
+  private button(name: string, label: string, y: number, action: () => void, backgroundColor = '#444444', fontSize = 24) {
+    const generation = this.generation;
+    const button = this.add.text(this.cameras.main.width / 2, y, label, {
+      fontSize: `${fontSize}px`, color: '#ffffff', backgroundColor, padding: { x: 20, y: 10 }
+    }).setName(name).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    button.on('pointerover', () => button.setStyle({ backgroundColor: '#666666' }));
+    button.on('pointerout', () => button.setStyle({ backgroundColor }));
+    button.on('pointerdown', () => {
+      if (generation === this.generation) action();
+    });
+    this.root?.add(button);
   }
 }

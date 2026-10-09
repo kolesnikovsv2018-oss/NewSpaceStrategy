@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { GalaxyMap } from './galaxyMap';
 import { campaignCommandSchema, campaignStateSchema, createCampaignState, executeCampaignCommand,
   areSystemsAdjacent, factionIdSchema, systemIdSchema, getCampaignView, type CampaignErrorCode, type CampaignFactionId,
   type CampaignState, type CampaignView } from './campaign';
@@ -29,6 +30,9 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
   ships: campaignShipsSchema,
   fleets: campaignFleetsSchema
 }).strict().superRefine((state, ctx) => {
+  if (!allowHostile && state.galaxy.map) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Сгенерированная карта требует военную кампанию' });
+  }
   for (const record of [...state.production.orders, ...state.production.completed]) {
     if (state.galaxy.systems.find(system => system.id === record.systemId)?.ownerId !== record.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Производственная запись требует собственную колонию' });
@@ -36,7 +40,9 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
   }
   const productionIds = new Set([...state.production.orders, ...state.production.completed].map(record => record.id));
   const shipsById = new Map(state.ships.map(ship => [ship.id, ship]));
+  const systemIds = new Set(state.galaxy.systems.map(system => system.id));
   for (const fleet of state.fleets.items) {
+    if (!systemIds.has(fleet.systemId)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Система группы отсутствует на карте' });
     if (!allowHostile && state.galaxy.systems.find(system => system.id === fleet.systemId)?.ownerId !== fleet.factionId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Группа требует собственную колонию' });
     }
@@ -50,6 +56,10 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
     }
   }
   for (const ship of state.ships) {
+    if (!systemIds.has(ship.systemId) || (ship.transit &&
+      (!systemIds.has(ship.transit.destinationId) || !areSystemsAdjacent(ship.systemId, ship.transit.destinationId, state.galaxy)))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль и маршрут должны принадлежать карте партии' });
+    }
     if (productionIds.has(ship.id) || ship.id > state.production.lastOrderId) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль требует отдельный ранее выданный идентификатор производства' });
     }
@@ -66,8 +76,8 @@ export const campaignSessionSchema = makeSessionSchema(false);
 export const conquestSessionSchema = makeSessionSchema(true);
 export type CampaignSession = z.infer<typeof campaignSessionSchema>;
 
-export function createCampaignSession(): CampaignSession {
-  return { galaxy: createCampaignState(), turn: 1,
+export function createCampaignSession(map?: GalaxyMap): CampaignSession {
+  return { galaxy: createCampaignState(map), turn: 1,
     treasuries: { blue: { ...initialTreasury }, red: { ...initialTreasury } }, production: createProductionState(), ships: [],
     fleets: createCampaignFleets() };
 }
@@ -143,6 +153,10 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
   if (command.factionId !== activeFaction(state.turn)) {
     return { ok: false, code: 'NOT_ACTIVE_FACTION', message: 'Сейчас ход другой стороны' };
   }
+  if (('systemId' in command && !state.galaxy.systems.some(system => system.id === command.systemId)) ||
+    ('destinationId' in command && !state.galaxy.systems.some(system => system.id === command.destinationId))) {
+    return { ok: false, code: 'INVALID_COMMAND', message: 'Система отсутствует на карте партии' };
+  }
   if (command.kind === 'createFleet' || command.kind === 'disbandFleet' || command.kind === 'sendFleet') {
     if (!allowHostile && state.galaxy.systems.find(system => system.id === command.systemId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Группировка доступна только в своей колонии' };
@@ -162,7 +176,7 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
       if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
         return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
       }
-      if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
+      if (!areSystemsAdjacent(command.systemId, command.destinationId, state.galaxy)) {
         return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
       }
       // Membership was validated at the session boundary. Check every tank before any debit.
@@ -218,7 +232,7 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
     if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
     }
-    if (!areSystemsAdjacent(command.systemId, command.destinationId)) {
+    if (!areSystemsAdjacent(command.systemId, command.destinationId, state.galaxy)) {
       return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
     }
     if (ship.fuel < TRAVEL_FUEL_COST) {

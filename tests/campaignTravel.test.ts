@@ -218,10 +218,17 @@ describe('one-own-turn strategic travel', () => {
   it.each([null, {}, { destinationId: 'eden' }, { destinationId: 'eden', remainingTurns: 0 },
     { destinationId: 'eden', remainingTurns: 2 }, { destinationId: 'eden', remainingTurns: '1' },
     { destinationId: 'eden', remainingTurns: 1, fuel: 0 }, { destinationId: 'sol', remainingTurns: 1 },
-    { destinationId: 'nexus', remainingTurns: 1 }, { destinationId: 'invalid', remainingTurns: 1 }])('rejects malformed transit %#', transit => {
+    { destinationId: 'invalid', remainingTurns: 1 }])('rejects malformed transit %#', transit => {
     const state = fixture(); Object.assign(state.ships[0], { transit });
     reject(state, send, 'INVALID_STATE'); expect(() => getCampaignSessionView(state, 'blue')).toThrow();
     expect(campaignShipsSchema.safeParse(state.ships).success).toBe(false);
+  });
+  it('validates route adjacency against the session map rather than the map-free ship schema', () => {
+    const state = fixture();
+    state.ships[0].transit = { destinationId: 'nexus', remainingTurns: 1 };
+    expect(campaignShipsSchema.safeParse(state.ships).success).toBe(true);
+    reject(state, send, 'INVALID_STATE');
+    expect(() => getCampaignSessionView(state, 'blue')).toThrow();
   });
   it.each(['source', 'destination'] as const)('rejects a session whose travelling %s colony no longer belongs to the ship', endpoint => {
     const state = apply(fixture(), send); own(state, endpoint === 'source' ? 'sol' : 'eden', 'red');

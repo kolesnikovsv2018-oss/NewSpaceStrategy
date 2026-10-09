@@ -7,6 +7,9 @@ import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { closeShipyardModal } from '../src/ui/ShipyardModal';
 import * as ai from '../src/domain/conquestAi';
+import { LocalGalaxyMapRepository } from '../src/utils/GalaxyMapRepository';
+import { decodeGalaxyMap } from '../src/domain/galaxyMap';
+import * as browserGenerator from '../src/utils/BrowserGalaxyGenerator';
 
 vi.stubGlobal('Phaser', { Scene: class {} });
 const { ConquestScene } = await import('../src/scenes/ConquestScene');
@@ -32,12 +35,14 @@ class Node extends EventEmitter {
   setStrokeStyle() { return this; }
   fillStyle() { return this; }
   fillRect() { return this; }
+  fillRoundedRect() { return this; }
+  strokeRoundedRect() { return this; }
   fillCircle() { return this; }
   lineStyle() { return this; }
   lineBetween() { return this; }
 }
 
-function fixture(storage = new Map<string, string>()) {
+function fixture(storage = new Map<string, string>(), initialize = true) {
   const nodes: Node[] = [], events = new EventEmitter(), keyboard = new EventEmitter();
   const make = (value = '') => { const node = new Node(value); nodes.push(node); return node; };
   const read = vi.fn((key: string) => storage.get(key) ?? null), write = vi.fn((key: string, value: string) => { storage.set(key, value); });
@@ -52,6 +57,7 @@ function fixture(storage = new Map<string, string>()) {
     } }, add: { container: () => make(), graphics: () => make(), circle: () => make(), rectangle: () => make(),
       text: (_x: number, _y: number, value: string) => make(value) } });
   scene.create();
+  if (initialize) { closeShipyardModal(scene); owner.replace(createConquest()); }
   const find = (name: string) => { const found = nodes.find(node => node.name === name && !node.destroyed); if (!found) throw Error(name); return found; };
   const click = (name: string) => { const node = find(name); if (!node.input.enabled) throw Error(`Disabled ${name}`); node.emit('pointerdown'); };
   return { scene, owner, nodes, events, keyboard, tasks, storage, read, write, find, click };
@@ -64,6 +70,91 @@ it('creates without storage IO and cleans scene state and handlers on shutdown',
   test.events.emit('shutdown');
   expect(test.nodes.every(node => node.destroyed)).toBe(true);
   expect(test.keyboard.listenerCount('keydown-ESC')).toBe(0);
+});
+
+it('starts only after saving the selected generated map and displays two locked participants', () => {
+  const test = fixture(new Map(), false);
+  expect(test.owner.state).toBeUndefined();
+  expect(test.write).not.toHaveBeenCalled();
+  expect(test.find('conquest-participants').input.enabled).toBe(false);
+  expect(test.find('conquest-world-count').text).toBe('Миров: 40');
+  test.click('conquest-worlds-plus'); test.click('conquest-worlds-minus-ten');
+  vi.spyOn(browserGenerator, 'createGalaxySeed').mockReturnValue(12345);
+  test.click('conquest-new-local');
+  expect(test.owner.state.session.galaxy.systems).toHaveLength(31);
+  expect(test.write).toHaveBeenCalledTimes(1);
+  const decoded = decodeGalaxyMap(test.storage.get(LocalGalaxyMapRepository.STORAGE_KEY)!);
+  expect(decoded).toMatchObject({ ok: true, map: test.owner.state.session.galaxy.map });
+  expect(test.owner.state.seed).toBe(12345);
+  expect(test.nodes.filter(node => !node.destroyed && node.name.startsWith('conquest-system-'))).toHaveLength(31);
+  test.click('conquest-select-world');
+  test.click('choice-2');
+  expect(test.owner.selected).toBe('world-003');
+  test.events.emit('shutdown');
+});
+
+it('bounds world count and cancel never generates or writes', () => {
+  const test = fixture();
+  const before = structuredClone(test.owner.state);
+  const generate = vi.spyOn(browserGenerator, 'generateBrowserGalaxy');
+  test.click('conquest-new');
+  for (let index = 0; index < 30; index++) test.click('conquest-worlds-plus-ten');
+  expect(test.find('conquest-world-count').text).toBe('Миров: 256');
+  for (let index = 0; index < 30; index++) test.click('conquest-worlds-minus-ten');
+  expect(test.find('conquest-world-count').text).toBe('Миров: 6');
+  test.click('conquest-new-cancel');
+  expect(generate).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  expect(test.owner.state).toEqual(before);
+  test.events.emit('shutdown');
+});
+
+it('refuses startup on local write failure without changing the current campaign or previous map', () => {
+  const test = fixture();
+  test.click('conquest-new'); test.click('conquest-new-local');
+  const before = structuredClone(test.owner.state), bytes = test.storage.get(LocalGalaxyMapRepository.STORAGE_KEY);
+  test.write.mockImplementation(() => { throw new Error('quota'); });
+  test.click('conquest-new'); test.click('conquest-worlds-plus'); test.click('conquest-new-ai');
+  expect(test.owner.state).toEqual(before);
+  expect(test.storage.get(LocalGalaxyMapRepository.STORAGE_KEY)).toBe(bytes);
+  expect(test.find('conquest-generation-error').text).toContain('не запущена');
+  test.click('conquest-new-cancel');
+  test.events.emit('shutdown');
+});
+
+it('load restores the saved map rather than generating or reading the latest-map slot', () => {
+  const test = fixture();
+  test.click('conquest-new'); test.click('conquest-new-ai');
+  test.click('conquest-end');
+  const saved = structuredClone(test.owner.state);
+  test.click('conquest-save'); test.click('conquest-confirm');
+  test.click('conquest-new'); test.click('conquest-worlds-plus'); test.click('conquest-new-local');
+  const latest = test.storage.get(LocalGalaxyMapRepository.STORAGE_KEY);
+  const generate = vi.spyOn(browserGenerator, 'generateBrowserGalaxy');
+  test.read.mockClear(); test.write.mockClear();
+  test.click('conquest-load'); test.click('conquest-confirm');
+  expect(test.owner.state).toEqual(saved);
+  expect(test.owner.phase).toBe('paused');
+  expect(generate).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  expect(test.read).toHaveBeenCalledExactlyOnceWith(CampaignSaveManager.STORAGE_KEY);
+  expect(test.storage.get(LocalGalaxyMapRepository.STORAGE_KEY)).toBe(latest);
+  test.events.emit('shutdown');
+});
+
+it('rejects late asynchronous map-repository completion after shutdown and reentry', async () => {
+  const test = fixture();
+  let resolve!: (value: { ok: true }) => void;
+  const save = vi.fn(() => new Promise<{ ok: true }>(done => { resolve = done; }));
+  Object.assign(test.scene, { mapRepository: { save } });
+  test.click('conquest-new'); test.click('conquest-new-local');
+  test.click('conquest-new-ai');
+  expect(save).toHaveBeenCalledOnce();
+  test.events.emit('shutdown');
+  test.scene.create();
+  const before = test.owner.state;
+  resolve({ ok: true }); await Promise.resolve();
+  expect(test.owner.state).toBe(before);
+  test.click('conquest-new-cancel');
+  test.events.emit('shutdown');
 });
 
 it('draws the replay backdrop once and only clears the dynamic layer per frame', () => {
@@ -93,6 +184,7 @@ it('draws the replay backdrop once and only clears the dynamic layer per frame',
 
   expect(graphics).toHaveLength(2);
   expect(graphics[0].fillRect).toHaveBeenCalledOnce();
+  expect(graphics[0].fillRect).toHaveBeenCalledWith(0, 0, 1280, 720);
   expect(graphics[0].clear).not.toHaveBeenCalled();
   expect(graphics[1].clear).toHaveBeenCalledTimes(2);
   closeShipyardModal(test.scene);
@@ -117,6 +209,7 @@ it('save cancels AI before confirmation and cancel does not reschedule', () => {
   const test = fixture();
   test.click('conquest-new'); test.click('conquest-new-ai'); test.click('conquest-end');
   const before = structuredClone(test.owner.state);
+  test.write.mockClear();
   test.click('conquest-save');
   expect(test.tasks[0].remove).toHaveBeenCalledTimes(1);
   expect(test.write).not.toHaveBeenCalled();
@@ -126,7 +219,7 @@ it('save cancels AI before confirmation and cancel does not reschedule', () => {
   expect(test.tasks).toHaveLength(1);
 });
 
-it('saves a full version4 snapshot and loads AI-red paused in a fresh scene', () => {
+it('saves a full version5 snapshot and loads AI-red paused in a fresh scene', () => {
   const test = fixture();
   test.click('conquest-new'); test.click('conquest-new-ai'); test.click('conquest-end');
   const before = structuredClone(test.owner.state);
