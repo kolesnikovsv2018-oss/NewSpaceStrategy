@@ -16,11 +16,12 @@ const { ConquestScene } = await import('../src/scenes/ConquestScene');
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 class Node extends EventEmitter {
-  name = ''; text = ''; destroyed = false; list: Node[] = []; input = { enabled: false };
+  name = ''; text = ''; destroyed = false; active = true; list: Node[] = []; input = { enabled: false };
+  x = 0; y = 0; width = 0; height = 20; fontSize = 14;
   context = { measureText: (value: string) => ({ width: value.length * 8 }) };
   constructor(value = '') { super(); this.text = value; }
   add(node: Node) { this.list.push(node); return this; }
-  destroy() { if (this.destroyed) return; this.destroyed = true; this.emit('destroy'); this.list.forEach(node => node.destroy()); this.removeAllListeners(); }
+  destroy() { if (this.destroyed) return; this.destroyed = true; this.active = false; this.emit('destroy'); this.list.forEach(node => node.destroy()); this.removeAllListeners(); }
   removeAll() { this.list.forEach(node => node.destroy()); this.list = []; return this; }
   setName(value: string) { this.name = value; return this; }
   setText(value: string) { this.text = value; return this; }
@@ -29,7 +30,7 @@ class Node extends EventEmitter {
   setAlpha() { return this; }
   setPadding() { return this; }
   setBackgroundColor() { return this; }
-  setFixedSize() { return this; }
+  setFixedSize(width: number, height: number) { this.width = width; this.height = height; return this; }
   setDepth() { return this; }
   setWordWrapWidth() { return this; }
   setStrokeStyle() { return this; }
@@ -42,20 +43,38 @@ class Node extends EventEmitter {
   lineBetween() { return this; }
 }
 
-function fixture(storage = new Map<string, string>(), initialize = true) {
-  const nodes: Node[] = [], events = new EventEmitter(), keyboard = new EventEmitter();
+class Keyboard extends EventEmitter {
+  active = true;
+  isActive() { return this.active; }
+  private bound = new Map<(...args: unknown[]) => void, (...args: unknown[]) => void>();
+  override on(event: string | symbol, listener: (...args: unknown[]) => void, context?: object) {
+    const bound = context ? listener.bind(context) : listener;
+    this.bound.set(listener, bound);
+    return super.on(event, bound);
+  }
+  override off(event: string | symbol, listener: (...args: unknown[]) => void) {
+    const result = super.off(event, this.bound.get(listener) ?? listener);
+    this.bound.delete(listener);
+    return result;
+  }
+}
+
+function fixture(storage = new Map<string, string>(), initialize = true, width = 1280, height = 720) {
+  const nodes: Node[] = [], events = new EventEmitter(), keyboard = new Keyboard();
   const make = (value = '') => { const node = new Node(value); nodes.push(node); return node; };
   const read = vi.fn((key: string) => storage.get(key) ?? null), write = vi.fn((key: string, value: string) => { storage.set(key, value); });
   vi.stubGlobal('localStorage', { getItem: read, setItem: write });
   const tasks: { callback: () => void; remove: ReturnType<typeof vi.fn> }[] = [];
   const scene = new ConquestScene();
   const owner = scene as unknown as { state: Conquest; phase: string; page: number; tab: string;
-    observer: 'blue' | 'red'; selected: string; replace(state: Conquest): void; render(): void };
-  Object.assign(scene, { cameras: { main: { width: 1280, height: 720 } }, input: { keyboard }, events,
+    observer: 'blue' | 'red'; selected: string; replace(state: Conquest): void; render(): void;
+    forwardEscape(event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>): void };
+  Object.assign(scene, { cameras: { main: { width, height } }, input: { keyboard }, events,
     scene: { start: () => events.emit('shutdown') }, time: { delayedCall: (_delay: number, callback: () => void) => {
       const task = { callback, remove: vi.fn() }; tasks.push(task); return task;
-    } }, add: { container: () => make(), graphics: () => make(), circle: () => make(), rectangle: () => make(),
-      text: (_x: number, _y: number, value: string) => make(value) } });
+    } }, add: { container: (x = 0, y = 0) => Object.assign(make(), { x, y }), graphics: () => make(), circle: () => make(), rectangle: () => make(),
+      text: (x: number, y: number, value: string, style: { fontSize: string }) =>
+        Object.assign(make(value), { x, y, fontSize: Number.parseInt(style.fontSize, 10) }) } });
   scene.create();
   if (initialize) { closeShipyardModal(scene); owner.replace(createConquest()); }
   const find = (name: string) => { const found = nodes.find(node => node.name === name && !node.destroyed); if (!found) throw Error(name); return found; };
@@ -317,4 +336,146 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   test.owner.render();
   expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
   test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('keeps primary controls >=44 and text >=14 at %sx%s', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  const sections = width === 390 ? ['map', 'research', 'production', 'fleet', 'battles', 'actions'] :
+    ['research', 'production', 'fleet', 'battles'];
+  for (const section of sections) {
+    test.click(`conquest-tab-${section}`);
+    const controls = test.nodes.filter(node => !node.destroyed && node.name.startsWith('conquest-') && node.width > 0);
+    for (const node of controls) {
+      expect(node.width).toBeGreaterThanOrEqual(44); expect(node.height).toBeGreaterThanOrEqual(44);
+      expect(node.x).toBeGreaterThanOrEqual(0); expect(node.x + node.width).toBeLessThanOrEqual(width);
+      expect(node.y + node.height).toBeLessThanOrEqual(height);
+    }
+    for (let i = 0; i < controls.length; i++) for (const other of controls.slice(i + 1)) {
+      const node = controls[i];
+      expect(node.x >= other.x + other.width || other.x >= node.x + node.width ||
+        node.y >= other.y + other.height || other.y >= node.y + node.height).toBe(true);
+    }
+    expect(test.nodes.filter(node => !node.destroyed && node.text).every(node => node.fontSize >= 14)).toBe(true);
+  }
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('help and ESC never command, write or exit twice at %sx%s', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  const before = structuredClone(test.owner.state), end = test.find('conquest-end').listeners('pointerdown')[0];
+  test.click('conquest-help'); end();
+  test.click('conquest-help-next');
+  const obsolete = test.find('conquest-help-next').listeners('pointerdown')[0];
+  test.keyboard.emit('keydown-ESC'); obsolete();
+  expect(test.owner.state).toEqual(before);
+  expect(test.write).not.toHaveBeenCalled(); expect(test.read).not.toHaveBeenCalled();
+  expect(test.keyboard.listenerCount('keydown-ESC')).toBe(1);
+  expect(test.find('conquest-root').destroyed).toBe(false);
+  test.click('conquest-help'); test.click('conquest-help-close');
+  if (width === 390) test.click('conquest-tab-actions');
+  test.click('conquest-save');
+  expect(() => test.click('conquest-help')).not.toThrow();
+  expect(() => test.find('conquest-help-body')).toThrow();
+  test.click('conquest-cancel');
+  expect(test.write).not.toHaveBeenCalled();
+  test.events.emit('shutdown'); test.scene.create(); closeShipyardModal(test.scene);
+  expect(test.keyboard.listenerCount('keydown-ESC')).toBe(1);
+  expect(test.nodes.filter(node => !node.destroyed && node.name === 'conquest-root')).toHaveLength(1);
+  test.events.emit('shutdown');
+});
+
+it.each(['Очень длинное название проекта '.repeat(2).trim(), 'W'.repeat(80), '🚀'.repeat(40)])('mobile displays the full refusal and preserves long name %s', name => {
+  const test = fixture(new Map(), true, 390, 844);
+  const design = createDesign('fighter', true); design.name = name;
+  const state = test.owner.state;
+  state.session.treasuries.blue.credits = 0;
+  state.session.production.lastOrderId = 1;
+  state.session.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
+  test.owner.replace(conquestSchema.parse(state));
+  test.click('conquest-tab-research');
+  const before = structuredClone(test.owner.state);
+  const result = executeConquestCommand(before, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'support' });
+  expect(result.ok).toBe(false);
+  test.click('conquest-research-support');
+  expect(test.find('conquest-message').text).toBe(!result.ok ? result.message : '');
+  expect(test.owner.state).toEqual(before);
+  test.click('conquest-tab-production'); test.click('conquest-order-1');
+  test.click('conquest-tab-fleet');
+  expect(test.find('conquest-ship-1').text).toContain('…');
+  expect(Array.from(test.find('conquest-ship-1').text).every(character =>
+    character.length === 2 || !/[\uD800-\uDFFF]/.test(character))).toBe(true);
+  expect(test.owner.state.session.ships[0].design.name).toBe(design.name);
+  test.click('conquest-ship-1');
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('топливо 3/3'))).toBe(true);
+  test.events.emit('shutdown');
+});
+
+it.each([6, 40, 256])('mobile can choose the last of %s worlds without generation or storage IO', count => {
+  const test = fixture(new Map(), false, 390, 844);
+  const desired = count - 40;
+  for (let i = 0; i < Math.ceil(Math.abs(desired) / 10); i++) test.click(desired < 0 ? 'conquest-worlds-minus-ten' : 'conquest-worlds-plus-ten');
+  for (let i = 0; i < 4 && test.find('conquest-world-count').text !== `Миров: ${count}`; i++) test.click('conquest-worlds-minus');
+  test.click('conquest-new-local');
+  expect(test.owner.state.session.galaxy.systems).toHaveLength(count);
+  const generate = vi.spyOn(browserGenerator, 'generateBrowserGalaxy');
+  test.read.mockClear(); test.write.mockClear();
+  test.click('conquest-select-world');
+  for (let i = 0; i < Math.floor((count - 1) / 8); i++) test.click('choice-next');
+  test.click(`choice-${count - 1}`);
+  expect(test.owner.selected).toBe(test.owner.state.session.galaxy.systems[count - 1].id);
+  expect(generate).not.toHaveBeenCalled(); expect(test.read).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  test.events.emit('shutdown');
+});
+
+it('mobile help pauses AI and completed controls stay readonly with inspection and save available', () => {
+  const test = fixture(new Map(), false, 390, 844);
+  test.click('conquest-new-ai'); test.click('conquest-end');
+  const before = structuredClone(test.owner.state);
+  test.click('conquest-help'); test.keyboard.emit('keydown-ESC'); test.tasks[0].callback();
+  expect(test.owner.state).toEqual(before); expect(test.owner.phase).toBe('paused');
+  expect(test.find('conquest-status').text).toContain('paused');
+  const completed = createConquest();
+  for (const system of completed.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
+    system.ownerId = 'blue'; if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
+  }
+  test.owner.replace(completed);
+  expect(test.find('conquest-status').text).toContain('только просмотр');
+  expect(test.find('conquest-end').input.enabled).toBe(false);
+  expect(test.find('conquest-colonize').input.enabled).toBe(false);
+  test.click('conquest-tab-actions'); test.click('conquest-save'); test.click('conquest-confirm');
+  expect(test.owner.state).toEqual(completed);
+  test.events.emit('shutdown');
+});
+
+it('forwards host-consumed Escape once and removes viewport/native listeners on shutdown and reentry', () => {
+  const host = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  vi.stubGlobal('window', host);
+  const test = fixture(new Map(), true, 390, 844);
+  expect(host.addEventListener.mock.calls.map(call => call[0])).toEqual(['resize', 'keydown']);
+  const before = structuredClone(test.owner.state);
+  test.click('conquest-help');
+  const event = { key: 'Escape', defaultPrevented: true };
+  test.keyboard.active = false;
+  test.owner.forwardEscape(event);
+  expect(test.find('conquest-help-body')).toBeDefined();
+  test.keyboard.active = true;
+  test.owner.forwardEscape(event);
+  test.keyboard.emit('keydown-ESC', event);
+  test.owner.forwardEscape(event);
+  expect(() => test.find('conquest-help-body')).toThrow();
+  expect(() => test.find('conquest-confirm')).toThrow();
+  expect(test.owner.state).toEqual(before);
+  test.click('conquest-help');
+  const normal = { key: 'Escape', defaultPrevented: false };
+  test.owner.forwardEscape(normal);
+  expect(test.find('conquest-help-body')).toBeDefined();
+  test.keyboard.emit('keydown-ESC', normal);
+  expect(() => test.find('conquest-help-body')).toThrow();
+  expect(test.write).not.toHaveBeenCalled();
+  test.events.emit('shutdown');
+  expect(host.removeEventListener.mock.calls).toEqual(host.addEventListener.mock.calls);
+  test.owner.forwardEscape({ key: 'Escape', defaultPrevented: true });
+  test.scene.create(); closeShipyardModal(test.scene); test.events.emit('shutdown');
+  expect(host.removeEventListener.mock.calls).toEqual(host.addEventListener.mock.calls);
+  expect(test.keyboard.listenerCount('keydown-ESC')).toBe(0);
 });

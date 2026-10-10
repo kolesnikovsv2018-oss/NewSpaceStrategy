@@ -1,3 +1,5 @@
+import { resizeCampaignViewport } from '../ui/CampaignViewport';
+
 export class MenuScene extends Phaser.Scene {
   private root?: Phaser.GameObjects.Container;
   private demonstrations = false;
@@ -5,19 +7,24 @@ export class MenuScene extends Phaser.Scene {
   private readonly onEscape = () => {
     if (this.demonstrations) this.render(false);
   };
+  private readonly onResize = () => { resizeCampaignViewport(this); this.render(this.demonstrations); };
 
   constructor() {
     super({ key: 'MenuScene' });
   }
 
   create() {
+    resizeCampaignViewport(this);
     this.render(false);
+    if (typeof window !== 'undefined') window.addEventListener('resize', this.onResize);
     this.input.keyboard?.on('keydown-ESC', this.onEscape);
     this.events.once('shutdown', () => {
       this.generation++;
       this.input.keyboard?.off('keydown-ESC', this.onEscape);
+      if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize);
       this.root?.destroy(true);
       this.root = undefined;
+      this.scale?.setGameSize(1280, 720);
     });
   }
 

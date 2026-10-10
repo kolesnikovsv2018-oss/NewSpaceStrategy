@@ -14,7 +14,8 @@ import { LocalGalaxyMapRepository, type GalaxyMapRepository } from '../utils/Gal
 import { ConquestSaveManager } from '../utils/ConquestSaveManager';
 import { parseResearchTreeYaml, MAX_RESEARCH_TREE_BYTES } from '../utils/ResearchTreeYaml';
 import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
-import { button, text, chooseItem } from '../ui/ShipyardWidgets';
+import { button, text, fitText, chooseItem, conquestDialogLayout, CONQUEST_HELP } from '../ui/ConquestWidgets';
+import { resizeCampaignViewport } from '../ui/CampaignViewport';
 import { openShipyardModal, closeShipyardModal, isShipyardModalOpen } from '../ui/ShipyardModal';
 
 type Tab = 'research' | 'production' | 'fleet' | 'battles';
@@ -31,6 +32,13 @@ export class ConquestScene extends Phaser.Scene {
   private catalog?: ProductionCatalog;
   private message = '';
   private disposed = true;
+  private readonly escapeEvents = new WeakSet<KeyboardEvent>();
+  private readonly forwardEscape = (event: KeyboardEvent): void => {
+    // Host shells can consume Escape before Phaser; deduplicate the original DOM event.
+    if (!this.disposed && this.input.keyboard?.isActive() && event.key === 'Escape' && event.defaultPrevented && !this.escapeEvents.has(event)) {
+      this.input.keyboard?.emit('keydown-ESC', event);
+    }
+  };
   private ticket?: Phaser.Time.TimerEvent;
   private phase: 'idle' | 'scheduled' | 'running' | 'paused' | 'failed' = 'idle';
   private readonly repository = new ConquestSaveManager();
@@ -46,19 +54,41 @@ export class ConquestScene extends Phaser.Scene {
 
   create(): void {
     this.disposed = false;
+    this.resizeViewport();
+    if (typeof window !== 'undefined') window.addEventListener('resize', this.resizeViewport);
     this.render();
     this.input.keyboard?.on('keydown-ESC', this.escape, this);
+    if (typeof window !== 'undefined') window.addEventListener('keydown', this.forwardEscape);
     this.events.once('shutdown', () => {
       this.disposed = true; this.pauseAi(); this.dialogToken = undefined;
       this.fileInput?.remove(); this.fileInput = undefined;
       this.input.keyboard?.off('keydown-ESC', this.escape, this);
+      if (typeof window !== 'undefined') window.removeEventListener('resize', this.resizeViewport);
+      if (typeof window !== 'undefined') window.removeEventListener('keydown', this.forwardEscape);
       closeShipyardModal(this); this.root?.destroy(true); this.root = undefined; this.replay = undefined; this.frames = undefined;
       Reflect.deleteProperty(this, 'state');
+      this.scale?.setGameSize(1280, 720);
     });
     this.newGame();
   }
 
-  private escape(): void {
+  private resizeViewport = (): void => {
+    if (typeof window === 'undefined' || !this.scale) return;
+    resizeCampaignViewport(this);
+    if (isShipyardModalOpen(this)) {
+      closeShipyardModal(this);
+      this.message = 'Размер экрана изменён. Диалог отменён; откройте его снова.';
+    }
+    this.render();
+  };
+
+  private get narrow(): boolean { return this.cameras.main.width < 1280; }
+
+  private escape(event?: KeyboardEvent): void {
+    if (event) {
+      if (this.escapeEvents.has(event)) return;
+      this.escapeEvents.add(event);
+    }
     if (isShipyardModalOpen(this)) return;
     if (this.ticket) { this.pauseAi(); this.render(); return; }
     this.confirm('Выйти в меню? Несохранённая партия будет потеряна.', () => this.scene.start('MenuScene'));
@@ -72,6 +102,7 @@ export class ConquestScene extends Phaser.Scene {
     this.phase = this.isAiTurn() ? 'paused' : 'idle';
     this.tab = 'research'; this.page = 0; this.choice = 0; this.catalog = undefined;
     this.selectedShips = []; this.selectedGroup = undefined; this.frames = undefined; this.message = '';
+    this.narrowSection = 'map';
     this.render();
   }
 
@@ -128,12 +159,34 @@ export class ConquestScene extends Phaser.Scene {
     this.pauseAi(); this.render();
     const source = this.state, modal = openShipyardModal(this);
     if (!modal) return;
-    const content = this.add.container(290, 240); modal.overlay.add(content);
-    text(this, content, 0, 0, title, 20).setWordWrapWidth(700);
-    button(this, content, 0, 130, 'Отмена', () => modal.close(), 'conquest-cancel');
-    button(this, content, 480, 130, 'Подтвердить', () => {
+    const layout = conquestDialogLayout(this.cameras.main.width, this.cameras.main.height);
+    const content = this.add.container(layout.x, layout.y); modal.overlay.add(content);
+    const label = text(this, content, 0, 0, title, 20).setWordWrapWidth(layout.width);
+    const y = Math.max(130, label.height + 24);
+    button(this, content, 0, y, 'Отмена', () => modal.close(), 'conquest-cancel', 140);
+    button(this, content, layout.width - 160, y, 'Подтвердить', () => {
       if (modal.close() && !this.disposed && this.state === source) action();
-    }, 'conquest-confirm');
+    }, 'conquest-confirm', 160);
+  }
+
+  private help(): void {
+    this.pauseAi(); this.render();
+    const modal = openShipyardModal(this);
+    if (!modal) return;
+    const layout = conquestDialogLayout(this.cameras.main.width, this.cameras.main.height);
+    const content = this.add.container(layout.x, layout.y); modal.overlay.add(content);
+    let page = 0;
+    const render = () => {
+      content.removeAll(true);
+      const [title, body] = CONQUEST_HELP[page];
+      text(this, content, 0, 0, `${page + 1} / ${CONQUEST_HELP.length} · ${title}`, 20).setWordWrapWidth(layout.width);
+      const label = text(this, content, 0, 72, body, 16).setWordWrapWidth(layout.width).setName('conquest-help-body');
+      const y = Math.max(440, label.height + 96);
+      button(this, content, 0, y, '←', () => { page = Math.max(0, page - 1); render(); }, 'conquest-help-prev', 44);
+      button(this, content, 56, y, '→', () => { page = Math.min(CONQUEST_HELP.length - 1, page + 1); render(); }, 'conquest-help-next', 44);
+      button(this, content, layout.width - 140, y, 'Закрыть · ESC', () => modal.close(), 'conquest-help-close', 140);
+    };
+    render();
   }
 
   private save(): void {
@@ -164,10 +217,11 @@ export class ConquestScene extends Phaser.Scene {
     });
     const source = this.state;
     let tree = getDefaultResearchTree();
-    const content = this.add.container(280, 195); modal.overlay.add(content);
+    const layout = conquestDialogLayout(this.cameras.main.width, this.cameras.main.height);
+    const content = this.add.container(layout.x, layout.y); modal.overlay.add(content);
     text(this, content, 0, 0, 'Новая военная кампания', 24);
-    text(this, content, 0, 50, source ? 'Текущая несохранённая партия будет заменена.' : 'Карта будет создана и сохранена перед началом партии.', 16);
-    const treeLabel = text(this, content, 0, 92, `Дерево: ${tree.id}`, 16);
+    text(this, content, 0, 50, source ? 'Текущая несохранённая партия будет заменена.' : 'Карта будет создана и сохранена перед началом партии.', 16).setWordWrapWidth(layout.width);
+    const treeLabel = text(this, content, 0, 92, `Дерево: ${this.shorten(tree.id, 28)}`, 16);
     let worldCount = 40;
     let busy = false;
     const countLabel = text(this, content, 80, 135, `Миров: ${worldCount}`, 18).setName('conquest-world-count');
@@ -176,13 +230,13 @@ export class ConquestScene extends Phaser.Scene {
       worldCount = Math.max(6, Math.min(MAX_GALAXY_WORLDS, worldCount + delta));
       countLabel.setText(`Миров: ${worldCount}`);
     };
-    button(this, content, 0, 128, '−1', () => adjustCount(-1), 'conquest-worlds-minus');
-    button(this, content, 225, 128, '+1', () => adjustCount(1), 'conquest-worlds-plus');
-    button(this, content, 290, 128, '−10', () => adjustCount(-10), 'conquest-worlds-minus-ten');
-    button(this, content, 365, 128, '+10', () => adjustCount(10), 'conquest-worlds-plus-ten');
-    button(this, content, 475, 128, 'Участники: 2', () => {}, 'conquest-participants').disableInteractive().setAlpha(0.6);
-    const notice = text(this, content, 0, 185, '', 14, '#ffbb88').setWordWrapWidth(720).setName('conquest-generation-error');
-    button(this, content, 0, 245, 'Дерево YAML / JSON', () => {
+    button(this, content, 0, 128, '−1', () => adjustCount(-1), 'conquest-worlds-minus', 60);
+    button(this, content, 225, 128, '+1', () => adjustCount(1), 'conquest-worlds-plus', 60);
+    button(this, content, 0, 184, '−10', () => adjustCount(-10), 'conquest-worlds-minus-ten', 60);
+    button(this, content, 80, 184, '+10', () => adjustCount(10), 'conquest-worlds-plus-ten', 60);
+    button(this, content, 180, 184, 'Участники: 2', () => {}, 'conquest-participants', 170).disableInteractive().setAlpha(0.6);
+    const notice = text(this, content, 0, 300, '', 14, '#ffbb88').setWordWrapWidth(layout.width).setName('conquest-generation-error');
+    button(this, content, 0, 240, 'Дерево YAML / JSON', () => {
       if (busy || this.dialogToken !== token) return;
       this.fileInput?.remove();
       const input = document.createElement('input'); input.type = 'file'; input.accept = '.yaml,.yml,.json'; this.fileInput = input;
@@ -193,7 +247,7 @@ export class ConquestScene extends Phaser.Scene {
           if (file.size > MAX_RESEARCH_TREE_BYTES) throw new Error('Файл превышает 256 КБ');
           const parsed = parseResearchTreeYaml(await file.text());
           if (this.disposed || this.state !== source || this.dialogToken !== token || !isShipyardModalOpen(this)) return;
-          tree = parsed; treeLabel.setText(`Дерево: ${this.shorten(tree.id, 55)}`); notice.setText('');
+          tree = parsed; treeLabel.setText(`Дерево: ${this.shorten(tree.id, 28)}`); notice.setText('');
         } catch {
           if (!this.disposed && this.dialogToken === token && isShipyardModalOpen(this)) notice.setText('Дерево не принято: проверьте формат, зависимости и ограничения');
         } finally { input.remove(); }
@@ -220,9 +274,10 @@ export class ConquestScene extends Phaser.Scene {
         }
       } finally { busy = false; }
     };
-    button(this, content, 0, 300, 'Локальная партия', () => { void begin(false); }, 'conquest-new-local');
-    button(this, content, 235, 300, 'Против компьютера', () => { void begin(true); }, 'conquest-new-ai');
-    button(this, content, 540, 300, 'Отмена', () => { this.dialogToken = undefined; modal.close(); }, 'conquest-new-cancel');
+    button(this, content, 0, 440, 'Локальная партия', () => { void begin(false); }, 'conquest-new-local', layout.width);
+    button(this, content, 0, 492, 'Против компьютера', () => { void begin(true); }, 'conquest-new-ai', layout.width);
+    button(this, content, 0, 544, 'Отмена · ESC', () => { this.dialogToken = undefined; modal.close(); }, 'conquest-new-cancel', layout.width);
+    text(this, content, 0, 610, 'Карта записывается до старта. Отмена не создаёт партию.', 14).setWordWrapWidth(layout.width);
   }
 
   private shorten(value: string, maximum = 45): string { return value.length > maximum ? `${value.slice(0, maximum - 1)}…` : value; }
@@ -235,8 +290,7 @@ export class ConquestScene extends Phaser.Scene {
     const root = this.root!;
     const item = button(this, root, x, y, label, () => {
       if (!this.disposed && this.root === root && enabled && !isShipyardModalOpen(this)) action();
-    }, name).setFixedSize(width, 32);
-    while (item.context.measureText(item.text).width > width - 18 && item.text.length > 1) item.setText(`${item.text.slice(0, -2)}…`);
+    }, name, width);
     if (!enabled) item.disableInteractive().setAlpha(0.4);
   }
 
@@ -251,11 +305,13 @@ export class ConquestScene extends Phaser.Scene {
     if (this.disposed) return;
     this.root?.destroy(true);
     const root = this.add.container(0, 0).setName('conquest-root'); this.root = root;
+    if (this.narrow) { this.renderNarrow(); return; }
     if (!this.state) {
       text(this, root, 24, 30, 'Новая военная кампания', 28);
       this.control(24, 100, 'Создать карту', () => this.newGame(), 'conquest-new', true, 180);
       this.control(230, 100, 'Загрузить партию', () => this.requestLoad(), 'conquest-load', true, 180);
       this.control(440, 100, 'Меню', () => this.escape(), 'conquest-menu');
+      this.control(600, 100, 'Справка', () => this.help(), 'conquest-help');
       text(this, root, 24, 160, this.message, 16, '#ffc08a');
       return;
     }
@@ -272,14 +328,8 @@ export class ConquestScene extends Phaser.Scene {
     this.control(400, 20, 'Сохранить', () => this.save(), 'conquest-save');
     this.control(560, 20, 'Загрузить', () => this.requestLoad(), 'conquest-load');
     this.control(720, 20, 'Меню', () => this.escape(), 'conquest-menu');
-    this.control(1080, 20, 'Выбрать мир', () => {
-      this.pauseAi(); this.render();
-      const source = this.state;
-      chooseItem(this, 'Миры галактики', view.galaxy.systems.map(system => ({ label: `${system.id} · ${system.name}`, value: system.id })), id => {
-        if (this.disposed || this.state !== source) return;
-        this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
-      });
-    }, 'conquest-select-world', true, 170);
+    this.control(800, 340, 'Справка', () => this.help(), 'conquest-help', true, 140);
+    this.control(1080, 20, 'Выбрать мир', () => this.selectWorld(view), 'conquest-select-world', true, 170);
     if (this.state.control.mode === 'human-vs-ai') {
       this.control(880, 20, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?', () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover', true, 190);
     }
@@ -303,7 +353,7 @@ export class ConquestScene extends Phaser.Scene {
     const budget = view.economyForecast;
     text(this, root, 740, 193, budget.ok ? `Содержание: ${budget.upkeep.dueCredits} · к оплате ${budget.upkeep.paidCredits} · дефицит ${budget.upkeep.shortfallCredits}` : `Бюджет: ${budget.code}`, 14);
     const selected = view.galaxy.systems.find(system => system.id === this.selected)!;
-    text(this, root, 740, 229, `${selected.name}: ${selected.visibility === 'unknown' ? 'нет наблюдения' : !selected.habitable ? 'непригодна для колонии' :
+    text(this, root, 740, 229, `${this.shorten(selected.name, 15)}: ${selected.visibility === 'unknown' ? 'нет наблюдения' : !selected.habitable ? 'непригодна для колонии' :
       selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'колония противника' : 'свободная планета'}`, 17);
     text(this, root, 740, 261, `Свои корабли: ${view.ships.filter(ship => !ship.transit && ship.systemId === this.selected).length} · видимые чужие: ${view.enemies.filter(ship => ship.systemId === this.selected).length}`, 15);
     text(this, root, 740, 290, this.isAiTurn() ? `Компьютер: ${this.phase}` : `Свои планеты: ${view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === this.observer).length} / ${view.totalHabitableWorlds}`, 14, '#8edfc1');
@@ -322,17 +372,18 @@ export class ConquestScene extends Phaser.Scene {
     for (const system of view.galaxy.systems) {
       const position = positions.get(system.id)!;
       const color = system.visibility === 'unknown' ? 0x54606a : system.ownerId === 'blue' ? 0x55baff : system.ownerId === 'red' ? 0xf08070 : 0x8edfc1;
-      const node = this.add.circle(position.x, position.y, generated ? 3 : 14, color).setName(`conquest-system-${system.id}`).setInteractive({ useHandCursor: true });
+      const node = this.add.circle(position.x, position.y, generated ? 3 : 14, color).setName(`conquest-system-${system.id}`);
+      if (!generated) node.setInteractive({ useHandCursor: true });
       if (this.selected === system.id) node.setStrokeStyle(3, 0xffffff);
       node.on('pointerdown', () => {
         if (this.root !== root || this.disposed || isShipyardModalOpen(this)) return;
         this.selected = system.id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
       }); root.add(node);
-      if (!generated || this.selected === system.id) text(this, root, position.x - 35, position.y + 8, system.name, 13).setFixedSize(90, 18);
+      if (!generated || this.selected === system.id) text(this, root, position.x - 35, position.y + 8, this.shorten(system.name, 10), 14);
     }
     const tabs: [Tab, string][] = [['research', 'Исследования'], ['production', 'Производство'], ['fleet', 'Корабли и группы'], ['battles', 'Бои']];
     tabs.forEach(([tab, label], index) => this.control(24 + index * 195, 340, label, () => {
-      this.tab = tab; this.page = 0;
+      this.tab = tab; this.narrowSection = tab; this.page = 0;
       if (tab === 'production' && !this.catalog) this.catalog = loadProductionCatalog();
       this.render();
     }, `conquest-tab-${tab}`, true, 180));
@@ -340,7 +391,7 @@ export class ConquestScene extends Phaser.Scene {
     if (this.tab === 'production') this.renderProduction(view, manual);
     if (this.tab === 'fleet') this.renderFleet(view, manual);
     if (this.tab === 'battles') this.renderBattles(view);
-    text(this, root, 24, 679, this.shorten(this.message, 155), 14, '#ffc08a').setWordWrapWidth(1210).setName('conquest-message');
+    text(this, root, 24, 675, this.message, 14, '#ffc08a').setWordWrapWidth(1210).setName('conquest-message');
   }
 
   private renderResearch(view: ConquestView, manual: boolean): void {
@@ -348,10 +399,10 @@ export class ConquestScene extends Phaser.Scene {
     text(this, this.root!, 24, 385, `Технологии · ${view.researchTree.id}`, 17);
     view.researchTree.nodes.slice(this.page * 4, this.page * 4 + 4).forEach((node, index) => {
       const ypos = 420 + index * 48, completed = view.research.completed.includes(node.id), active = view.research.active?.id === node.id;
-      text(this, this.root!, 24, ypos, this.shorten(node.name, 48), 16).setWordWrapWidth(420);
+      fitText(text(this, this.root!, 24, ypos, node.name, 16), 420);
       text(this, this.root!, 475, ypos, completed ? 'Открыто' : active ? `${view.research.active!.progress} / ${node.turns}` : `${node.credits} кредитов · ${node.turns} своих ходов`, 15);
       this.control(980, ypos - 8, completed ? 'Открыто' : active ? 'Исследуется' : 'Исследовать', () => this.command({ kind: 'research', technologyId: node.id }),
-        `conquest-research-${node.id}`, manual && !completed && !view.research.active && node.prerequisites.every(id => view.research.completed.includes(id)) && view.treasury.credits >= node.credits, 230);
+        `conquest-research-${node.id}`, manual && !completed, 230);
     });
     this.pager(view.researchTree.nodes.length, 4);
   }
@@ -367,25 +418,27 @@ export class ConquestScene extends Phaser.Scene {
     text(this, this.root!, 24, 385, `Проекты · ${this.choice + 1} / ${choices.length}`, 17);
     if (choice) {
       const available = isCampaignDesignAvailable(choice.design, view.research, view.researchTree);
-      text(this, this.root!, 24, 420, this.shorten(choice.design.name, 48), 14).setWordWrapWidth(550);
+      fitText(text(this, this.root!, 24, 420, choice.design.name, 14), 550);
       text(this, this.root!, 24, 451, `${choice.source} · ${HULLS[choice.design.hullId].name}`, 14);
       let quote: ReturnType<typeof getProductionQuote> | undefined;
-      try { quote = getProductionQuote(choice.design); } catch {}
+      try { quote = getProductionQuote(choice.design); } catch {
+        text(this, this.root!, 24, 568, 'Расчёт цены отклонён: проект не прошёл полётную валидацию.', 14, '#ffc08a');
+      }
       text(this, this.root!, 24, 478, !available ? 'Проект недоступен: технология, профиль параметров или полётная валидация' :
         quote ? `${quote.cost.credits} кредитов / ${quote.cost.minerals} минералов · ${quote.turns} ходов` : 'Недопустимый проект', 14, available ? '#c8d9ed' : '#ffc08a');
       this.control(24, 516, '←', () => { this.choice--; this.render(); }, 'conquest-design-prev', this.choice > 0, 45);
       this.control(80, 516, '→', () => { this.choice++; this.render(); }, 'conquest-design-next', this.choice + 1 < choices.length, 45);
       this.control(145, 516, 'Заказать', () => this.command({ kind: 'enqueueProduction', systemId: this.selected, design: structuredClone(choice.design) }),
-        'conquest-enqueue', manual && own && available && !!quote && view.treasury.credits >= quote.cost.credits && view.treasury.minerals >= quote.cost.minerals);
+        'conquest-enqueue', manual && own && available && !!quote);
     }
     this.control(320, 516, 'Обновить библиотеку', () => { this.catalog = loadProductionCatalog(); this.render(); }, 'conquest-catalog', true, 225);
-    text(this, this.root!, 24, 568, this.shorten(this.catalog?.notice ?? '', 65), 13).setWordWrapWidth(550);
+    text(this, this.root!, 24, 592, this.catalog?.notice ?? '', 14).setWordWrapWidth(550);
     const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === this.selected);
     this.normalizePage(records.length, 4);
     text(this, this.root!, 655, 385, 'Очередь и готовые корабли', 17);
     records.slice(this.page * 4, this.page * 4 + 4).forEach((record, index) => {
       const ypos = 420 + index * 48, order = view.production.orders.find(item => item.id === record.id);
-      text(this, this.root!, 655, ypos, `#${record.id} ${this.shorten(record.design.name, 29)}`, 14);
+      fitText(text(this, this.root!, 655, ypos, `#${record.id} ${record.design.name}`, 14), 410);
       text(this, this.root!, 655, ypos + 19, order ? `Осталось ${order.remainingTurns} · возврат ${getProductionRefund(order).credits} кредитов` : 'Готов к размещению', 12);
       this.control(1080, ypos - 4, order ? 'Отменить' : 'Разместить', () => this.command({
         kind: order ? 'cancelProduction' : 'deployProduction', systemId: this.selected, orderId: record.id
@@ -412,18 +465,19 @@ export class ConquestScene extends Phaser.Scene {
     const ship = ships.find(item => item.id === this.selectedShips[0]);
     const groups = view.fleets.filter(fleet => fleet.systemId === this.selected);
     const group = groups.find(fleet => fleet.id === this.selectedGroup);
-    text(this, this.root!, 655, 385, group ? `Группа #${group.id}: ${group.shipIds.join(', ')}` : ship ? `Корабль #${ship.id}` : 'Выбор корабля или группы', 17);
+    text(this, this.root!, 655, 385, group ? `Группа #${group.id} · кораблей ${group.shipIds.length}` : ship ? `Корабль #${ship.id}` : 'Выбор корабля или группы', 17);
     const stationary = !!ship && !ship.transit;
-    this.control(655, 427, ship ? `Топливо: ${getRefuelQuote(ship.fuel).cost.credits} кр.` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: this.selected, shipId: ship.id }), 'conquest-refuel', manual && stationary && ship!.fuel < 3, 180);
-    this.control(845, 427, 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: this.selected, shipId: ship.id }), 'conquest-repair', manual && stationary, 165);
-    this.control(1020, 427, 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: this.selected, shipId: ship.id }), 'conquest-resupply', manual && stationary, 175);
+    const costs = ship ? this.serviceCosts(view, ship.id) : undefined;
+    this.control(655, 427, costs ? `Топливо ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: this.selected, shipId: ship.id }), 'conquest-refuel', manual && stationary && ship!.fuel < 3, 180);
+    this.control(845, 427, costs ? `Ремонт ${costs.repair}` : 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: this.selected, shipId: ship.id }), 'conquest-repair', manual && stationary, 165);
+    this.control(1020, 427, costs ? `Снаряды ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: this.selected, shipId: ship.id }), 'conquest-resupply', manual && stationary, 175);
     const destinations = view.galaxy.lanes.flatMap(([from, to]) => from === this.selected ? [to] : to === this.selected ? [from] : []);
-    destinations.forEach((destinationId, index) => this.control(655 + (index % 2) * 285, 478 + Math.floor(index / 2) * 35, `→ ${view.galaxy.systems.find(system => system.id === destinationId)!.name}`, () => {
+    destinations.forEach((destinationId, index) => this.control(655 + (index % 2) * 285, 478 + Math.floor(index / 2) * 48, `→ ${view.galaxy.systems.find(system => system.id === destinationId)!.name}`, () => {
       if (group) this.command({ kind: 'sendFleet', fleetId: group.id, systemId: this.selected, destinationId });
       else if (ship) this.command({ kind: 'sendShip', shipId: ship.id, systemId: this.selected, destinationId });
     }, `conquest-send-${destinationId}`, manual && (!!group || stationary), 270));
-    this.control(655, 555, 'Создать группу', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }), 'conquest-create-fleet', manual && this.selectedShips.length >= 2, 180);
-    this.control(845, 555, 'Выбрать группу', () => {
+    this.control(655, 578, 'Создать группу', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }), 'conquest-create-fleet', manual && this.selectedShips.length >= 2, 180);
+    this.control(845, 578, 'Выбрать группу', () => {
       this.pauseAi(); this.render();
       const source = this.state;
       chooseItem(this, 'Группы', groups.map(item => ({ label: `#${item.id}: ${item.shipIds.join(', ')}`, value: item.id })), id => {
@@ -431,17 +485,8 @@ export class ConquestScene extends Phaser.Scene {
         this.selectedGroup = id; this.selectedShips = []; this.render();
       });
     }, 'conquest-select-fleet', groups.length > 0, 180);
-    this.control(1035, 555, 'Расформировать', () => group && this.command({ kind: 'disbandFleet', fleetId: group.id, systemId: this.selected }), 'conquest-disband', manual && !!group, 180);
-    if (ship) {
-      const atColony = view.galaxy.systems.some(system => system.id === ship.systemId && system.visibility === 'explored' && system.ownerId === this.observer);
-      const rate = view.ships.filter(item => !item.transit && item.systemId === ship.systemId).flatMap(item => item.design.slots)
-        .reduce((sum, slot) => sum + (slot.component?.kind === 'repair' ? slot.component.repairRate : 0), 0);
-      const operation = view.operations[String(ship.id)];
-      const repair = getRepairQuote(ship.design, operation, atColony, rate), ammunition = getAmmunitionQuote(ship.design, operation);
-      const fuel = getRefuelQuote(ship.fuel);
-      text(this, this.root!, 655, 602, `Цена, кредиты / минералы: топливо ${fuel.cost.credits}/${fuel.cost.minerals}\n` +
-        `Ремонт ${repair.cost.credits}/${repair.cost.minerals} · боезапас ${ammunition.cost.credits}/${ammunition.cost.minerals}`, 13).setWordWrapWidth(570);
-    }
+    this.control(1035, 578, 'Расформировать', () => group && this.command({ kind: 'disbandFleet', fleetId: group.id, systemId: this.selected }), 'conquest-disband', manual && !!group, 180);
+    text(this, this.root!, 655, 638, 'Цены служб: кредиты / минералы · перелёт: 1 топлива', 14);
     this.pager(ships.length, 4);
   }
 
@@ -449,10 +494,215 @@ export class ConquestScene extends Phaser.Scene {
     this.normalizePage(view.battles.length, 4);
     text(this, this.root!, 24, 385, 'Последние бои своей стороны', 17);
     [...view.battles].reverse().slice(this.page * 4, this.page * 4 + 4).forEach((battle, index) => {
-      text(this, this.root!, 24, 426 + index * 45, `#${battle.id} · ход ${battle.turn} · ${battle.systemId} · ${battle.timedOut ? 'Лимит времени, без захвата' : battle.winner === this.observer ? 'Победа в бою' : battle.winner ? 'Поражение в бою' : 'Без победителя'} · потери: ${battle.destroyed.length}`, 16);
+      text(this, this.root!, 24, 440 + index * 45, `#${battle.id} · ход ${battle.turn} · ${battle.systemId} · ${battle.timedOut ? 'Лимит времени, без захвата' : battle.winner === this.observer ? 'Победа в бою' : battle.winner ? 'Поражение в бою' : 'Без победителя'} · потери: ${battle.destroyed.length}`, 16);
     });
     this.control(930, 385, 'Воспроизвести последний', () => this.openReplay(), 'conquest-replay', !!this.frames, 295);
     this.pager(view.battles.length, 4);
+  }
+
+  private serviceCosts(view: ConquestView, shipId: number): { fuel: string; repair: string; ammunition: string } {
+    const ship = view.ships.find(item => item.id === shipId)!;
+    const atColony = view.galaxy.systems.some(system => system.id === ship.systemId && system.visibility === 'explored' && system.ownerId === this.observer);
+    const rate = view.ships.filter(item => !item.transit && item.systemId === ship.systemId).flatMap(item => item.design.slots)
+      .reduce((sum, slot) => sum + (slot.component?.kind === 'repair' ? slot.component.repairRate : 0), 0);
+    const operation = view.operations[String(ship.id)];
+    const repair = getRepairQuote(ship.design, operation, atColony, rate), ammunition = getAmmunitionQuote(ship.design, operation);
+    const fuel = getRefuelQuote(ship.fuel);
+    return { fuel: `${fuel.cost.credits}/${fuel.cost.minerals}`, repair: `${repair.cost.credits}/${repair.cost.minerals}`,
+      ammunition: `${ammunition.cost.credits}/${ammunition.cost.minerals}` };
+  }
+
+  private selectWorld(view: ConquestView): void {
+    this.pauseAi(); this.render();
+    const source = this.state;
+    chooseItem(this, 'Миры галактики', view.galaxy.systems.map(system => ({ label: `${system.id} · ${system.name}`, value: system.id })), id => {
+      if (this.disposed || this.state !== source) return;
+      this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+    });
+  }
+
+  private renderNarrow(): void {
+    const root = this.root!, width = this.cameras.main.width - 24;
+    const label = (y: number, value: string, name?: string, color = '#c8d9ed') =>
+      text(this, root, 12, y, value, 14, color).setWordWrapWidth(width, true).setName(name ?? '');
+    const control = (y: number, value: string, action: () => void, name: string, enabled = true) =>
+      this.control(12, y, value, action, name, enabled, width);
+    if (!this.state) {
+      label(24, 'Новая военная кампания');
+      control(80, 'Создать карту', () => this.newGame(), 'conquest-new');
+      control(132, 'Загрузить партию', () => this.requestLoad(), 'conquest-load');
+      control(184, 'Справка', () => this.help(), 'conquest-help');
+      control(236, 'Меню', () => this.escape(), 'conquest-menu');
+      label(300, this.message, 'conquest-message', '#ffc08a');
+      return;
+    }
+    const view = getConquestView(this.state, this.observer);
+    const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
+      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+    label(12, view.outcome.status === 'completed' ? `Победа: ${view.outcome.winner === 'blue' ? 'Синие' : 'Красные'} · только просмотр` :
+      `Ход ${view.turn} · ${view.activeFactionId === 'blue' ? 'Синие' : 'Красные'}${this.isAiTurn() ? ` · AI: ${this.phase}` : ''}`, 'conquest-status');
+    label(44, `Кредиты ${view.treasury.credits} · Минералы ${view.treasury.minerals}`);
+    const half = (width - 8) / 2;
+    this.control(12, 72, 'Завершить ход', () => this.command({ kind: 'endTurn' }), 'conquest-end', manual, half);
+    this.control(20 + half, 72, 'Справка', () => this.help(), 'conquest-help', true, half);
+    const tabs = [['map', 'Мир'], ['research', 'Наука'], ['production', 'Заказы'], ['fleet', 'Корабли'], ['battles', 'Бои'], ['actions', 'Партия']] as const;
+    const third = (width - 16) / 3;
+    tabs.forEach(([tab, title], index) => this.control(12 + (index % 3) * (third + 8), 124 + Math.floor(index / 3) * 52, title, () => {
+      if (tab !== 'map' && tab !== 'actions') {
+        this.tab = tab;
+        if (tab === 'production' && !this.catalog) this.catalog = loadProductionCatalog();
+      }
+      this.page = 0;
+      this.narrowSection = tab; this.render();
+    }, `conquest-tab-${tab}`, true, third));
+    const selected = view.galaxy.systems.find(system => system.id === this.selected)!;
+    if (this.narrowSection === 'map') {
+      label(240, `${this.shorten(selected.name, 40)} · ${selected.visibility === 'unknown' ? 'нет наблюдения' :
+        !selected.habitable ? 'непригодный мир' : selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'чужая колония' : 'свободная планета'}`);
+      control(294, `Выбрать мир · ${view.galaxy.systems.length} миров`, () => this.selectWorld(view), 'conquest-select-world');
+      const index = view.galaxy.systems.findIndex(system => system.id === this.selected);
+      this.control(12, 346, '← Мир', () => this.moveWorld(view, index - 1), 'conquest-world-prev', index > 0, half);
+      this.control(20 + half, 346, 'Мир →', () => this.moveWorld(view, index + 1), 'conquest-world-next', index + 1 < view.galaxy.systems.length, half);
+      label(406, `Свои корабли здесь: ${view.ships.filter(ship => !ship.transit && ship.systemId === this.selected).length}\nВидимые чужие: ${view.enemies.filter(ship => ship.systemId === this.selected).length}\nСвои планеты: ${view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === this.observer).length} / ${view.totalHabitableWorlds}`);
+      control(478, 'Колонизировать', () => this.command({ kind: 'colonize', systemId: selected.id }), 'conquest-colonize', manual);
+      label(540, 'Разведка: колония, стоящий корабль или сканер. Вооружённый корабль занимает пригодный мир на конец хода. Перелёт — во вкладке «Корабли».');
+    } else if (this.narrowSection === 'actions') {
+      control(240, 'Новая партия', () => this.newGame(), 'conquest-new');
+      this.control(12, 292, 'Сохранить', () => this.save(), 'conquest-save', true, half);
+      this.control(20 + half, 292, 'Загрузить', () => this.requestLoad(), 'conquest-load', true, half);
+      control(344, this.observer === 'blue' ? 'Наблюдение: синие' : 'Наблюдение: красные', () => {
+        this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selected = this.homeSelection();
+        this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+      }, 'conquest-side', this.state.control.mode === 'local');
+      if (this.isAiTurn()) control(396, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
+        if (this.ticket) { this.pauseAi(); this.render(); } else this.confirm('Выполнить ход компьютера?', () => this.scheduleAi());
+      }, 'conquest-resume');
+      else if (this.state.control.mode === 'local') control(396, 'AI: один ход', () => this.confirm('Поручить один ход компьютеру?', () => {
+        this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.turn));
+      }), 'conquest-ai', manual);
+      if (this.state.control.mode === 'human-vs-ai') control(448, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?',
+        () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover');
+      control(500, 'Меню', () => this.escape(), 'conquest-menu');
+      const budget = view.economyForecast;
+      label(566, `Доход: ${view.income.credits}/${view.income.minerals}\n` + (budget.ok ?
+        `Содержание ${budget.upkeep.dueCredits} · оплата ${budget.upkeep.paidCredits} · дефицит ${budget.upkeep.shortfallCredits}` : `Бюджет: ${budget.code}`));
+    } else if (this.narrowSection === 'research') {
+      this.normalizePage(view.researchTree.nodes.length, 1);
+      const node = view.researchTree.nodes[this.page];
+      if (node) {
+        const completed = view.research.completed.includes(node.id), active = view.research.active?.id === node.id;
+        fitText(label(240, node.name), width);
+        label(296, `${node.credits} кредитов · ${node.turns} своих ходов\n` + (completed ? 'Открыто' : active ? `Прогресс ${view.research.active!.progress}/${node.turns}` :
+          `Требования: ${this.shorten(node.prerequisites.join(', ') || 'нет', 40)}`));
+        control(360, completed ? 'Открыто' : active ? 'Исследуется' : 'Исследовать', () => this.command({ kind: 'research', technologyId: node.id }),
+          `conquest-research-${node.id}`, manual && !completed);
+      }
+      this.narrowPager(view.researchTree.nodes.length, 424);
+      label(492, 'Цена списывается один раз. +1 прогресса на свой конец хода; без колоний прогресс приостановлен. Технологии открывают корпуса, семейства модулей и диапазоны параметров.');
+    } else if (this.narrowSection === 'production') {
+      const choices = [...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' })),
+        ...(this.catalog?.choices ?? [])];
+      this.choice = Math.max(0, Math.min(this.choice, choices.length - 1));
+      const choice = choices[this.choice];
+      const own = selected.visibility === 'explored' && selected.ownerId === this.observer;
+      label(236, `Производство: ${this.shorten(selected.name, 28)}`);
+      if (choice) {
+        const available = isCampaignDesignAvailable(choice.design, view.research, view.researchTree);
+        fitText(label(268, choice.design.name), width);
+        let quote: ReturnType<typeof getProductionQuote> | undefined;
+        try { quote = getProductionQuote(choice.design); } catch {
+          label(300, 'Цена отклонена: проект не прошёл полётную валидацию.');
+        }
+        if (quote) label(300, available ? `${quote.cost.credits} кр. / ${quote.cost.minerals} мин. · ${quote.turns} своих ходов` : 'Недоступен: технология, параметры или полёт.');
+        this.control(12, 336, '←', () => { this.choice--; this.render(); }, 'conquest-design-prev', this.choice > 0, 44);
+        this.control(64, 336, '→', () => { this.choice++; this.render(); }, 'conquest-design-next', this.choice + 1 < choices.length, 44);
+        this.control(116, 336, 'Заказать', () => this.command({ kind: 'enqueueProduction', systemId: selected.id, design: structuredClone(choice.design) }),
+          'conquest-enqueue', manual && own && available && !!quote, width - 104);
+      }
+      control(388, 'Обновить библиотеку', () => { this.catalog = loadProductionCatalog(); this.render(); }, 'conquest-catalog');
+      label(440, this.catalog?.notice ?? 'Полная оплата сразу. FIFO: первый заказ колонии.');
+      const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === selected.id);
+      this.normalizePage(records.length, 1);
+      const record = records[this.page], order = record && view.production.orders.find(item => item.id === record.id);
+      if (record) {
+        fitText(label(492, `#${record.id} ${record.design.name}`), width);
+        label(520, order ? `Осталось ${order.remainingTurns} · возврат ${getProductionRefund(order).credits} кр.` : 'Готов к размещению');
+      } else label(492, 'Очередь и готовые корабли: пусто');
+      if (record) control(552, order ? 'Отменить заказ' : 'Разместить', () => this.command({
+        kind: order ? 'cancelProduction' : 'deployProduction', systemId: selected.id, orderId: record.id
+      }), `conquest-order-${record.id}`, manual && own);
+      this.narrowPager(records.length, 612);
+    } else if (this.narrowSection === 'fleet') this.renderNarrowFleet(view, manual);
+    else {
+      this.normalizePage(view.battles.length, 1);
+      const battle = [...view.battles].reverse()[this.page];
+      label(240, battle ? `Бой #${battle.id} · ход ${battle.turn} · ${battle.systemId}\n${battle.timedOut ? 'Лимит времени, без захвата' :
+        battle.winner === this.observer ? 'Победа в бою' : battle.winner ? 'Поражение' : 'Без победителя'}\nПотери: ${battle.destroyed.length}` : 'Бои своей стороны: пока нет отчётов');
+      control(348, 'Воспроизвести последний', () => this.openReplay(), 'conquest-replay', !!this.frames);
+      this.narrowPager(view.battles.length, 410);
+      label(482, 'Отчёт и воспроизведение не являются новой командой. После загрузки есть отчёты, но нет кадров replay.');
+    }
+    label(this.cameras.main.height - 104, this.message, 'conquest-message', '#ffc08a');
+  }
+
+  private narrowSection: Tab | 'map' | 'actions' = 'map';
+
+  private moveWorld(view: ConquestView, index: number): void {
+    this.selected = view.galaxy.systems[index].id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+  }
+
+  private narrowPager(total: number, y: number): void {
+    this.control(12, y, '←', () => { this.page--; this.render(); }, 'conquest-page-prev', this.page > 0, 44);
+    text(this, this.root!, 72, y + 12, `${this.page + 1} / ${Math.max(1, total)}`, 14);
+    this.control(150, y, '→', () => { this.page++; this.render(); }, 'conquest-page-next', this.page + 1 < total, 44);
+  }
+
+  private renderNarrowFleet(view: ConquestView, manual: boolean): void {
+    const width = this.cameras.main.width - 24, half = (width - 8) / 2, third = (width - 16) / 3;
+    const label = (y: number, value: string) => text(this, this.root!, 12, y, value, 14).setWordWrapWidth(width, true);
+    const ships = view.ships.filter(ship => ship.systemId === this.selected);
+    this.normalizePage(ships.length, 1);
+    this.selectedShips = this.selectedShips.filter(id => ships.some(ship => ship.id === id));
+    const current = ships[this.page];
+    if (current) {
+      this.control(12, 236, `${this.selectedShips.includes(current.id) ? '☑' : '☐'} #${current.id} ${current.design.name}`, () => {
+        this.selectedGroup = undefined;
+        this.selectedShips = this.selectedShips.includes(current.id) ? this.selectedShips.filter(id => id !== current.id) : [...this.selectedShips.slice(-9), current.id];
+        this.render();
+      }, `conquest-ship-${current.id}`, true, width);
+      const operation = view.operations[String(current.id)];
+      label(288, `Корпус ${Math.ceil(operation.hull)} · топливо ${current.fuel}/3\n${current.transit ? `В пути → ${current.transit.destinationId}` : `Снаряды: ${operation.ammunition.map(item => item.amount).join(', ') || '—'}`}`);
+    } else label(240, `Свои корабли: ${this.shorten(view.galaxy.systems.find(system => system.id === this.selected)!.name, 24)} — нет`);
+    const ship = ships.find(item => item.id === this.selectedShips[0]);
+    const groups = view.fleets.filter(item => item.systemId === this.selected), group = groups.find(item => item.id === this.selectedGroup);
+    const stationary = !!ship && !ship.transit, costs = ship ? this.serviceCosts(view, ship.id) : undefined;
+    this.control(12, 344, costs ? `Бак ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: ship.systemId, shipId: ship.id }),
+      'conquest-refuel', manual && stationary && ship!.fuel < 3, third);
+    this.control(20 + third, 344, costs ? `HP ${costs.repair}` : 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: ship.systemId, shipId: ship.id }),
+      'conquest-repair', manual && stationary, third);
+    this.control(28 + third * 2, 344, costs ? `Снар. ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: ship.systemId, shipId: ship.id }),
+      'conquest-resupply', manual && stationary, third);
+    const destinations = view.galaxy.lanes.flatMap(([from, to]) => from === this.selected ? [to] : to === this.selected ? [from] : []);
+    destinations.forEach((destinationId, index) => this.control(12 + index % 2 * (half + 8), 400 + Math.floor(index / 2) * 52,
+      `→ ${view.galaxy.systems.find(system => system.id === destinationId)!.name}`, () => {
+        if (group) this.command({ kind: 'sendFleet', systemId: group.systemId, fleetId: group.id, destinationId });
+        else if (ship) this.command({ kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId });
+      }, `conquest-send-${destinationId}`, manual && (!!group || stationary), half));
+    this.control(12, 510, 'Группа +', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }),
+      'conquest-create-fleet', manual && this.selectedShips.length >= 2, third);
+    this.control(20 + third, 510, 'Выбрать', () => {
+      this.pauseAi(); this.render(); const source = this.state;
+      chooseItem(this, 'Группы', groups.map(item => ({ label: `#${item.id}: ${item.shipIds.join(', ')}`, value: item.id })), id => {
+        if (this.disposed || this.state !== source) return;
+        this.selectedGroup = id; this.selectedShips = []; this.render();
+      });
+    }, 'conquest-select-fleet', groups.length > 0, third);
+    this.control(28 + third * 2, 510, 'Разделить', () => group && this.command({ kind: 'disbandFleet', systemId: group.systemId, fleetId: group.id }),
+      'conquest-disband', manual && !!group, third);
+    label(564, group ? `Группа #${group.id} · кораблей ${group.shipIds.length}` : `Выбрано кораблей: ${this.selectedShips.length}${ship ? ` · первый #${ship.id}` : ''}`);
+    this.narrowPager(ships.length, 612);
+    label(668, costs ? `Цены кр./мин.: бак ${costs.fuel}, ремонт ${costs.repair}, снаряды ${costs.ammunition}. Полёт: 1 топлива.` :
+      'Цены: кредиты/минералы. Полёт: 1 топлива.');
   }
 
   private openReplay(): void {
@@ -461,7 +711,8 @@ export class ConquestScene extends Phaser.Scene {
     const modal = openShipyardModal(this);
     if (!modal) return;
     const background = this.add.graphics(); modal.overlay.add(background);
-    background.fillStyle(0x101820).fillRect(0, 0, 1280, 720);
+    const viewport = this.cameras.main;
+    background.fillStyle(0x101820).fillRect(0, 0, viewport.width, viewport.height);
     const graphics = this.add.graphics(); modal.overlay.add(graphics);
     const label = text(this, modal.overlay, 30, 20, 'Бой', 20);
     const positions = this.frames.flatMap(frame => frame.ships);
@@ -469,10 +720,10 @@ export class ConquestScene extends Phaser.Scene {
     const width = Math.max(1, Math.max(...positions.map(ship => ship.x)) - left);
     const height = Math.max(1, Math.max(...positions.map(ship => ship.y)) - top);
     this.replay = { background, graphics, label, seconds: 0, paused: false, left, top,
-      scale: Math.min(1220 / width, 560 / height) };
+      scale: Math.min((viewport.width - 60) / width, (viewport.height - 160) / height) };
     modal.overlay.once('destroy', () => { this.replay = undefined; });
-    button(this, modal.overlay, 30, 665, 'Пауза / продолжить', () => { if (this.replay) this.replay.paused = !this.replay.paused; }, 'conquest-replay-pause');
-    button(this, modal.overlay, 1120, 665, 'Закрыть', () => { this.replay = undefined; modal.close(); }, 'conquest-replay-close');
+    button(this, modal.overlay, 12, viewport.height - 55, 'Пауза / продолжить', () => { if (this.replay) this.replay.paused = !this.replay.paused; }, 'conquest-replay-pause', 190);
+    button(this, modal.overlay, viewport.width - 152, viewport.height - 55, 'Закрыть', () => { this.replay = undefined; modal.close(); }, 'conquest-replay-close', 140);
   }
 
   update(_time: number, delta: number): void {
