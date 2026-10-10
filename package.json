@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:galaxy": "node src/cli/generateGalaxy.ts",
+    "baseline:conquest": "node src/cli/runConquestBaseline.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
