@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, expect, it, vi } from 'vitest';
 import { conquestSchema, createConquest, executeConquestCommand, type Conquest } from '../src/domain/conquest';
 import { createDesign } from '../src/domain/shipDesign';
+import { createCombatDesign, isCombatPresetDesign } from '../src/domain/combatPresets';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
@@ -28,9 +29,12 @@ class Node extends EventEmitter {
   setInteractive() { this.input.enabled = true; return this; }
   disableInteractive() { this.input.enabled = false; return this; }
   setAlpha() { return this; }
+  setFontSize(value: number | string) { this.fontSize = Number.parseInt(String(value), 10); return this; }
   setPadding() { return this; }
   setBackgroundColor() { return this; }
   setFixedSize(width: number, height: number) { this.width = width; this.height = height; return this; }
+  setPosition(x: number, y: number) { this.x = x; this.y = y; return this; }
+  setSize(width: number, height: number) { this.width = width; this.height = height; return this; }
   setDepth() { return this; }
   setWordWrapWidth() { return this; }
   setStrokeStyle() { return this; }
@@ -89,6 +93,250 @@ it('creates without storage IO and cleans scene state and handlers on shutdown',
   test.events.emit('shutdown');
   expect(test.nodes.every(node => node.destroyed)).toBe(true);
   expect(test.keyboard.listenerCount('keydown-ESC')).toBe(0);
+});
+
+it('saves an owned campaign blueprint without paying production or creating a ship', () => {
+  const test = fixture();
+  const before = structuredClone(test.owner.state.session);
+  const beforeProjects = structuredClone(test.owner.state.projects);
+  test.click('conquest-projects');
+  expect(test.find('campaign-project-panel')).toBeDefined();
+  expect(test.find('campaign-project-save').input.enabled).toBe(true);
+  test.click('campaign-project-save');
+  const projects = test.owner.state.projects.blue.items;
+  expect(projects).toHaveLength(1);
+  expect(projects[0].factionId).toBe('blue');
+  expect(projects[0].design).not.toBe(beforeProjects.blue.items[0]?.design);
+  expect(test.owner.state.session).not.toHaveProperty('projects');
+  expect(test.owner.state.session.ships).toEqual(before.ships);
+  expect(test.owner.state.session.production).toEqual(before.production);
+  expect(test.owner.state.session.treasuries).toEqual(before.treasuries);
+  expect(test.write).not.toHaveBeenCalled();
+  test.click('campaign-project-copy');
+  expect(test.owner.state.projects.blue.items).toHaveLength(2);
+  expect(test.owner.state.projects.blue.items[0].design.slots).toEqual(test.owner.state.projects.blue.items[1].design.slots);
+  expect(test.owner.state.projects.blue.items[0].design).not.toBe(test.owner.state.projects.blue.items[1].design);
+  vi.stubGlobal('prompt', () => 'Renamed');
+  test.click('campaign-project-rename');
+  expect(test.owner.state.projects.blue.items[1].name).toBe('Renamed');
+  test.click('campaign-project-delete');
+  test.click('campaign-delete-confirm');
+  expect(test.owner.state.projects.blue.items).toHaveLength(1);
+  test.click('campaign-projects-close');
+  test.click('campaign-dirty-confirm');
+  expect(test.owner.state.session.turn).toBe(before.turn);
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('reenables save after editing a loaded project at %ix%i', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  if (width === 390) test.click('conquest-tab-actions');
+  test.click('conquest-projects');
+  test.click('campaign-project-save');
+  test.click('campaign-projects-close');
+  test.click('conquest-save');
+  test.click('conquest-confirm');
+  const loaded = decodeConquestSave(test.storage.get(CampaignSaveManager.STORAGE_KEY)!);
+  test.owner.replace(loaded);
+  if (width === 390) test.click('conquest-tab-actions');
+  test.click('conquest-projects');
+  if (width === 390) {
+    test.click('campaign-project-list');
+    test.click('campaign-project-choice-1');
+  } else test.click('campaign-project-1');
+  test.click('campaign-dirty-confirm');
+  expect(test.find('campaign-project-save').input.enabled).toBe(false);
+  const before = structuredClone(test.owner.state);
+  test.click('slot-beam_1');
+  test.click('campaign-choice-3');
+  expect(test.find('design-save-status').text).toContain('Не сохранён');
+  expect(test.find('campaign-project-save').input.enabled).toBe(true);
+  test.click('campaign-projects-close');
+  test.click('campaign-dirty-cancel');
+  test.click('campaign-project-save');
+  const beam = test.owner.state.projects.blue.items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
+  const oldBeam = before.projects.blue.items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
+  if (beam?.kind !== 'beam' || oldBeam?.kind !== 'beam') throw new Error('Missing beam');
+  expect(beam.damage).toBeCloseTo(oldBeam.damage * 1.01);
+  expect(test.owner.state.session).toEqual(before.session);
+  expect(test.find('design-save-status').text).toContain('Сохранён');
+  expect(test.find('campaign-project-save').input.enabled).toBe(false);
+  test.events.emit('shutdown');
+});
+
+it('relayouts an open dirty project immediately on resize without losing its baseline or source', () => {
+  const host = { innerWidth: 1280, innerHeight: 720, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  vi.stubGlobal('window', host);
+  const test = fixture();
+  const camera = test.scene.cameras.main;
+  Object.assign(test.scene, { scale: {
+    getParentBounds: vi.fn(),
+    setGameSize: (width: number, height: number) => { camera.width = width; camera.height = height; }
+  } });
+  const resize = host.addEventListener.mock.calls.find(call => call[0] === 'resize')![1] as () => void;
+  test.click('conquest-projects');
+  test.click('campaign-project-save');
+  test.click('slot-beam_1');
+  test.click('campaign-choice-3');
+  const owner = test.owner as unknown as { projectPanel: {
+    editor: { getConfiguration(): ReturnType<typeof createDesign> };
+    hasUnsavedChanges(): boolean;
+  } };
+  const panel = owner.projectPanel;
+  const draft = panel.editor.getConfiguration();
+  const before = structuredClone(test.owner.state);
+  const oldRoot = test.find('conquest-root');
+  host.innerWidth = 390; host.innerHeight = 844;
+  resize();
+  expect(oldRoot.destroyed).toBe(true);
+  expect(test.find('conquest-tab-map')).toBeDefined();
+  expect(test.find('campaign-projects-close').x).toBe(278);
+  expect(test.find('slot-beam_1').width).toBe(354);
+  expect(owner.projectPanel).toBe(panel);
+  expect(panel.editor.getConfiguration()).toEqual(draft);
+  expect(panel.hasUnsavedChanges()).toBe(true);
+  expect(test.find('campaign-project-save').input.enabled).toBe(true);
+  expect(test.owner.state).toEqual(before);
+
+  test.click('campaign-projects-close');
+  host.innerWidth = 1280; host.innerHeight = 720;
+  resize();
+  expect(() => test.find('campaign-dirty-confirm')).toThrow();
+  expect(test.find('campaign-projects-close').x).toBe(1168);
+  expect(test.find('slot-beam_1').width).toBe(459);
+  expect(panel.editor.getConfiguration()).toEqual(draft);
+  expect(panel.hasUnsavedChanges()).toBe(true);
+  test.click('campaign-project-save');
+  expect(test.owner.state.projects.blue.items[0].design).toEqual(draft);
+  expect(panel.hasUnsavedChanges()).toBe(false);
+  test.click('campaign-projects-close');
+  expect(() => test.find('campaign-dirty-confirm')).toThrow();
+  test.events.emit('shutdown');
+});
+
+it('limits component variants individually while allowing and saving an exact available preset', () => {
+  const test = fixture();
+  test.click('conquest-projects');
+  test.click('slot-beam_1');
+  const beamChoices = test.nodes.filter(node => /^campaign-choice-\d+$/.test(node.name)).map(node => node.text);
+  test.click('campaign-choice-next');
+  beamChoices.push(...test.nodes.filter(node => /^campaign-choice-\d+$/.test(node.name)).map(node => node.text));
+  expect(beamChoices.some(label => label.includes('accuracy +1%'))).toBe(true);
+  expect(beamChoices.some(label => label.includes('accuracy +10%'))).toBe(false);
+  expect(beamChoices.some(label => label.includes('accuracy −10%'))).toBe(false);
+  test.click('campaign-choice-cancel');
+
+  test.click('campaign-project-preset');
+  test.click('campaign-preset-0');
+  test.click('campaign-dirty-confirm');
+  const preset = createCombatDesign('fighter');
+  test.click('campaign-project-save');
+  const savedPreset = test.owner.state.projects.blue.items[0].design;
+  expect(savedPreset).toMatchObject({ hullId: preset.hullId, name: preset.name });
+  expect(isCombatPresetDesign(savedPreset)).toBe(true);
+
+  const owner = test.owner as unknown as { projectPanel: {
+    editor: {
+      getConfiguration(): ReturnType<typeof createCombatDesign>;
+      installEquipment(slotId: string, component: NonNullable<ReturnType<typeof createCombatDesign>['slots'][number]['component']>): boolean;
+      setCampaignDesign(design: ReturnType<typeof createCombatDesign>): void;
+    };
+    save(): void;
+  } };
+  const panel = owner.projectPanel;
+  const savedDesign = panel.editor.getConfiguration();
+  const illegal = structuredClone(savedDesign);
+  const beam = illegal.slots.find(slot => slot.id === 'beam_1')?.component;
+  if (!beam || beam.kind !== 'beam') throw new Error('Fighter preset is missing its beam');
+  const outOfBand = { ...beam, accuracy: 0.1 };
+  expect(panel.editor.installEquipment('beam_1', outOfBand)).toBe(false);
+  expect(panel.editor.getConfiguration()).toEqual(savedDesign);
+
+  panel.editor.setCampaignDesign(illegal);
+  panel.save();
+  expect(test.owner.state.projects.blue.items[0].design).toEqual(savedPreset);
+  test.events.emit('shutdown');
+});
+
+it('does not expose exempt preset modules as individual variants', () => {
+  const test = fixture();
+  const advanced = structuredClone(test.owner.state);
+  advanced.research.blue.completed = ['support', 'ordnance', 'capital'];
+  test.owner.replace(conquestSchema.parse(advanced));
+  test.click('conquest-projects');
+  test.click('campaign-project-preset');
+  test.click('campaign-preset-3');
+  test.click('campaign-dirty-confirm');
+  test.click('campaign-project-save');
+
+  const saved = test.owner.state.projects.blue.items[0];
+  expect(isCombatPresetDesign(saved.design)).toBe(true);
+  const editorOwner = test.owner as unknown as { projectPanel: {
+    editor: {
+      getConfiguration(): ReturnType<typeof createCombatDesign>;
+      installEquipment(slotId: string, component: NonNullable<ReturnType<typeof createCombatDesign>['slots'][number]['component']>): boolean;
+    };
+  } };
+  const editor = editorOwner.projectPanel.editor;
+  const engine = saved.design.slots.find(slot => slot.id === 'engine_1')?.component;
+  if (!engine || engine.kind !== 'engine') throw new Error('Dreadnought preset is missing its engine');
+  const exactPreset = editor.getConfiguration();
+  expect(editor.installEquipment('engine_1', engine)).toBe(false);
+  expect(editor.getConfiguration()).toEqual(exactPreset);
+
+  test.click('campaign-project-1');
+  test.click('slot-engine_1');
+  const engineChoices: string[] = [];
+  for (let page = 0; page < 4; page++) {
+    engineChoices.push(...test.nodes.filter(node => !node.destroyed && /^campaign-choice-\d+$/.test(node.name))
+      .map(node => node.text));
+    const indicator = test.nodes.find(node => !node.destroyed && /^\d+ \/ \d+$/.test(node.text));
+    if (!indicator || Number(indicator.text.split(' / ')[0]) >= Number(indicator.text.split(' / ')[1])) break;
+    test.click('campaign-choice-next');
+  }
+  expect(engineChoices.some(label => label.includes('Линейный двигатель'))).toBe(false);
+  test.events.emit('shutdown');
+});
+
+it('protects a dirty campaign draft on close and keeps mobile editor controls touch-sized', () => {
+  const test = fixture(new Map(), true, 390, 844);
+  const before = structuredClone(test.owner.state);
+  test.click('conquest-tab-actions');
+  test.click('conquest-projects');
+  for (const name of ['campaign-project-save', 'campaign-project-new', 'campaign-project-preset',
+    'change-hull', 'slot-engine_1', 'slot-beam_1']) {
+    const control = test.find(name);
+    expect(control.width).toBeGreaterThanOrEqual(44);
+    expect(control.height).toBeGreaterThanOrEqual(44);
+    expect(control.fontSize).toBeGreaterThanOrEqual(14);
+  }
+  const navBottom = Math.max(test.find('campaign-project-prev').y + test.find('campaign-project-prev').height,
+    test.find('campaign-project-list').y + test.find('campaign-project-list').height,
+    test.find('campaign-project-next').y + test.find('campaign-project-next').height);
+  const toolbarTop = Math.min(test.find('campaign-project-save').y, test.find('campaign-project-new').y,
+    test.find('campaign-project-copy').y);
+  expect(toolbarTop).toBeGreaterThanOrEqual(navBottom);
+  test.click('campaign-projects-close');
+  expect(test.find('campaign-dirty-confirm')).toBeDefined();
+  test.click('campaign-dirty-cancel');
+  expect(test.find('campaign-project-panel')).toBeDefined();
+  expect(test.owner.state).toEqual(before);
+  test.events.emit('shutdown');
+});
+
+it('pauses a pending AI ticket when the campaign editor opens and does not resume it implicitly', () => {
+  const test = fixture();
+  test.click('conquest-new');
+  test.click('conquest-new-ai');
+  test.click('conquest-end');
+  expect(test.tasks).toHaveLength(1);
+  test.click('conquest-projects');
+  expect(test.tasks[0].remove).toHaveBeenCalledOnce();
+  test.click('campaign-projects-close');
+  test.click('campaign-dirty-confirm');
+  expect(test.owner.state.session.turn).toBe(2);
+  expect(test.tasks).toHaveLength(1);
+  test.events.emit('shutdown');
 });
 
 it('starts only after saving the selected generated map and displays two locked participants', () => {

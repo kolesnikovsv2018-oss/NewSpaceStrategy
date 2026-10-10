@@ -1,7 +1,7 @@
 import { createConquest, conquestSchema, executeConquestCommand, convertConquestToLocal, getConquestView,
   getConquestOutcome, type Conquest, type ConquestCommand, type ConquestResult, type ConquestView } from '../domain/conquest';
 import { buildConquestDesigns, executeConquestAiTurn } from '../domain/conquestAi';
-import { getDefaultResearchTree, isCampaignDesignAvailable } from '../domain/campaignResearch';
+import { getDefaultResearchTree, getResearchAccess, isCampaignDesignAvailable } from '../domain/campaignResearch';
 import { getProductionQuote, getProductionRefund } from '../domain/production';
 import { getRefuelQuote } from '../domain/campaignShips';
 import { getRepairQuote, getAmmunitionQuote } from '../domain/campaignOperations';
@@ -13,10 +13,10 @@ import { generateBrowserGalaxy, createGalaxySeed } from '../utils/BrowserGalaxyG
 import { LocalGalaxyMapRepository, type GalaxyMapRepository } from '../utils/GalaxyMapRepository';
 import { ConquestSaveManager } from '../utils/ConquestSaveManager';
 import { parseResearchTreeYaml, MAX_RESEARCH_TREE_BYTES } from '../utils/ResearchTreeYaml';
-import { loadProductionCatalog, type ProductionCatalog } from '../utils/ProductionCatalog';
 import { button, text, fitText, chooseItem, conquestDialogLayout, CONQUEST_HELP } from '../ui/ConquestWidgets';
 import { resizeCampaignViewport } from '../ui/CampaignViewport';
 import { openShipyardModal, closeShipyardModal, isShipyardModalOpen } from '../ui/ShipyardModal';
+import { CampaignProjectPanel } from '../ui/CampaignProjectPanel';
 
 type Tab = 'research' | 'production' | 'fleet' | 'battles';
 export class ConquestScene extends Phaser.Scene {
@@ -29,7 +29,6 @@ export class ConquestScene extends Phaser.Scene {
   private choice = 0;
   private selectedShips: number[] = [];
   private selectedGroup?: number;
-  private catalog?: ProductionCatalog;
   private message = '';
   private disposed = true;
   private readonly escapeEvents = new WeakSet<KeyboardEvent>();
@@ -47,6 +46,8 @@ export class ConquestScene extends Phaser.Scene {
   private dialogToken?: object;
   private replay?: { background: Phaser.GameObjects.Graphics; graphics: Phaser.GameObjects.Graphics;
     label: Phaser.GameObjects.Text; seconds: number; paused: boolean; left: number; top: number; scale: number };
+  private projectPanel?: CampaignProjectPanel;
+  private projectGeneration = 0;
 
   constructor(private readonly mapRepository: GalaxyMapRepository = new LocalGalaxyMapRepository()) {
     super({ key: 'ConquestScene' });
@@ -66,6 +67,8 @@ export class ConquestScene extends Phaser.Scene {
       if (typeof window !== 'undefined') window.removeEventListener('resize', this.resizeViewport);
       if (typeof window !== 'undefined') window.removeEventListener('keydown', this.forwardEscape);
       closeShipyardModal(this); this.root?.destroy(true); this.root = undefined; this.replay = undefined; this.frames = undefined;
+      this.projectGeneration++;
+      this.projectPanel?.destroy(); this.projectPanel = undefined;
       Reflect.deleteProperty(this, 'state');
       this.scale?.setGameSize(1280, 720);
     });
@@ -79,6 +82,7 @@ export class ConquestScene extends Phaser.Scene {
       closeShipyardModal(this);
       this.message = 'Размер экрана изменён. Диалог отменён; откройте его снова.';
     }
+    this.projectPanel?.resize(this.cameras.main.width, this.cameras.main.height);
     this.render();
   };
 
@@ -90,17 +94,20 @@ export class ConquestScene extends Phaser.Scene {
       this.escapeEvents.add(event);
     }
     if (isShipyardModalOpen(this)) return;
+    if (this.projectPanel) { this.projectPanel.requestClose(); return; }
     if (this.ticket) { this.pauseAi(); this.render(); return; }
     this.confirm('Выйти в меню? Несохранённая партия будет потеряна.', () => this.scene.start('MenuScene'));
   }
 
   private replace(state: Conquest): void {
+    this.projectGeneration++;
+    this.projectPanel?.destroy(); this.projectPanel = undefined;
     this.pauseAi();
     this.state = conquestSchema.parse(state);
     this.observer = this.state.control.mode === 'human-vs-ai' ? 'blue' : this.state.session.turn % 2 ? 'blue' : 'red';
     this.selected = this.homeSelection();
     this.phase = this.isAiTurn() ? 'paused' : 'idle';
-    this.tab = 'research'; this.page = 0; this.choice = 0; this.catalog = undefined;
+    this.tab = 'research'; this.page = 0; this.choice = 0;
     this.selectedShips = []; this.selectedGroup = undefined; this.frames = undefined; this.message = '';
     this.narrowSection = 'map';
     this.render();
@@ -149,7 +156,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private command(payload: Omit<ConquestCommand, 'factionId' | 'expectedTurn'> | Record<string, unknown>): void {
-    if (this.disposed || isShipyardModalOpen(this) || this.phase === 'running' || this.ticket) return;
+    if (this.disposed || this.projectPanel || isShipyardModalOpen(this) || this.phase === 'running' || this.ticket) return;
     const result = executeConquestCommand(this.state, { ...payload, factionId: this.observer, expectedTurn: this.state.session.turn });
     this.accept(result);
     if (result.ok && payload.kind === 'endTurn') this.scheduleAi();
@@ -190,6 +197,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private save(): void {
+    if (this.projectPanel) return;
     const snapshot = structuredClone(this.state);
     this.confirm('Заменить общий слот сохранения этой партией?', () => {
       const result = this.repository.save(snapshot);
@@ -198,6 +206,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private requestLoad(): void {
+    if (this.projectPanel) return;
     this.pauseAi();
     const source = this.state;
     const result = this.repository.load();
@@ -206,7 +215,54 @@ export class ConquestScene extends Phaser.Scene {
     this.confirm('Заменить текущую партию сохранённой?', () => this.replace(result.state));
   }
 
+  private openProjectEditor(): void {
+    if (this.disposed || this.projectPanel || !this.state || isShipyardModalOpen(this)) return;
+    this.pauseAi();
+    const source = this.state;
+    const factionId = this.observer;
+    const expectedTurn = source.session.turn;
+    const generation = ++this.projectGeneration;
+    const view = getConquestView(source, factionId);
+    const access = getResearchAccess(view.research, view.researchTree);
+    let currentSource = source;
+    let panel: CampaignProjectPanel;
+    panel = new CampaignProjectPanel(this, {
+      width: this.cameras.main.width,
+      height: this.cameras.main.height,
+      projects: view.projects,
+      factionId,
+      readOnly: view.outcome.status === 'completed' || view.activeFactionId !== factionId ||
+        (source.control.mode === 'human-vs-ai' && factionId === 'red'),
+      hulls: access.hulls.map(id => ({ id, name: HULLS[id].name })),
+      components: access.components,
+      research: view.research,
+      tree: view.researchTree,
+      run: payload => {
+        if (this.disposed || this.projectPanel !== panel || this.projectGeneration !== generation ||
+          this.observer !== factionId || this.state !== currentSource || this.state.session.turn !== expectedTurn) {
+          return { ok: false, code: 'STALE_TURN', message: 'Контекст проекта изменился; откройте редактор снова' };
+        }
+        const result = executeConquestCommand(currentSource, {
+          ...payload, factionId, expectedTurn
+        });
+        if (result.ok) {
+          this.state = result.state;
+          currentSource = result.state;
+        }
+        return result;
+      },
+      close: () => {
+        if (this.projectPanel !== panel || this.projectGeneration !== generation) return;
+        this.projectGeneration++;
+        this.projectPanel = undefined;
+        this.render();
+      }
+    });
+    this.projectPanel = panel;
+  }
+
   private newGame(): void {
+    if (this.projectPanel) return;
     this.pauseAi(); this.render();
     const modal = openShipyardModal(this);
     if (!modal) return;
@@ -289,7 +345,7 @@ export class ConquestScene extends Phaser.Scene {
   private control(x: number, y: number, label: string, action: () => void, name: string, enabled = true, width = 145): void {
     const root = this.root!;
     const item = button(this, root, x, y, label, () => {
-      if (!this.disposed && this.root === root && enabled && !isShipyardModalOpen(this)) action();
+      if (!this.disposed && !this.projectPanel && this.root === root && enabled && !isShipyardModalOpen(this)) action();
     }, name, width);
     if (!enabled) item.disableInteractive().setAlpha(0.4);
   }
@@ -376,7 +432,7 @@ export class ConquestScene extends Phaser.Scene {
       if (!generated) node.setInteractive({ useHandCursor: true });
       if (this.selected === system.id) node.setStrokeStyle(3, 0xffffff);
       node.on('pointerdown', () => {
-        if (this.root !== root || this.disposed || isShipyardModalOpen(this)) return;
+        if (this.root !== root || this.disposed || this.projectPanel || isShipyardModalOpen(this)) return;
         this.selected = system.id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
       }); root.add(node);
       if (!generated || this.selected === system.id) text(this, root, position.x - 35, position.y + 8, this.shorten(system.name, 10), 14);
@@ -384,9 +440,9 @@ export class ConquestScene extends Phaser.Scene {
     const tabs: [Tab, string][] = [['research', 'Исследования'], ['production', 'Производство'], ['fleet', 'Корабли и группы'], ['battles', 'Бои']];
     tabs.forEach(([tab, label], index) => this.control(24 + index * 195, 340, label, () => {
       this.tab = tab; this.narrowSection = tab; this.page = 0;
-      if (tab === 'production' && !this.catalog) this.catalog = loadProductionCatalog();
       this.render();
     }, `conquest-tab-${tab}`, true, 180));
+    this.control(1020, 340, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects', true, 220);
     if (this.tab === 'research') this.renderResearch(view, manual);
     if (this.tab === 'production') this.renderProduction(view, manual);
     if (this.tab === 'fleet') this.renderFleet(view, manual);
@@ -409,8 +465,8 @@ export class ConquestScene extends Phaser.Scene {
 
   private renderProduction(view: ConquestView, manual: boolean): void {
     const choices: { design: ShipDesign; source: string }[] = [
+      ...view.projects.map(project => ({ design: project.design, source: `Проект #${project.id}` })),
       ...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' })),
-      ...(this.catalog?.choices ?? []).map(item => ({ design: item.design, source: item.source }))
     ];
     this.choice = Math.min(this.choice, Math.max(0, choices.length - 1));
     const choice = choices[this.choice];
@@ -431,8 +487,9 @@ export class ConquestScene extends Phaser.Scene {
       this.control(145, 516, 'Заказать', () => this.command({ kind: 'enqueueProduction', systemId: this.selected, design: structuredClone(choice.design) }),
         'conquest-enqueue', manual && own && available && !!quote);
     }
-    this.control(320, 516, 'Обновить библиотеку', () => { this.catalog = loadProductionCatalog(); this.render(); }, 'conquest-catalog', true, 225);
-    text(this, this.root!, 24, 592, this.catalog?.notice ?? '', 14).setWordWrapWidth(550);
+    this.control(320, 516, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects', true, 225);
+    text(this, this.root!, 24, 592, 'Проекты этой партии и стороны; внешняя библиотека не используется.', 14)
+      .setWordWrapWidth(550);
     const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === this.selected);
     this.normalizePage(records.length, 4);
     text(this, this.root!, 655, 385, 'Очередь и готовые корабли', 17);
@@ -550,7 +607,6 @@ export class ConquestScene extends Phaser.Scene {
     tabs.forEach(([tab, title], index) => this.control(12 + (index % 3) * (third + 8), 124 + Math.floor(index / 3) * 52, title, () => {
       if (tab !== 'map' && tab !== 'actions') {
         this.tab = tab;
-        if (tab === 'production' && !this.catalog) this.catalog = loadProductionCatalog();
       }
       this.page = 0;
       this.narrowSection = tab; this.render();
@@ -570,19 +626,20 @@ export class ConquestScene extends Phaser.Scene {
       control(240, 'Новая партия', () => this.newGame(), 'conquest-new');
       this.control(12, 292, 'Сохранить', () => this.save(), 'conquest-save', true, half);
       this.control(20 + half, 292, 'Загрузить', () => this.requestLoad(), 'conquest-load', true, half);
-      control(344, this.observer === 'blue' ? 'Наблюдение: синие' : 'Наблюдение: красные', () => {
+      control(344, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects');
+      control(396, this.observer === 'blue' ? 'Наблюдение: синие' : 'Наблюдение: красные', () => {
         this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selected = this.homeSelection();
         this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
       }, 'conquest-side', this.state.control.mode === 'local');
-      if (this.isAiTurn()) control(396, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
+      if (this.isAiTurn()) control(448, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
         if (this.ticket) { this.pauseAi(); this.render(); } else this.confirm('Выполнить ход компьютера?', () => this.scheduleAi());
       }, 'conquest-resume');
-      else if (this.state.control.mode === 'local') control(396, 'AI: один ход', () => this.confirm('Поручить один ход компьютеру?', () => {
+      else if (this.state.control.mode === 'local') control(448, 'AI: один ход', () => this.confirm('Поручить один ход компьютеру?', () => {
         this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.turn));
       }), 'conquest-ai', manual);
-      if (this.state.control.mode === 'human-vs-ai') control(448, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?',
+      if (this.state.control.mode === 'human-vs-ai') control(500, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?',
         () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover');
-      control(500, 'Меню', () => this.escape(), 'conquest-menu');
+      control(552, 'Меню', () => this.escape(), 'conquest-menu');
       const budget = view.economyForecast;
       label(566, `Доход: ${view.income.credits}/${view.income.minerals}\n` + (budget.ok ?
         `Содержание ${budget.upkeep.dueCredits} · оплата ${budget.upkeep.paidCredits} · дефицит ${budget.upkeep.shortfallCredits}` : `Бюджет: ${budget.code}`));
@@ -600,8 +657,8 @@ export class ConquestScene extends Phaser.Scene {
       this.narrowPager(view.researchTree.nodes.length, 424);
       label(492, 'Цена списывается один раз. +1 прогресса на свой конец хода; без колоний прогресс приостановлен. Технологии открывают корпуса, семейства модулей и диапазоны параметров.');
     } else if (this.narrowSection === 'production') {
-      const choices = [...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' })),
-        ...(this.catalog?.choices ?? [])];
+      const choices = [...view.projects.map(project => ({ design: project.design, source: `Проект #${project.id}` })),
+        ...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' }))];
       this.choice = Math.max(0, Math.min(this.choice, choices.length - 1));
       const choice = choices[this.choice];
       const own = selected.visibility === 'explored' && selected.ownerId === this.observer;
@@ -619,8 +676,8 @@ export class ConquestScene extends Phaser.Scene {
         this.control(116, 336, 'Заказать', () => this.command({ kind: 'enqueueProduction', systemId: selected.id, design: structuredClone(choice.design) }),
           'conquest-enqueue', manual && own && available && !!quote, width - 104);
       }
-      control(388, 'Обновить библиотеку', () => { this.catalog = loadProductionCatalog(); this.render(); }, 'conquest-catalog');
-      label(440, this.catalog?.notice ?? 'Полная оплата сразу. FIFO: первый заказ колонии.');
+      control(388, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects');
+      label(440, 'Полная оплата сразу. FIFO: первый заказ колонии. Используются только проекты этой партии.');
       const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === selected.id);
       this.normalizePage(records.length, 1);
       const record = records[this.page], order = record && view.production.orders.find(item => item.id === record.id);

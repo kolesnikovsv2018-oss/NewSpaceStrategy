@@ -72,8 +72,8 @@ Boundary отделены полем `kind`:
 
 ## Формат и смысл метрик
 
-Выход `orion-conquest-baseline`, schemaVersion1 содержит `summary`, `verification`,
-`runs`. Каждая запись сохраняет входы, версии baseline/save5/rules3/tree2/battlePolicy,
+Выход `orion-conquest-baseline`, schemaVersion2 содержит `summary`, `verification`,
+`runs`. Каждая запись сохраняет входы, версии baseline2/save6/rules3/tree2/battlePolicy,
 карту, lineup→faction, полный finalState, журнал команд, промежуточный текущий save
 и метрики. Отсутствующие science points/population помечены
 `mechanic-not-implemented`, а не числом0.
@@ -112,9 +112,9 @@ AI-проекта, намеренная задержка производств�
 причины; сумма счётчиков может превышать число окон. Завершение расписания
 помечено `no-further-command-in-diagnostic-schedule`.
 
-Командный отказ сохраняет настоящий message executor. Нынешний executor не даёт
-стабильного кода: `executorCode.status=unavailable`, без синтетического кода из
-русского текста. Предыдущие команды текущего диагностического пакета помечаются
+Командный отказ сохраняет настоящий message и машинный `executorCode` executor,
+без синтетического кода из русского текста. Н05а добавил типизированные отказы;
+baseline2 отражает этот новый контракт и каталоги save6. Предыдущие команды текущего диагностического пакета помечаются
 rolled-back; finalState и метрики остаются на последнем принятом окне. Retry нет.
 
 ## Проверки

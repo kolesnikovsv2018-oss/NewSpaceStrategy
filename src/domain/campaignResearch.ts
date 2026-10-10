@@ -172,7 +172,11 @@ export function isCampaignComponentVariantAvailable(component: ComponentDefiniti
 }
 
 export function isCampaignDesignAvailable(design: ShipDesign, state: ResearchState, tree: ResearchTree): boolean {
-  if (!designSchema.safeParse(design).success || validateDesign(design, 'flight').length) return false;
+  return validateDesign(design, 'flight').length === 0 && isCampaignDraftAvailable(design, state, tree);
+}
+
+export function isCampaignDraftAvailable(design: ShipDesign, state: ResearchState, tree: ResearchTree): boolean {
+  if (!designSchema.safeParse(design).success || validateDesign(design, 'draft').length) return false;
   const access = getResearchAccess(state, tree);
   if (!access.hulls.includes(design.hullId)) return false;
   const components = design.slots.flatMap(slot => slot.component ? [slot.component] : []);

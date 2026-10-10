@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createConquest, conquestSchema, executeConquestAction, getConquestOutcome, getConquestView,
-  type Conquest, type ConquestCommand } from '../domain/conquest';
+  type Conquest, type ConquestCommand, type ConquestErrorCode } from '../domain/conquest';
 import { buildConquestDesigns, planConquestAction } from '../domain/conquestAi';
 import { generateGalaxy } from '../domain/galaxyGenerator';
 import { GALAXY_GENERATOR_VERSION, GALAXY_PROFILE_ID, validateGalaxyMap, type GalaxyMap } from '../domain/galaxyMap';
@@ -9,7 +9,7 @@ import { createOperationalState } from '../domain/campaignOperations';
 import { getProductionQuote } from '../domain/production';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
 
-export const BASELINE_VERSION = 1;
+export const BASELINE_VERSION = 2;
 export const BASELINE_SEEDS = [
   { mapSeed: 41, campaignSeed: 101 },
   { mapSeed: 12345, campaignSeed: 67890 },
@@ -48,12 +48,12 @@ export interface CommandRecord {
   command: ConquestCommand;
   result: 'accepted' | 'rejected' | 'rolled-back';
   message?: string;
-  executorCode?: { status: 'unavailable'; reason: 'executor-returns-message-only' };
+  executorCode?: ConquestErrorCode;
   endTurnObservations?: string[];
 }
 export interface BaselineRun {
   input: BaselineInput;
-  versions: { baseline: 1; save: 5; rules: 3; battlePolicy: Conquest['battlePolicy']; tree: 2 };
+  versions: { baseline: 2; save: 6; rules: 3; battlePolicy: Conquest['battlePolicy']; tree: 2 };
   map: GalaxyMap;
   lineups: { first: CampaignFactionId; second: CampaignFactionId };
   controllers: 'diagnostic-all-ai-command-runner';
@@ -240,7 +240,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
   const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
   const result: BaselineRun = {
-    input: options, versions: { baseline: 1, save: 5, rules: 3, battlePolicy: state.battlePolicy, tree: 2 },
+    input: options, versions: { baseline: 2, save: 6, rules: 3, battlePolicy: state.battlePolicy, tree: 2 },
     map: start.map, lineups: { first, second: first === 'blue' ? 'red' : 'blue' },
     controllers: 'diagnostic-all-ai-command-runner', status: 'timeout', outcome: getConquestOutcome(state),
     turnsExecuted: resume?.turnsExecuted ?? 0, commands: [], metrics: { blue: sideMetrics(), red: sideMetrics() },
@@ -265,7 +265,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
       const executed = executeConquestAction(candidate, command, true);
       if (!executed.ok) {
         record.result = 'rejected'; record.message = executed.message;
-        record.executorCode = { status: 'unavailable', reason: 'executor-returns-message-only' };
+        record.executorCode = executed.code;
         for (const previous of records.slice(0, -1)) previous.result = 'rolled-back';
         result.status = 'executor-error';
         break;

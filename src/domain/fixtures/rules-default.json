@@ -1,0 +1,46 @@
+{
+  "format": "orion-rules-snapshot",
+  "schemaVersion": 1,
+  "rulesVersion": 1,
+  "id": "campaign-rules-v1",
+  "treeId": "orion-technologies-v2",
+  "treeVersion": "research-tree-v2",
+  "tablesId": "campaign-tables",
+  "tablesVersion": "campaign-tables-v1",
+  "policyId": "component-bands",
+  "policyVersion": "component-bands-v1",
+  "handlers": ["ship-stats", "component-stats", "facility-output", "fleet-capacity", "campaign-policy"],
+  "policies": ["component-bands-v1", "campaign-policy-v1"],
+  "effects": [
+    {
+      "kind": "modifier", "id": "ship-speed-bonus", "target": "ship-speed", "scope": "ship",
+      "unit": "percent", "operation": "add", "value": 0.1, "cap": 0.3,
+      "stackingGroup": "engineering", "activationPhase": "always", "handler": "ship-stats",
+      "policy": "component-bands-v1", "description": "Библиотечный пример бонуса скорости"
+    },
+    {
+      "kind": "modifier", "id": "ship-growth-bonus", "target": "ship-growth", "scope": "planet",
+      "unit": "percent", "operation": "add", "value": 0.2, "cap": 0.5,
+      "stackingGroup": "economy", "activationPhase": "on-turn-start", "handler": "facility-output",
+      "policy": "campaign-policy-v1", "description": "Будущее описание роста, не игровой бонус"
+    },
+    {
+      "kind": "capability", "id": "fleet-bonus-slot", "target": "fleet-capacity", "scope": "fleet",
+      "unit": "count", "operation": "add", "value": 1, "cap": 4,
+      "stackingGroup": "combat", "activationPhase": "on-build", "handler": "fleet-capacity",
+      "description": "Библиотечный пример вместимости"
+    },
+    {
+      "kind": "policy-reference", "id": "policy-reference-v1", "target": "planet-habitability", "scope": "global",
+      "unit": "points", "operation": "set", "value": 1, "cap": 10,
+      "stackingGroup": "science", "activationPhase": "on-research", "handler": "campaign-policy",
+      "policy": "campaign-policy-v1", "description": "Будущая политика без runtime-исполнителя"
+    },
+    {
+      "kind": "capability", "id": "component-unlock", "target": "component-unlock", "scope": "component",
+      "unit": "count", "operation": "set", "value": 1, "cap": 1,
+      "stackingGroup": "base", "activationPhase": "on-research", "handler": "component-stats",
+      "description": "Библиотечный пример открытия компонента"
+    }
+  ]
+}

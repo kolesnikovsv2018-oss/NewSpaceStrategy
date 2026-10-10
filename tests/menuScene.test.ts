@@ -44,14 +44,14 @@ function fixture() {
 it('has one campaign entry and keeps the sandbox and trials out of the main menu', () => {
   const test = fixture();
   expect(test.nodes.filter(node => node.name && !node.destroyed).map(node => [node.name, node.text])).toEqual([
-    ['start-conquest', 'Новая кампания'], ['open-shipyard', 'Верфь'], ['open-demonstrations', 'Демонстрации']
+    ['start-conquest', 'Новая кампания'], ['open-demonstrations', 'Демонстрации']
   ]);
   expect(test.start).not.toHaveBeenCalled();
   test.events.emit('shutdown');
 });
 
 it.each([
-  ['start-conquest', 'ConquestScene'], ['open-shipyard', 'ShipyardScene']
+  ['start-conquest', 'ConquestScene']
 ])('routes main item %s to %s', (button, target) => {
   const test = fixture();
   test.click(button);
@@ -61,13 +61,15 @@ it.each([
 });
 
 it.each([
-  ['start-campaign', 'MainScene'], ['start-ship-test', 'ShipTestScene'], ['start-battle-test', 'BattleScene']
+  ['start-campaign', 'MainScene'], ['start-ship-test', 'ShipTestScene'], ['start-battle-test', 'BattleScene'],
+  ['open-shipyard', 'ShipyardScene']
 ])('preserves demonstration route %s to %s', (button, target) => {
   const test = fixture();
   test.click('open-demonstrations');
   expect(test.start).not.toHaveBeenCalled();
   expect(test.find('demonstrations-title').text).toBe('Демонстрации');
   expect(test.find('start-campaign').text).toBe('Мирная песочница');
+  expect(test.find('open-shipyard').text).toBe('Свободная верфь');
   test.click(button);
   expect(test.start).toHaveBeenCalledExactlyOnceWith(target);
 });

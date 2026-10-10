@@ -214,17 +214,17 @@ export function executeConquestAiTurn(input: unknown, factionInput: unknown, exp
     const faction = factionIdSchema.parse(factionInput);
     if (expectedTurn !== state.session.turn || faction !== (expectedTurn % 2 ? 'blue' : 'red') ||
       (state.control.mode === 'human-vs-ai' && faction !== 'red') || getConquestOutcome(state).status === 'completed') {
-      return { ok: false, message: 'AI-ход недоступен' };
+      return { ok: false, code: 'CONTROLLER_FORBIDDEN', message: 'AI-ход недоступен' };
     }
     let frames: BattleFrame[] | undefined;
     for (let action = 0; action < 24; action++) {
       const command = action === 23 ? { kind: 'endTurn' as const, factionId: faction, expectedTurn } : planConquestAction(getConquestView(state, faction));
       const result = executeConquestAction(state, command, true);
-      if (!result.ok) return { ok: false, message: 'Не удалось выполнить AI-ход' };
+      if (!result.ok) return { ok: false, code: result.code, message: 'Не удалось выполнить AI-ход' };
       state = result.state;
       frames = result.frames ?? frames;
       if (command.kind === 'endTurn') return { ok: true, state, ...(frames ? { frames } : {}) };
     }
-    return { ok: false, message: 'Превышен бюджет AI-хода' };
-  } catch { return { ok: false, message: 'Не удалось выполнить AI-ход' }; }
+    return { ok: false, code: 'RULE_REJECTED', message: 'Превышен бюджет AI-хода' };
+  } catch { return { ok: false, code: 'INVALID_STATE', message: 'Не удалось выполнить AI-ход' }; }
 }

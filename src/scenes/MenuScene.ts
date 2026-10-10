@@ -49,7 +49,6 @@ export class MenuScene extends Phaser.Scene {
 
     if (!demonstrations) {
       this.button('start-conquest', 'Новая кампания', height / 2, () => this.scene.start('ConquestScene'), '#265c50', 32);
-      this.button('open-shipyard', 'Верфь', height / 2 + 75, () => this.scene.start('ShipyardScene'), '#226622');
       this.button('open-demonstrations', 'Демонстрации', height / 2 + 150, () => this.render(true));
       return;
     }
@@ -60,7 +59,8 @@ export class MenuScene extends Phaser.Scene {
     this.button('start-campaign', 'Мирная песочница', height / 2 + 10, () => this.scene.start('MainScene'));
     this.button('start-ship-test', 'Испытание кораблей', height / 2 + 75, () => this.scene.start('ShipTestScene'));
     this.button('start-battle-test', 'Испытание боя', height / 2 + 140, () => this.scene.start('BattleScene'), '#662222');
-    this.button('demonstrations-back', 'Назад', height / 2 + 215, () => this.render(false));
+    this.button('open-shipyard', 'Свободная верфь', height / 2 + 205, () => this.scene.start('ShipyardScene'), '#226622');
+    this.button('demonstrations-back', 'Назад', height / 2 + 270, () => this.render(false));
   }
 
   private button(name: string, label: string, y: number, action: () => void, backgroundColor = '#444444', fontSize = 24) {

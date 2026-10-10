@@ -210,19 +210,19 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":5', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":6', '"schemaVersion":999'))).toThrow();
 });
 
 it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 5, rulesVersion: 3,
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 6, rulesVersion: 3,
     conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 2 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };
   expect(() => decodeConquestSave(JSON.stringify(oldEnvelope))).toThrow();
-  for (const schemaVersion of [1, 2, 3, 4, 6]) {
+  for (const schemaVersion of [1, 2, 3, 4, 5, 7]) {
     expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, schemaVersion }))).toThrow();
   }
   expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, rulesVersion: 2 }))).toThrow();
@@ -278,7 +278,7 @@ it('rolls back a mining overflow and does not expose unexpected exception detail
   expect(executeConquestCommand(state, command).ok).toBe(false);
   expect(state).toEqual(before);
   const hostile = Object.defineProperty({}, 'scenario', { get: () => { throw new Error('private diagnostic'); } });
-  expect(executeConquestCommand(hostile, command)).toEqual({ ok: false, message: 'Недопустимые данные военной кампании' });
+  expect(executeConquestCommand(hostile, command)).toEqual({ ok: false, code: 'INVALID_STATE', message: 'Недопустимые данные военной кампании' });
 });
 
 it('earns research, pays for a library service ship and mines after arrival without injected resources', () => {

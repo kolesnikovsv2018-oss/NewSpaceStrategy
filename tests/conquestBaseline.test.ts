@@ -27,7 +27,7 @@ describe('Conquest baseline', () => {
     const options = input({ worldCount });
     const run = runBaseline(options);
     expect(verifyBaseline(run)).toEqual({ repeat: 'passed', roundTrip: 'passed' });
-    expect(run.versions).toEqual({ baseline: 1, save: 5, rules: 3, tree: 2, battlePolicy: 'campaign-v2' });
+    expect(run.versions).toEqual({ baseline: 2, save: 6, rules: 3, tree: 2, battlePolicy: 'campaign-v2' });
     expect(run.map.seed).toBe(options.mapSeed);
     expect(run.finalState.seed).toBe(options.campaignSeed);
     expect(run.status).toBe('timeout');
@@ -116,7 +116,7 @@ describe('Conquest baseline', () => {
       expect(run.finalState).toEqual(start.state);
       expect(run.commands[0].result).toBe('rolled-back');
       expect(run.commands.at(-1)).toMatchObject({ result: 'rejected', message: 'Номер хода изменился',
-        executorCode: { status: 'unavailable', reason: 'executor-returns-message-only' } });
+        executorCode: 'STALE_TURN' });
       expect(run.metrics.blue.gross.credits).toBe(0);
     } finally { spy.mockRestore(); }
   });

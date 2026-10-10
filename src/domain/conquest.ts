@@ -2,13 +2,15 @@ import { z } from 'zod';
 import type { GalaxyMap } from './galaxyMap';
 import { factionIdSchema, systemIdSchema, getGalaxyDefinition, areSystemsAdjacent, type CampaignFactionId, type SystemId } from './campaign';
 import { conquestSessionSchema, createCampaignSession, executeConquestSessionCommand, getConquestSessionView,
-  sessionCommandSchema, MAX_TURN, type CampaignSessionView } from './campaignSession';
+  sessionCommandSchema, MAX_TURN, type CampaignSessionView, type SessionErrorCode } from './campaignSession';
 import { treasurySchema } from './campaignEconomy';
 import { researchTreeSchema, researchStateSchema, researchIdSchema, createResearchState, getDefaultResearchTree,
-  isResearchStateValid, isCampaignDesignAvailable, advanceResearch } from './campaignResearch';
+  isResearchStateValid, isCampaignDesignAvailable, isCampaignDraftAvailable, advanceResearch } from './campaignResearch';
 import { operationalStateSchema, createOperationalState, readOperationalState, getRepairQuote, getAmmunitionQuote } from './campaignOperations';
 import { resolveConquestBattle, type BattleFrame } from './conquestBattle';
 import type { CampaignShip } from './campaignShips';
+import { campaignProjectsSchema, createCampaignProjects, projectCommandSchema, editCampaignProject,
+  type ProjectErrorCode } from './campaignProjects';
 
 export const conquestControlSchema = z.union([
   z.object({ mode: z.literal('local') }).strict(),
@@ -24,7 +26,7 @@ const battleReportSchema = z.object({ id: z.number().int().positive().max(MAX_TU
 export const conquestSchema = z.object({
   scenario: z.literal('conquest-v1'), victory: conquestVictorySchema, control: conquestControlSchema,
   battlePolicy: conquestBattlePolicySchema,
-  session: conquestSessionSchema, researchTree: researchTreeSchema,
+  session: conquestSessionSchema, projects: campaignProjectsSchema, researchTree: researchTreeSchema,
   research: z.object({ blue: researchStateSchema, red: researchStateSchema }).strict(),
   operations: z.record(operationalStateSchema), seed: z.number().int().min(1).max(0xffffffff),
   lastBattleId: z.number().int().min(0).max(MAX_TURN), battles: z.array(battleReportSchema).max(12)
@@ -39,6 +41,9 @@ export const conquestSchema = z.object({
   for (const record of [...state.session.production.orders, ...state.session.production.completed]) {
     if (!isCampaignDesignAvailable(record.design, state.research[record.factionId], state.researchTree)) fail();
   }
+  for (const faction of factionIdSchema.options) for (const project of state.projects[faction].items) {
+    if (!isCampaignDraftAvailable(project.design, state.research[faction], state.researchTree)) fail();
+  }
   if (new Set(state.battles.map(battle => battle.id)).size !== state.battles.length || state.battles.some(battle =>
     !state.session.galaxy.systems.some(system => system.id === battle.systemId) ||
     battle.id > state.lastBattleId || battle.turn >= state.session.turn ||
@@ -47,19 +52,23 @@ export const conquestSchema = z.object({
     battle.destroyed.some(id => !battle.participants.some(ship => ship.id === id)))) fail();
 });
 export type Conquest = z.infer<typeof conquestSchema>;
-export type ConquestResult = { ok: true; state: Conquest; frames?: BattleFrame[] } | { ok: false; message: string };
+export type ConquestErrorCode = SessionErrorCode | ProjectErrorCode | 'CONTROLLER_FORBIDDEN' | 'CAMPAIGN_COMPLETED' | 'RULE_REJECTED';
+export type ConquestResult = { ok: true; state: Conquest; frames?: BattleFrame[] } |
+  { ok: false; code: ConquestErrorCode; message: string };
 const fields = { factionId: factionIdSchema, expectedTurn: z.number().int().min(1).max(MAX_TURN) };
-export const conquestCommandSchema = z.union([sessionCommandSchema,
+export const conquestCommandSchema = z.union([sessionCommandSchema, projectCommandSchema,
   z.object({ ...fields, kind: z.literal('research'), technologyId: researchIdSchema }).strict(),
   z.object({ ...fields, kind: z.enum(['repairShip', 'resupplyShip']), shipId: z.number().int().positive().max(MAX_TURN), systemId: systemIdSchema }).strict()
 ]);
 export type ConquestCommand = z.infer<typeof conquestCommandSchema>;
-class ConquestRuleError extends Error {}
+class ConquestRuleError extends Error {
+  constructor(message: string, readonly code: ConquestErrorCode = 'RULE_REJECTED') { super(message); }
+}
 
 export function createConquest(control: unknown = { mode: 'local' }, tree: unknown = getDefaultResearchTree(), seed = 1, map?: GalaxyMap): Conquest {
   return conquestSchema.parse({ scenario: 'conquest-v1', victory: { kind: 'all-planets-v1' }, control,
     battlePolicy: 'campaign-v2',
-    session: createCampaignSession(map), researchTree: tree, research: { blue: createResearchState(), red: createResearchState() },
+    session: createCampaignSession(map), projects: createCampaignProjects(), researchTree: tree, research: { blue: createResearchState(), red: createResearchState() },
     operations: {}, seed, lastBattleId: 0, battles: [] });
 }
 
@@ -100,7 +109,7 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
   const visible = visibleConquestSystems(state, side);
   view.galaxy.systems = view.galaxy.systems.map(system => !visible.has(system.id)
     ? { id: system.id, name: system.name, x: system.x, y: system.y, visibility: 'unknown' as const } : system);
-  return { ...view, researchTree: state.researchTree, research: state.research[side],
+  return { ...view, projects: structuredClone(state.projects[side].items), researchTree: state.researchTree, research: state.research[side],
     operations: Object.fromEntries(view.ships.map(ship => [String(ship.id), state.operations[String(ship.id)]])),
     enemies: state.session.ships.filter(ship => ship.factionId !== side && !ship.transit && visible.has(ship.systemId))
       .map(ship => ({ id: ship.id, systemId: ship.systemId, factionId: ship.factionId, hullId: ship.design.hullId })),
@@ -169,18 +178,31 @@ export function executeConquestCommand(input: unknown, payload: unknown): Conque
 
 export function executeConquestAction(input: unknown, payload: unknown, automated: boolean): ConquestResult {
   try {
-    const state = conquestSchema.parse(input), command = conquestCommandSchema.parse(payload);
+    const parsedState = conquestSchema.safeParse(input);
+    if (!parsedState.success) return { ok: false, code: 'INVALID_STATE', message: 'Недопустимое состояние военной кампании' };
+    const parsedCommand = conquestCommandSchema.safeParse(payload);
+    if (!parsedCommand.success) return { ok: false, code: 'INVALID_COMMAND', message: 'Недопустимая команда военной кампании' };
+    const state = parsedState.data, command = parsedCommand.data;
     const faction = command.factionId;
-    if (command.expectedTurn !== state.session.turn) throw new ConquestRuleError('Номер хода изменился');
-    if (faction !== (state.session.turn % 2 ? 'blue' : 'red')) throw new ConquestRuleError('Сейчас ход другой стороны');
-    if (state.control.mode === 'human-vs-ai' && (automated ? faction !== 'red' : faction === 'red')) throw new ConquestRuleError('Команда недоступна этому контроллеру');
-    if (getConquestOutcome(state).status === 'completed') throw new ConquestRuleError('Партия завершена');
+    if (command.expectedTurn !== state.session.turn) throw new ConquestRuleError('Номер хода изменился', 'STALE_TURN');
+    if (faction !== (state.session.turn % 2 ? 'blue' : 'red')) throw new ConquestRuleError('Сейчас ход другой стороны', 'NOT_ACTIVE_FACTION');
+    if (state.control.mode === 'human-vs-ai' && (automated ? faction !== 'red' : faction === 'red')) throw new ConquestRuleError('Команда недоступна этому контроллеру', 'CONTROLLER_FORBIDDEN');
+    if (getConquestOutcome(state).status === 'completed') throw new ConquestRuleError('Партия завершена', 'CAMPAIGN_COMPLETED');
     if (('systemId' in command && !state.session.galaxy.systems.some(system => system.id === command.systemId)) ||
       ('destinationId' in command && !state.session.galaxy.systems.some(system => system.id === command.destinationId))) {
       throw new ConquestRuleError('Система отсутствует на карте партии');
     }
     let frames: BattleFrame[] | undefined;
-    if (command.kind === 'research') {
+    if (command.kind === 'createProject' || command.kind === 'copyProject' || command.kind === 'renameProject' ||
+      command.kind === 'replaceProject' || command.kind === 'deleteProject') {
+      if ((command.kind === 'createProject' || command.kind === 'replaceProject') &&
+        !isCampaignDraftAvailable(command.design, state.research[faction], state.researchTree)) {
+        throw new ConquestRuleError('Черновик требует доступный корпус, семейства и параметры оборудования', 'INVALID_DESIGN');
+      }
+      const result = editCampaignProject(state.projects, command);
+      if (!result.ok) return result;
+      state.projects = result.projects;
+    } else if (command.kind === 'research') {
       const research = state.research[faction], node = state.researchTree.nodes.find(item => item.id === command.technologyId);
       if (!node || research.active || research.completed.includes(node.id) || !node.prerequisites.every(id => research.completed.includes(id))) {
         throw new ConquestRuleError('Исследование недоступно');
@@ -218,9 +240,9 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
       }
       if (!system.exploredBy.includes(faction)) system.exploredBy.push(faction);
     } else {
-      if (command.kind === 'enqueueProduction' && !isCampaignDesignAvailable(command.design, state.research[faction], state.researchTree)) throw new ConquestRuleError('Проект требует неоткрытые технологии');
+      if (command.kind === 'enqueueProduction' && !isCampaignDesignAvailable(command.design, state.research[faction], state.researchTree)) throw new ConquestRuleError('Проект требует неоткрытые технологии или полётную готовность', 'INVALID_DESIGN');
       const result = executeConquestSessionCommand(state.session, command);
-      if (!result.ok) return { ok: false, message: result.message };
+      if (!result.ok) return { ok: false, code: result.code, message: result.message };
       state.session = result.state;
       if (command.kind === 'deployProduction') {
         const ship = state.session.ships.find(item => item.id === command.orderId)!;
@@ -236,7 +258,8 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
     reveal(state);
     return { ok: true, state: conquestSchema.parse(state), ...(frames ? { frames } : {}) };
   } catch (error) {
-    return { ok: false, message: error instanceof ConquestRuleError ? error.message : 'Недопустимые данные военной кампании' };
+    return { ok: false, code: error instanceof ConquestRuleError ? error.code : 'INVALID_STATE',
+      message: error instanceof ConquestRuleError ? error.message : 'Недопустимые данные военной кампании' };
   }
 }
 
