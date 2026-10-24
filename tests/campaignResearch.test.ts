@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { advanceResearch, createResearchState, getDefaultResearchTree, getResearchAccess,
+import { calculateResearchTurn, createResearchState, getDefaultResearchTree, getResearchAccess,
   isCampaignComponentVariantAvailable, isCampaignDesignAvailable, isResearchStateValid, loadResearchTree,
-  parseProfiledResearchTree, researchTreeSchema } from '../src/domain/campaignResearch';
+  parseProfiledResearchTree, researchTreeSchema, researchStateSchema, getResearchProgress, type ResearchState } from '../src/domain/campaignResearch';
 import { componentSchema, createDesign, createComponentWithId, installComponent } from '../src/domain/shipDesign';
 import { createCombatDesign, isCombatPresetDesign } from '../src/domain/combatPresets';
 import { createCivilianDesign } from '../src/domain/civilianPresets';
@@ -9,146 +9,164 @@ import { parseResearchTreeYaml } from '../src/utils/ResearchTreeYaml';
 import { stringify } from 'yaml';
 import { readFileSync } from 'node:fs';
 
-describe('campaign research', () => {
-  it('imports YAML and JSON through the same strict tree boundary', () => {
+describe('campaign research points', () => {
+  it('uses one strict version for default, YAML, JSON and source', async () => {
     const tree = getDefaultResearchTree();
     expect(parseResearchTreeYaml(stringify(tree))).toEqual(tree);
     expect(parseResearchTreeYaml(readFileSync(new URL('../docs/research-default.yaml', import.meta.url), 'utf8'))).toEqual(tree);
     expect(parseResearchTreeYaml(JSON.stringify(tree))).toEqual(tree);
+    expect(await loadResearchTree({ load: async () => tree })).toEqual(tree);
+    for (const version of [1, 2, 3, 5]) {
+      const old = { ...tree, version };
+      expect(researchTreeSchema.safeParse(old).success).toBe(false);
+      expect(() => parseResearchTreeYaml(JSON.stringify(old))).toThrow();
+      await expect(loadResearchTree({ load: async () => old })).rejects.toThrow();
+    }
     expect(() => parseResearchTreeYaml('id: first\nid: second')).toThrow();
     expect(() => parseResearchTreeYaml('id: &loop [*loop]')).toThrow();
+    expect(() => parseResearchTreeYaml('!custom {}')).toThrow();
+    expect(parseResearchTreeYaml(JSON.stringify(tree) + ' '.repeat(256000 - new TextEncoder().encode(JSON.stringify(tree)).length))).toEqual(tree);
     expect(() => parseResearchTreeYaml(' '.repeat(256001))).toThrow();
+    expect(() => parseResearchTreeYaml('я'.repeat(128001))).toThrow();
   });
-  it('requires profiled v2 for new YAML/source imports but keeps v1 parseable for legacy saves', async () => {
-    const current = getDefaultResearchTree();
-    if (current.version !== 2) throw new Error('Expected profiled default tree');
-    const { variantPolicy: _policy, ...fields } = current;
-    const legacy = { ...fields, version: 1 as const, id: 'legacy-tree' };
-    expect(researchTreeSchema.parse(legacy).version).toBe(1);
-    expect(() => parseResearchTreeYaml(JSON.stringify(legacy))).toThrow('профилями вариантов');
-    await expect(loadResearchTree({ load: async () => legacy })).rejects.toThrow('профилями вариантов');
-  });
-  it.each(['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const)(
-    'rejects narrowing the %s profile on new imports without rejecting saved snapshots', async field => {
-      const tree = getDefaultResearchTree();
-      if (tree.version !== 2) throw new Error('Expected profiled default tree');
-      const narrowed = structuredClone(tree);
-      narrowed.variantPolicy.tiers[2][field] = narrowed.variantPolicy.tiers[1][field] / 2;
 
-      expect(researchTreeSchema.safeParse(narrowed).success).toBe(true);
-      expect(() => parseProfiledResearchTree(narrowed)).toThrow('не могут сужаться');
-      expect(() => parseResearchTreeYaml(JSON.stringify(narrowed))).toThrow('не могут сужаться');
-      await expect(loadResearchTree({ load: async () => narrowed })).rejects.toThrow('не могут сужаться');
-    });
-  it('provides independent complete default trees', () => {
+  it.each(['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const)('rejects narrowing %s in every current boundary', async field => {
     const tree = getDefaultResearchTree();
+    tree.variantPolicy.tiers[2][field] = tree.variantPolicy.tiers[1][field] / 2;
+    expect(researchTreeSchema.safeParse(tree).success).toBe(false);
+    expect(() => parseProfiledResearchTree(tree)).toThrow();
+    await expect(loadResearchTree({ load: async () => tree })).rejects.toThrow();
+  });
+
+  it.each(['cycle', 'missing', 'duplicate', 'unknown-field', 'no-engine', 'newline-id', 'unknown-effect', 'empty-effect', 'old-turns', 'duplicate-effect'])(
+    'rejects malformed tree: %s', fault => {
+      const tree = getDefaultResearchTree();
+      if (fault === 'cycle') tree.nodes[0].prerequisites = ['capital'];
+      if (fault === 'missing') tree.nodes[0].prerequisites = ['absent'];
+      if (fault === 'duplicate') tree.nodes.push(structuredClone(tree.nodes[0]));
+      if (fault === 'unknown-field') Object.assign(tree, { bad: true });
+      if (fault === 'no-engine') tree.initial.components = ['beam'];
+      if (fault === 'newline-id') tree.nodes[0].id += '\n';
+      if (fault === 'unknown-effect') Object.assign(tree.nodes[0].effects[0], { kind: 'science-growth' });
+      if (fault === 'empty-effect') tree.nodes[0].effects = [];
+      if (fault === 'old-turns') Object.assign(tree.nodes[0], { credits: 10, turns: 2 });
+      if (fault === 'duplicate-effect') tree.nodes[0].effects.push(structuredClone(tree.nodes[0].effects[0]));
+      expect(researchTreeSchema.safeParse(tree).success).toBe(false);
+    });
+
+  it('keeps three real root alternatives and permits repeated capabilities across alternative nodes', () => {
+    const tree = getDefaultResearchTree();
+    expect(tree.nodes.filter(node => !node.prerequisites.length).map(node => node.id)).toEqual(
+      ['engineering', 'applied', 'support', 'biology', 'cultural-practices']);
+    tree.nodes.push({ id: 'alternate-frigate', name: 'Другой путь', prerequisites: [], researchCost: 5000,
+      effects: [{ kind: 'hull-unlock', hullId: 'frigate' }] });
+    expect(researchTreeSchema.safeParse(tree).success).toBe(true);
     tree.nodes[0].name = 'changed';
     expect(getDefaultResearchTree().nodes[0].name).not.toBe('changed');
-    expect(researchTreeSchema.safeParse(getDefaultResearchTree()).success).toBe(true);
   });
-  it.each(['cycle', 'missing', 'duplicate', 'unlock', 'unknown-field', 'no-engine', 'newline-id'])('rejects malformed external tree: %s', fault => {
-    const tree = getDefaultResearchTree();
-    if (fault === 'cycle') tree.nodes[0].prerequisites = ['capital'];
-    if (fault === 'missing') tree.nodes[0].prerequisites = ['absent'];
-    if (fault === 'duplicate') tree.nodes.push(structuredClone(tree.nodes[0]));
-    if (fault === 'unlock') tree.nodes[0].unlocks.hulls.push('fighter');
-    if (fault === 'unknown-field') Object.assign(tree, { bad: true });
-    if (fault === 'no-engine') tree.initial.components = ['beam'];
-    if (fault === 'newline-id') tree.nodes[0].id += '\n';
-    expect(researchTreeSchema.safeParse(tree).success).toBe(false);
-  });
-  it('advances exactly on the threshold without mutating the source', () => {
-    const tree = getDefaultResearchTree();
-    const state = { completed: [], active: { id: 'support', progress: 0 } };
-    const once = advanceResearch(state, tree);
-    expect(once.active?.progress).toBe(1);
-    const twice = advanceResearch(once, tree);
-    expect(twice).toEqual({ completed: ['support'], active: null });
-    expect(advanceResearch(twice, tree)).toEqual(twice);
-    expect(state.active.progress).toBe(0);
-  });
-  it.each([
-    { completed: ['capital'], active: null },
-    { completed: ['support', 'support'], active: null },
-    { completed: ['unknown'], active: null },
-    { completed: [], active: { id: 'ordnance', progress: 0 } },
-    { completed: [], active: { id: 'support', progress: 2 } },
-    { completed: ['support'], active: { id: 'support', progress: 0 } }
+
+  it.each<ResearchState>([
+    { completed: ['capital'], activeId: null, progress: {} },
+    { completed: ['support', 'support'], activeId: null, progress: {} },
+    { completed: ['unknown'], activeId: null, progress: {} },
+    { completed: [], activeId: 'ordnance', progress: { ordnance: 0 } },
+    { completed: [], activeId: 'engineering', progress: { engineering: 2000 } },
+    { completed: ['support'], activeId: 'support', progress: { support: 0 } },
+    { completed: [], activeId: 'engineering', progress: {} },
+    { completed: [], activeId: null, progress: { absent: 1 } }
   ])('rejects impossible persisted progress %j', state => {
     expect(isResearchStateValid(state, getDefaultResearchTree())).toBe(false);
-    expect(() => advanceResearch(state, getDefaultResearchTree())).toThrow();
+    expect(() => calculateResearchTurn(state, getDefaultResearchTree(), 0, 1, 100, true)).toThrow();
   });
-  it('checks real project eligibility independently of the library', () => {
+
+  it('rejects malformed numbers and obsolete state fields', () => {
+    expect(getResearchProgress(createResearchState(), 'constructor')).toBe(0);
+    expect(researchStateSchema.safeParse({ completed: [], active: null }).success).toBe(false);
+    for (const value of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => calculateResearchTurn(createResearchState(), getDefaultResearchTree(), value, 0, 10, true)).toThrow();
+      expect(() => calculateResearchTurn(createResearchState(), getDefaultResearchTree(), 0, value, 10, true)).toThrow();
+    }
+    expect(() => calculateResearchTurn(createResearchState(), getDefaultResearchTree(), 0, 1, 10, false)).toThrow();
+  });
+
+  it.each([1999, 2000, 2001, 1_000_000])('spends exact science with a conservation oracle at output %s', produced => {
+    const state = { ...createResearchState(), activeId: 'engineering', progress: { engineering: 0 } };
+    const original = structuredClone(state);
+    const result = calculateResearchTurn(state, getDefaultResearchTree(), 0, produced, 100, true);
+    const spent = Math.min(2000, produced), remainder = produced - spent, reserve = Math.min(100, remainder);
+    expect(result.receipt).toMatchObject({ spent, reserveAfter: reserve, overflow: remainder - reserve,
+      progressAfter: spent, completedId: produced >= 2000 ? 'engineering' : null });
+    expect(BigInt(result.receipt.reserveBefore) + BigInt(produced)).toBe(
+      BigInt(spent) + BigInt(result.receipt.overflow) + BigInt(reserve));
+    expect(state).toEqual(original);
+    expect(result.state.completed).toHaveLength(produced >= 2000 ? 1 : 0);
+  });
+
+  it('spends before capping new output and retains old over-cap without unsafe addition', () => {
+    const state = { ...createResearchState(), activeId: 'engineering', progress: { engineering: 0 } };
+    const result = calculateResearchTurn(state, getDefaultResearchTree(), 100, 2000, 100, true);
+    expect(result.receipt).toMatchObject({ spent: 2000, accepted: 100, reserveAfter: 100, overflow: 0 });
+    const huge = calculateResearchTurn(state, getDefaultResearchTree(), Number.MAX_SAFE_INTEGER, 5000, 100, true);
+    expect(huge.receipt.reserveAfter).toBe(Number.MAX_SAFE_INTEGER - 2000);
+    expect(huge.receipt.overflow).toBe(5000);
+    expect(BigInt(huge.receipt.reserveBefore) + 5000n).toBe(
+      BigInt(huge.receipt.reserveAfter) + BigInt(huge.receipt.spent) + BigInt(huge.receipt.overflow));
+  });
+
+  it('uses stored science at zero output, pauses without colonies and never cascades', () => {
+    const tree = getDefaultResearchTree(), state = { ...createResearchState(), activeId: 'engineering', progress: { engineering: 1 } };
+    const paused = calculateResearchTurn(state, tree, 10000, 0, 0, false);
+    expect(paused.state).toEqual(state);
+    expect(paused.timing).toEqual({ status: 'paused', reason: 'no-colonies' });
+    expect(paused.receipt).toMatchObject({ spent: 0, reserveAfter: 10000 });
+    const spent = calculateResearchTurn(state, tree, 10000, 0, 50000, true);
+    expect(spent.state).toEqual({ completed: ['engineering'], activeId: null, progress: {} });
+    expect(spent.receipt).toMatchObject({ spent: 1999, reserveAfter: 8001 });
+    expect(spent.timing).toEqual({ status: 'completes', remainingOwnTurns: 1 });
+    const idle = calculateResearchTurn(spent.state, tree, 8001, 5000, 50000, true);
+    expect(idle.state.completed).toEqual(['engineering']);
+    expect(idle.receipt.spent).toBe(0);
+    expect(calculateResearchTurn(state, tree, 0, 0, 100, true).timing).toEqual({ status: 'paused', reason: 'no-science' });
+    expect(calculateResearchTurn(state, tree, 500, 500, 1000, true).timing).toEqual({ status: 'progressing', remainingOwnTurns: 3 });
+  });
+
+  it('checks hull and every family before preset exemptions', () => {
     const tree = getDefaultResearchTree(), state = createResearchState();
-    const fighter = createDesign('fighter', true), frigate = createDesign('frigate', true);
-    expect(isCampaignDesignAvailable(fighter, state, tree)).toBe(true);
-    expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(false);
+    expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCombatDesign('frigate'), state, tree)).toBe(false);
+    expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(false);
     state.completed.push('support');
-    expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCombatDesign('frigate'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(false);
+    state.completed.push('applied');
+    expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(true);
     expect(getResearchAccess(state, tree).components).toContain('repair');
   });
-  it('requires component-family unlocks before preset exemptions in v2 and legacy trees', () => {
-    const profiled = getDefaultResearchTree();
-    if (profiled.version !== 2) throw new Error('Expected profiled default tree');
-    profiled.initial.hulls.push('frigate');
-    profiled.nodes[0].unlocks.hulls = [];
-    const { variantPolicy: _policy, ...legacyFields } = profiled;
-    const legacy = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-early-frigate' });
-    const frigate = createCombatDesign('frigate');
-    const miner = createCivilianDesign('miner');
 
-    for (const tree of [profiled, legacy]) {
-      const state = createResearchState();
-      expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(false);
-      expect(isCampaignDesignAvailable(miner, state, tree)).toBe(false);
-      state.completed.push('support');
-      expect(isCampaignDesignAvailable(frigate, state, tree)).toBe(true);
-      expect(isCampaignDesignAvailable(miner, state, tree)).toBe(true);
+  it('keeps exact preset exemptions but never grants them to edited numeric variants', () => {
+    const tree = getDefaultResearchTree(), state = { ...createResearchState(), completed: tree.nodes.map(node => node.id) };
+    const current = createCombatDesign('dreadnought'), historical = createCombatDesign('dreadnought');
+    for (const slot of historical.slots) {
+      if (slot.component?.kind === 'beam') slot.component = { ...slot.component, accuracy: 0.85 };
+      if (slot.component?.kind === 'projectile') slot.component = { ...slot.component, accuracy: 0.8 };
     }
+    expect(isCombatPresetDesign(current)).toBe(true);
+    expect(isCampaignDesignAvailable(current, state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(historical, state, tree)).toBe(true);
+    const beam = current.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+    const changed = installComponent(current, 'beam_1', { ...beam, accuracy: 0.99 });
+    expect(isCombatPresetDesign(changed)).toBe(false);
+    expect(isCampaignDesignAvailable(changed, state, tree)).toBe(false);
+    const base = createDesign('corvette', true), baseBeam = base.slots.find(slot => slot.id === 'beam_1')!.component;
+    if (baseBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
+    const custom = installComponent(base, 'beam_1', { ...baseBeam, damage: 27.6 });
+    expect(isCampaignDesignAvailable(custom, createResearchState(), tree)).toBe(false);
+    expect(isCampaignDesignAvailable(custom, { ...createResearchState(), completed: ['engineering'] }, tree)).toBe(true);
   });
-  it('applies versioned numeric tiers to custom values while preserving stock blueprints', () => {
-    const tree = getDefaultResearchTree(), state = createResearchState();
-    const currentDreadnought = createCombatDesign('dreadnought');
-    const grandfatheredDreadnought = createCombatDesign('dreadnought');
-    for (const slot of grandfatheredDreadnought.slots) {
-      if (slot.id === 'beam_1' || slot.id === 'beam_2') {
-        const component = slot.component;
-        if (component?.kind !== 'beam') throw new Error('Invalid legacy beam fixture');
-        slot.component = { ...component, accuracy: 0.85 };
-      }
-      if (slot.id === 'projectile_1') {
-        const component = slot.component;
-        if (component?.kind !== 'projectile') throw new Error('Invalid legacy projectile fixture');
-        slot.component = { ...component, accuracy: 0.8 };
-      }
-    }
-    const capitalState = { completed: ['support', 'ordnance', 'capital'], active: null };
-    const changedDreadnought = structuredClone(currentDreadnought);
-    const changedBeam = changedDreadnought.slots.find(slot => slot.id === 'beam_1')!.component;
-    if (changedBeam?.kind !== 'beam') throw new Error('Invalid current beam fixture');
-    changedDreadnought.slots.find(slot => slot.id === 'beam_1')!.component = { ...changedBeam, accuracy: 0.99 };
-    const factoryDesign = createDesign('corvette', true);
-    const factoryBeam = factoryDesign.slots.find(slot => slot.id === 'beam_1')!.component;
-    if (factoryBeam?.kind !== 'beam') throw new Error('Invalid beam fixture');
-    const custom = installComponent(factoryDesign, 'beam_1', { ...factoryBeam, damage: 27.6 });
 
-    expect(tree.version).toBe(2);
-    expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
-    expect(isCampaignDesignAvailable(createCivilianDesign('scout'), state, tree)).toBe(true);
-    expect(isCombatPresetDesign(currentDreadnought)).toBe(true);
-    expect(isCampaignDesignAvailable(grandfatheredDreadnought, capitalState, tree)).toBe(true);
-    expect(isCampaignDesignAvailable(currentDreadnought, capitalState, tree)).toBe(true);
-    expect(isCombatPresetDesign(changedDreadnought)).toBe(false);
-    expect(isCampaignDesignAvailable(changedDreadnought, capitalState, tree)).toBe(false);
-    expect(isCampaignDesignAvailable(custom, state, tree)).toBe(false);
-    state.completed.push('support');
-    expect(isCampaignDesignAvailable(custom, state, tree)).toBe(true);
-    expect(isCampaignDesignAvailable(createDesign('frigate', true), state, tree)).toBe(true);
-  });
-  it('enforces every declared numeric field against the current campaign tier', () => {
-    const tree = getDefaultResearchTree();
-    if (tree.version !== 2) throw new Error('Expected profiled default tree');
-    const state = { completed: ['support', 'ordnance', 'capital'], active: null };
+  it('enforces every declared numeric field against current campaign bands', () => {
+    const tree = getDefaultResearchTree(), state = { ...createResearchState(), completed: tree.nodes.map(node => node.id) };
     const fields: { kind: Parameters<typeof createComponentWithId>[0]; key: string; mode: 'magnitude' | 'ratio' | 'ammo' | 'delay' }[] = [
       ...(['damage', 'range', 'fireRate'].map(key => ({ kind: 'beam' as const, key, mode: 'magnitude' as const }))),
       { kind: 'beam', key: 'accuracy', mode: 'ratio' },
@@ -169,35 +187,20 @@ describe('campaign research', () => {
     for (const field of fields) {
       const component = createComponentWithId(field.kind, `tier-${field.kind}`);
       expect(isCampaignComponentVariantAvailable(component, state, tree), `${field.kind}.${field.key} baseline`).toBe(true);
-      const values = component as unknown as Record<string, number>;
-      const baseline = values[field.key];
-      let outside: number;
-      if (field.mode === 'magnitude') outside = baseline * (1 + tier.magnitude) + 0.001;
-      else if (field.mode === 'ratio') outside = baseline + tier.ratioStep + 0.001 <= 1
-        ? baseline + tier.ratioStep + 0.001 : baseline - tier.ratioStep - 0.001;
-      else if (field.mode === 'ammo') outside = Math.ceil(20 * (1 + tier.ammo)) + 1;
-      else outside = baseline + tier.rechargeDelay + 0.01;
-      const invalid = componentSchema.parse({ ...component, [field.key]: outside });
-      expect(isCampaignComponentVariantAvailable(invalid, state, tree), `${field.kind}.${field.key} upper/lower cap`).toBe(false);
+      const entry = Object.entries(component).find(([key]) => key === field.key);
+      if (!entry || typeof entry[1] !== 'number') throw new Error('Missing numeric field');
+      const baseline = entry[1];
+      const outside = field.mode === 'magnitude' ? baseline * (1 + tier.magnitude) + 0.001 :
+        field.mode === 'ratio' ? (baseline + tier.ratioStep + 0.001 <= 1 ? baseline + tier.ratioStep + 0.001 : baseline - tier.ratioStep - 0.001) :
+        field.mode === 'ammo' ? Math.ceil(20 * (1 + tier.ammo)) + 1 : baseline + tier.rechargeDelay + 0.01;
+      expect(isCampaignComponentVariantAvailable(componentSchema.parse({ ...component, [field.key]: outside }), state, tree)).toBe(false);
     }
   });
-  it('keeps version1 research trees grandfathered without numeric caps', () => {
-    const profiled = getDefaultResearchTree();
-    if (profiled.version !== 2) throw new Error('Expected profiled default tree');
-    const { variantPolicy: _variantPolicy, ...legacyFields } = profiled;
-    const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-tree-v1' });
-    const design = createDesign('corvette', true);
-    const beam = design.slots.find(slot => slot.id === 'beam_1')!.component;
-    if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
-    const oldCustom = installComponent(design, 'beam_1', { ...beam, damage: 27.6 });
-    expect(isCampaignDesignAvailable(oldCustom, createResearchState(), legacyTree)).toBe(true);
-  });
-  it('loads and detaches a database/YAML adapter result, rejecting failures without fallback', async () => {
-    const tree = getDefaultResearchTree();
-    const loaded = await loadResearchTree({ load: async () => tree });
-    expect(loaded).toEqual(tree);
-    loaded.nodes[0].turns = 9;
-    expect(tree.nodes[0].turns).toBe(2);
+
+  it('detaches source data and propagates source errors without fallback', async () => {
+    const tree = getDefaultResearchTree(), loaded = await loadResearchTree({ load: async () => tree });
+    loaded.nodes[0].researchCost = 9;
+    expect(tree.nodes[0].researchCost).toBe(2000);
     await expect(loadResearchTree({ load: async () => ({}) })).rejects.toThrow();
     await expect(loadResearchTree({ load: async () => { throw new Error('offline'); } })).rejects.toThrow('offline');
   });

@@ -1,57 +1,82 @@
-version: 2
-id: orion-technologies-v2
+version: 4
+id: orion-technologies-v4
 initial:
   hulls: [fighter, corvette]
   components: [engine, beam]
 nodes:
+  - id: engineering
+    name: Инженерные методы
+    prerequisites: []
+    researchCost: 2000
+    effects:
+      - {kind: variant-tier, tier: 2}
+  - id: applied
+    name: Прикладные службы
+    prerequisites: []
+    researchCost: 2000
+    effects:
+      - {kind: component-unlock, component: mining}
+      - {kind: component-unlock, component: repair}
+      - {kind: component-unlock, component: scanner}
+      - {kind: component-unlock, component: cargoExpansion}
   - id: support
     name: Флотская инфраструктура
     prerequisites: []
-    credits: 10
-    turns: 2
-    unlocks:
-      hulls: [frigate]
-      components: [shield, armor, mining, repair, scanner, cargoExpansion]
+    researchCost: 3000
+    effects:
+      - {kind: hull-unlock, hullId: frigate}
+      - {kind: component-unlock, component: shield}
+      - {kind: component-unlock, component: armor}
   - id: ordnance
     name: Тяжёлое вооружение
-    prerequisites: [support]
-    credits: 20
-    turns: 3
-    unlocks:
-      hulls: [destroyer, cruiser]
-      components: [projectile]
+    prerequisites: [engineering, support]
+    researchCost: 6000
+    effects:
+      - {kind: hull-unlock, hullId: destroyer}
+      - {kind: hull-unlock, hullId: cruiser}
+      - {kind: component-unlock, component: projectile}
+      - {kind: variant-tier, tier: 3}
   - id: capital
     name: Линейные корабли
     prerequisites: [ordnance]
-    credits: 30
-    turns: 4
-    unlocks:
-      hulls: [battleship]
-      components: []
+    researchCost: 12000
+    effects:
+      - {kind: hull-unlock, hullId: battleship}
+      - {kind: variant-tier, tier: 4}
+  - id: biology
+    name: Биология
+    prerequisites: []
+    researchCost: 2000
+    effects:
+      - {kind: colony-effect, effectId: biology-growth}
+  - id: biosphere
+    name: Биосфера
+    prerequisites: [biology]
+    researchCost: 4000
+    effects:
+      - {kind: colony-effect, effectId: biosphere-capacity}
+  - id: automation
+    name: Автоматизация
+    prerequisites: [engineering]
+    researchCost: 3000
+    effects:
+      - {kind: colony-effect, effectId: automation-output}
+  - id: scientific-method
+    name: Научные методы
+    prerequisites: [applied]
+    researchCost: 3000
+    effects:
+      - {kind: colony-effect, effectId: scientific-output}
+  - id: cultural-practices
+    name: Культурные практики
+    prerequisites: []
+    researchCost: 2000
+    effects:
+      - {kind: colony-effect, effectId: cultural-output}
 variantPolicy:
   id: component-bands-v1
   tiers:
-    - level: 1
-      researchId: null
-      magnitude: 0.1
-      ratioStep: 0.05
-      ammo: 0.1
-      rechargeDelay: 0.5
-    - level: 2
-      researchId: support
-      magnitude: 0.2
-      ratioStep: 0.1
-      ammo: 0.2
-      rechargeDelay: 1
-    - level: 3
-      researchId: ordnance
-      magnitude: 0.3
-      ratioStep: 0.15
-      ammo: 0.3
-      rechargeDelay: 1.5
-    - level: 4
-      researchId: capital
-      magnitude: 0.4
-      ratioStep: 0.2
-      ammo: 0.4
-      rechargeDelay: 2
+    - {level: 1, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5}
+    - {level: 2, magnitude: 0.2, ratioStep: 0.1, ammo: 0.2, rechargeDelay: 1}
+    - {level: 3, magnitude: 0.3, ratioStep: 0.15, ammo: 0.3, rechargeDelay: 1.5}
+    - {level: 4, magnitude: 0.4, ratioStep: 0.2, ammo: 0.4, rechargeDelay: 2}

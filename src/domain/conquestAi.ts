@@ -1,33 +1,63 @@
 import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
 import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP, getCombatCooldownSteps } from './combatSimulation';
 import type { Treasury } from './campaignEconomy';
-import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable,
+import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable, getResearchProgress,
   type ResearchState, type ResearchTree } from './campaignResearch';
 import { getProductionQuote } from './production';
+import { getColonyProductionQuote } from './campaignOutput';
 import { getRefuelQuote } from './campaignShips';
 import { createOperationalState } from './campaignOperations';
 import { conquestSchema, executeConquestAction, getConquestOutcome, getConquestView, type ConquestCommand, type ConquestView, type ConquestResult } from './conquest';
 import { factionIdSchema, type SystemId } from './campaign';
 import type { BattleFrame } from './conquestBattle';
+import { calculateColonyValue } from './campaignColonyEffects';
+
+export function getConquestResearchUtility(view: ConquestView, node: ResearchTree['nodes'][number]): number {
+  const activeIds = new Set(view.researchTree.nodes.filter(item => view.research.completed.includes(item.id))
+    .flatMap(item => item.effects.flatMap(effect => effect.kind === 'colony-effect' ? [effect.effectId] : [])));
+  const proposedIds = new Set([...activeIds, ...node.effects.flatMap(effect => effect.kind === 'colony-effect' ? [effect.effectId] : [])]);
+  const proposed = view.colonyTechnologyEffects.filter(effect => proposedIds.has(effect.id));
+  let score = node.effects.reduce((sum, effect) => sum + (effect.kind === 'variant-tier' ? 4 :
+    effect.kind === 'hull-unlock' ? 3 : effect.kind === 'component-unlock'
+      ? (effect.component === 'projectile' || effect.component === 'armor' ? 3 : 1) : 0), 0);
+  let scienceGain = 0, cultureGain = 0;
+  for (const colony of view.population) {
+    const row = view.colonyOutput.forecast.production.find(item => item.systemId === colony.systemId)!;
+    for (const [role, target] of [
+      ['production', 'production-output'], ['science', 'science-output'], ['culture', 'culture-output']
+    ] as const) {
+      const base = row.breakdown[role];
+      const next = calculateColonyValue(base.base, base.workers, target, colony.worldType, proposed).total;
+      const gain = Math.max(0, next - base.total);
+      if (role === 'science') scienceGain += gain;
+      else if (role === 'culture') cultureGain += gain;
+      else if (row.orderId !== undefined) score += Math.min(gain,
+        Math.max(0, row.productionCost! - row.productionProgress! - row.productionPoints)) / 1000;
+    }
+    const growth = colony.technology.growthRate, capacity = colony.technology.capacity;
+    const nextRate = calculateColonyValue(growth.base, 1, 'growth-rate', colony.worldType, proposed, 10000).total;
+    const nextK = calculateColonyValue(capacity.base, 1, 'capacity-add', colony.worldType, proposed, capacity.limit).total;
+    const nextGrowth = Math.max(0, Math.min(nextK - colony.population,
+      Math.floor((colony.population * nextRate + Math.round(colony.remainder * 100)) / 10000)));
+    score += Math.max(0, nextGrowth - colony.delta) / 1000;
+  }
+  const reserves = view.colonyOutput.forecast.reserves;
+  score += Math.min(scienceGain, Math.max(0, reserves.research.cap - reserves.research.after)) / 1000;
+  score += Math.min(cultureGain, Math.max(0, reserves.culture.cap - reserves.culture.after)) / 1000;
+  return score;
+}
 
 export function buildConquestDesigns(research: ResearchState, tree: ResearchTree): ShipDesign[] {
   const access = getResearchAccess(research, tree), designs: ShipDesign[] = [];
   const signatures = new Set<string>();
   const components = new Map<string, ComponentDefinition>();
-  const legacyNumericPolicy = tree.version === 1;
-  const unlockedTier = tree.version === 2 ? getCampaignVariantTier(research, tree) : 1;
+  const unlockedTier = getCampaignVariantTier(research, tree);
   for (const kind of access.components) {
     const component = createComponentWithId(kind, `conquest-${kind}-v1`);
-    if (legacyNumericPolicy && component.kind === 'engine') Object.assign(component, { thrust: 100, maxSpeed: 100, maneuverability: 0.4, powerGeneration: 150 });
-    if (legacyNumericPolicy && component.kind === 'beam') Object.assign(component, { damage: 8, range: 300, fireRate: 1, accuracy: 0.85 });
-    if (legacyNumericPolicy && component.kind === 'projectile') Object.assign(component, { damage: 12, range: 300, fireRate: 0.5, accuracy: 0.9, ammoCapacity: 20 });
-    if (legacyNumericPolicy && component.kind === 'armor') Object.assign(component, { armorPoints: 30, beamResistance: 0.1, projectileResistance: 0.1 });
     components.set(kind, component);
   }
   for (const hullId of access.hulls) for (let variant = 0; variant < 8; variant++) {
-    const profile = tree.version === 2
-      ? getCampaignVariantProfile(tree, Math.min(unlockedTier, 1 + Math.floor(variant / 2)))
-      : undefined;
+    const profile = getCampaignVariantProfile(tree, Math.min(unlockedTier, 1 + Math.floor(variant / 2)));
     const variantComponents = new Map<string, ComponentDefinition>();
     for (const [kind, component] of components) {
       const candidate = structuredClone(component);
@@ -154,15 +184,45 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
   const afford = (credits: number, minerals = 0) => view.treasury.credits >= credits && view.treasury.minerals >= minerals;
   const completed = view.production.completed[0];
   if (completed && view.ships.length < 8) return { ...fields, kind: 'deployProduction', orderId: completed.id, systemId: completed.systemId };
-  if (!view.research.active && colonies.length) {
-    const node = view.researchTree.nodes.find(item => !view.research.completed.includes(item.id) &&
-      item.prerequisites.every(id => view.research.completed.includes(id)) && afford(item.credits));
+  const needsResearch = view.research.completed.length < view.researchTree.nodes.length;
+  for (const colony of colonies) {
+    const workforce = view.colonyOutput.assignments[colony.id];
+    const research = needsResearch ? Math.min(Math.max(0, workforce.population - 1), Math.max(1, Math.floor(workforce.population / 5))) : 0;
+    const culture = Math.min(workforce.culture, Math.max(0, workforce.population - research - 1));
+    const industry = workforce.population - research - culture;
+    if (workforce.industry !== industry || workforce.research !== research || workforce.culture !== culture) {
+      return { ...fields, kind: 'assignWorkers', systemId: colony.id,
+        workers: { industry, research, culture } };
+    }
+  }
+  const stalledOrder = view.production.orders.find(order =>
+    view.colonyOutput.assignments[order.systemId]?.industry === 0);
+  if (stalledOrder) {
+    const workforce = view.colonyOutput.assignments[stalledOrder.systemId];
+    const sourceRole = workforce.research > 0 ? 'research' : workforce.culture > 0 ? 'culture' : undefined;
+    if (sourceRole) return { ...fields, kind: 'assignWorkers', systemId: stalledOrder.systemId,
+      workers: { industry: 1, research: workforce.research - Number(sourceRole === 'research'),
+        culture: workforce.culture - Number(sourceRole === 'culture') } };
+  }
+  if (!view.research.activeId && colonies.length) {
+    const candidates = view.researchTree.nodes.filter(item => !view.research.completed.includes(item.id) &&
+      item.prerequisites.every(id => view.research.completed.includes(id)));
+    const node = candidates.sort((a, b) => {
+      const aCost = a.researchCost - getResearchProgress(view.research, a.id);
+      const bCost = b.researchCost - getResearchProgress(view.research, b.id);
+      const rank = getConquestResearchUtility(view, b) * aCost - getConquestResearchUtility(view, a) * bCost;
+      return rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    })[0];
     if (node) return { ...fields, kind: 'research', technologyId: node.id };
   }
   const fleet = view.fleets.find(item => !view.ships.some(ship => item.shipIds.includes(ship.id) && ship.transit));
   if (fleet) return { ...fields, kind: 'disbandFleet', fleetId: fleet.id, systemId: fleet.systemId };
   for (const ship of view.ships) {
     if (ship.transit) continue;
+    const founding = view.colonization.find(item => item.systemId === ship.systemId);
+    if (founding?.quote.ok && !view.enemies.some(enemy => enemy.systemId === ship.systemId)) {
+      return { ...fields, kind: 'colonize', systemId: ship.systemId };
+    }
     const home = colonies.some(system => system.id === ship.systemId), maximum = createOperationalState(ship.design);
     const operation = view.operations[String(ship.id)];
     if (home && operation.hull < maximum.hull * 0.8) {
@@ -183,7 +243,9 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       (system.visibility === 'unknown' || (system.habitable && system.ownerId !== factionId)))
       .map(system => pathTo(view, ship.systemId, system.id)).filter((route): route is SystemId[] => !!route)
       .sort((left, right) => left.length - right.length || (left[left.length - 1] < right[right.length - 1] ? -1 : 1));
-    let route: SystemId[] | undefined = targets[0];
+    const nearest = targets.filter(route => route.length === targets[0]?.length);
+    // Split equally near targets without persistent or hidden exploration memory.
+    let route: SystemId[] | undefined = nearest.length ? nearest[(ship.id - 1) % nearest.length] : undefined;
     if (route && route.length > 1) {
       const destination = route[1];
       const reachesColony = colonies.some(system => system.id === destination);
@@ -194,15 +256,16 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     }
     if (route && route.length > 1) return { ...fields, kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId: route[1] };
   }
-  if (colonies.length && view.ships.length + view.production.orders.length + view.production.completed.length < 4) {
+  const orders = view.production.orders, completedRecords = view.production.completed;
+  if (colonies.length && view.ships.length + orders.length + completedRecords.length < 4) {
     const designs = buildConquestDesigns(view.research, view.researchTree).filter(design => {
-      const quote = getProductionQuote(design);
+      const quote = getColonyProductionQuote(design, view.colonyOutput.rules);
       return afford(quote.cost.credits + 5, quote.cost.minerals);
     }).map(design => ({ design, value: calculateConquestDesignScore(design,
       { credits: view.treasury.credits - 5, minerals: view.treasury.minerals }) }))
       .sort((left, right) => right.value.score - left.value.score ||
         (left.design.id < right.design.id ? -1 : left.design.id > right.design.id ? 1 : 0));
-    const colony = colonies.find(system => view.production.orders.filter(order => order.systemId === system.id).length < 3);
+    const colony = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
     if (designs[0] && colony) return { ...fields, kind: 'enqueueProduction', systemId: colony.id, design: designs[0].design };
   }
   return { ...fields, kind: 'endTurn' };
@@ -217,13 +280,18 @@ export function executeConquestAiTurn(input: unknown, factionInput: unknown, exp
       return { ok: false, code: 'CONTROLLER_FORBIDDEN', message: 'AI-ход недоступен' };
     }
     let frames: BattleFrame[] | undefined;
+    const notices: NonNullable<Extract<ConquestResult, { ok: true }>['notices']> = [];
+    const workforceAdjustments: NonNullable<Extract<ConquestResult, { ok: true }>['workforceAdjustments']> = [];
     for (let action = 0; action < 24; action++) {
       const command = action === 23 ? { kind: 'endTurn' as const, factionId: faction, expectedTurn } : planConquestAction(getConquestView(state, faction));
       const result = executeConquestAction(state, command, true);
       if (!result.ok) return { ok: false, code: result.code, message: 'Не удалось выполнить AI-ход' };
       state = result.state;
+      notices.push(...result.notices ?? []);
+      workforceAdjustments.push(...result.workforceAdjustments ?? []);
       frames = result.frames ?? frames;
-      if (command.kind === 'endTurn') return { ok: true, state, ...(frames ? { frames } : {}) };
+      if (command.kind === 'endTurn') return { ...result, ...(frames ? { frames } : {}),
+        ...(notices.length ? { notices } : {}), ...(workforceAdjustments.length ? { workforceAdjustments } : {}) };
     }
     return { ok: false, code: 'RULE_REJECTED', message: 'Превышен бюджет AI-хода' };
   } catch { return { ok: false, code: 'INVALID_STATE', message: 'Не удалось выполнить AI-ход' }; }

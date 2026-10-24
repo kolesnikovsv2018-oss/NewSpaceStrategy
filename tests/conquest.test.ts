@@ -7,7 +7,7 @@ import { buildConquestDesigns } from '../src/domain/conquestAi';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { encodeConquestSave, decodeConquestSave, ConquestSaveManager } from '../src/utils/ConquestSaveManager';
 import { ShipDesignManager } from '../src/utils/ShipDesignManager';
-import { getProductionQuote } from '../src/domain/production';
+import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 
 function end(state: Conquest): Conquest {
   const result = executeConquestCommand(state, { kind: 'endTurn', factionId: state.session.turn % 2 ? 'blue' : 'red', expectedTurn: state.session.turn });
@@ -17,7 +17,8 @@ function end(state: Conquest): Conquest {
 
 function diagnosticServiceState() {
   const state = createConquest();
-  state.research.blue.completed = ['support', 'ordnance'];
+  state.research.blue.completed = ['engineering', 'applied', 'support', 'ordnance'];
+  state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
   const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
   design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
   design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('repair', 'repair');
@@ -31,11 +32,11 @@ function diagnosticServiceState() {
 it('diagnostic mining earns minerals only on own endTurn and preserves damaged state through load', () => {
   const source = diagnosticServiceState(), before = structuredClone(source);
   const view = getConquestView(source, 'blue');
-  expect(view.income.minerals).toBe(13);
-  expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(63);
+  expect(view.income.minerals).toBe(5008);
+  expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(5058);
   const next = end(source);
-  expect(next.session.treasuries.blue.minerals).toBe(63);
-  expect(end(next).session.treasuries.blue.minerals).toBe(63);
+  expect(next.session.treasuries.blue.minerals).toBe(5058);
+  expect(end(next).session.treasuries.blue.minerals).toBe(5058);
   expect(decodeConquestSave(encodeConquestSave(next)).operations['1'].hull).toBe(100);
   expect(source).toEqual(before);
 });
@@ -85,16 +86,18 @@ it('diagnostic ammunition remains depleted after reload and is replenished only 
   expect(result.state.session.treasuries.blue).toEqual({ credits: 100 - ammoCapacity.ammoCapacity,
     minerals: 50 - ammoCapacity.ammoCapacity });
 });
-it('charges research once, advances only on own turns and preserves a detached tree through save', () => {
+it('spends science only on own turns and preserves a detached tree through save', () => {
   const original = createConquest();
+  original.colonyOutput.assignments.sol = { industry: 3500, research: 1500, culture: 0 };
   const started = executeConquestCommand(original, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'support' });
   if (!started.ok) throw new Error(started.message);
-  expect(started.state.session.treasuries.blue.credits).toBe(90);
+  expect(started.state.session.treasuries.blue.credits).toBe(100);
   expect(original.session.treasuries.blue.credits).toBe(100);
-  expect(executeConquestCommand(started.state, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'support' }).ok).toBe(false);
+  expect(executeConquestCommand(started.state, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'support' }))
+    .toMatchObject({ ok: true, state: started.state });
   const loaded = decodeConquestSave(encodeConquestSave(end(started.state)));
   expect(end(end(loaded)).research.blue.completed).toEqual(['support']);
-  expect(end(loaded).research.blue.active?.progress).toBe(1);
+  expect(end(loaded).research.blue.progress.support).toBe(1500);
   expect(loaded.researchTree).not.toBe(started.state.researchTree);
 });
 it('requires all habitable planets, not merely the enemy capital', () => {
@@ -120,7 +123,8 @@ it('rejects free remote exploration and locked library projects', () => {
 it('accepts current and legacy dreadnought presets for paid production after full unlock', () => {
   for (const legacy of [false, true]) {
     const state = createConquest();
-    state.research.blue.completed = ['support', 'ordnance', 'capital'];
+    state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
+    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
     state.session.treasuries.blue = { credits: 1_000_000, minerals: 1_000_000 };
     const design = createCombatDesign('dreadnought');
     if (legacy) {
@@ -135,13 +139,14 @@ it('accepts current and legacy dreadnought presets for paid production after ful
     });
     expect(result.ok, legacy ? 'legacy dreadnought order' : 'current dreadnought order').toBe(true);
     if (!result.ok) throw new Error(result.message);
-    expect(result.state.session.production.orders[0].design).toEqual(design);
+    expect(result.state.colonyOutput.production.orders[0].design).toEqual(design);
   }
 });
 it('rejects a preset order when its hull is open but an installed module family is locked', () => {
   const tree = getDefaultResearchTree();
   tree.initial.hulls.push('frigate');
-  tree.nodes[0].unlocks.hulls = [];
+  tree.nodes.find(node => node.id === 'support')!.effects = [{ kind: 'component-unlock', component: 'shield' },
+    { kind: 'component-unlock', component: 'armor' }];
   const state = createConquest({ mode: 'local' }, tree);
   const before = structuredClone(state);
   const result = executeConquestCommand(state, {
@@ -153,19 +158,23 @@ it('rejects a preset order when its hull is open but an installed module family 
 });
 it('preserves unlocked variant ranges through research, production, ships and save round-trips', () => {
   const tree = getDefaultResearchTree();
-  if (tree.version !== 2) throw new Error('Expected profiled research tree');
-  tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[2], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
-  tree.variantPolicy.tiers[3] = { ...tree.variantPolicy.tiers[3], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
+  tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[1], level: 3 };
+  tree.variantPolicy.tiers[3] = { ...tree.variantPolicy.tiers[1], level: 4 };
   const state = createConquest({ mode: 'local' }, tree);
-  state.research.blue.completed = ['support'];
-  state.research.blue.active = { id: 'ordnance', progress: 2 };
+  state.research.blue.completed = ['engineering', 'support'];
+  state.researchJournal.blue = { engineering: 1, support: 1 };
+  state.research.blue.activeId = 'ordnance';
+  state.research.blue.progress.ordnance = 5999;
+  state.colonyOutput.reserves.blue.research = 1;
   const base = createDesign('corvette', true);
   const beam = base.slots.find(slot => slot.id === 'beam_1')!.component;
   if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
   const design = installComponent(base, 'beam_1', { ...beam, damage: 30 });
   state.session.production.lastOrderId = 3;
-  state.session.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
-  state.session.production.orders.push({ id: 3, factionId: 'blue', systemId: 'sol', design, remainingTurns: 1 });
+  const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
+  state.colonyOutput.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
+  state.colonyOutput.production.orders.push({ id: 3, factionId: 'blue', systemId: 'sol', design,
+    cost: quote.cost, productionCost: quote.productionCost, productionProgress: quote.productionCost - 1 });
   state.session.ships.push({ id: 2, factionId: 'blue', systemId: 'sol', fuel: 3, design });
   state.operations['2'] = createOperationalState(design);
 
@@ -174,9 +183,9 @@ it('preserves unlocked variant ranges through research, production, ships and sa
   const result = executeConquestCommand(saved, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
   if (!result.ok) throw new Error(result.message);
   expect(saved).toEqual(inputSnapshot);
-  expect(result.state.research.blue).toEqual({ completed: ['support', 'ordnance'], active: null });
-  expect(result.state.session.production.orders).toEqual([]);
-  expect(result.state.session.production.completed.map(record => record.id)).toEqual([1, 3]);
+  expect(result.state.research.blue).toEqual({ completed: ['engineering', 'support', 'ordnance'], activeId: null, progress: {} });
+  expect(result.state.colonyOutput.production.orders).toEqual([]);
+  expect(result.state.colonyOutput.production.completed.map(record => record.id)).toEqual([1, 3]);
   expect(result.state.session.ships[0].design).toEqual(design);
   expect(decodeConquestSave(encodeConquestSave(result.state))).toEqual(result.state);
 
@@ -210,37 +219,30 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":6', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":10', '"schemaVersion":999'))).toThrow();
 });
 
 it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 6, rulesVersion: 3,
-    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 2 } } });
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 10, rulesVersion: 7,
+    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 4 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };
   expect(() => decodeConquestSave(JSON.stringify(oldEnvelope))).toThrow();
-  for (const schemaVersion of [1, 2, 3, 4, 5, 7]) {
+  for (const schemaVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
     expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, schemaVersion }))).toThrow();
   }
   expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, rulesVersion: 2 }))).toThrow();
 
   const currentTree = getDefaultResearchTree();
-  if (currentTree.version !== 2) throw new Error('Expected profiled research tree');
-  const { variantPolicy: _variantPolicy, ...legacyFields } = currentTree;
-  const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'grandfathered-v1' });
-  const legacy = createConquest({ mode: 'local' }, legacyTree);
-  let legacyDesign = createDesign('corvette', true);
-  const beam = legacyDesign.slots.find(slot => slot.id === 'beam_1')!.component;
-  if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
-  legacyDesign = installComponent(legacyDesign, 'beam_1', { ...beam, damage: 27.6 });
-  legacy.session.production.lastOrderId = 1;
-  legacy.session.ships.push({ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design: legacyDesign });
-  legacy.operations['1'] = createOperationalState(legacyDesign);
-
-  expect(() => encodeConquestSave(legacy)).toThrow();
+  for (const version of [1, 2]) {
+    expect(() => researchTreeSchema.parse({ ...currentTree, version })).toThrow();
+    expect(() => encodeConquestSave({ ...current, researchTree: { ...currentTree, version } })).toThrow();
+    expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope,
+      conquest: { ...current, researchTree: { ...currentTree, version } } }))).toThrow();
+  }
 });
 
 it('removes captured production and invalidated groups while preserving surviving IDs', () => {
@@ -260,10 +262,10 @@ it('removes captured production and invalidated groups while preserving survivin
     { id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 2] },
     { id: 2, factionId: 'red', systemId: 'eden', shipIds: [3, 4] }
   ] };
-  state.session.production.completed = [{ id: 5, factionId: 'red', systemId: 'eden', design }];
+  state.colonyOutput.production.completed = [{ id: 5, factionId: 'red', systemId: 'eden', design }];
   const result = end(state);
   expect(result.session.galaxy.systems.find(system => system.id === 'eden')?.ownerId).toBe('blue');
-  expect(result.session.production.completed).toEqual([]);
+  expect(result.colonyOutput.production.completed).toEqual([]);
   expect(result.session.fleets.items).toEqual([{ id: 1, factionId: 'blue', systemId: 'eden', shipIds: [1, 2] }]);
   expect(result.session.ships.map(ship => ship.id)).toEqual([1, 2]);
   expect(Object.keys(result.operations)).toEqual(['1', '2']);
@@ -288,28 +290,30 @@ it('earns research, pays for a library service ship and mines after arrival with
     if (!result.ok) throw new Error(result.message);
     state = result.state;
   };
-  command({ kind: 'research', technologyId: 'support' });
+  command({ kind: 'assignWorkers', systemId: 'sol', workers: { industry: 4000, research: 1000, culture: 0 } });
+  command({ kind: 'research', technologyId: 'applied' });
   state = end(end(end(end(state))));
   const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
   design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'paid-miner');
   design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('scanner', 'paid-scanner');
   const storage = new Map<string, string>();
   const library = new ShipDesignManager({ getItem: key => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); } });
-  const snapshot = library.saveDesign(design), quote = getProductionQuote(snapshot);
+  const snapshot = library.saveDesign(design), quote = getColonyProductionQuote(snapshot, state.rules.colonyOutput);
   for (let attempt = 0; attempt < 100 && (state.session.treasuries.blue.credits < quote.cost.credits ||
     state.session.treasuries.blue.minerals < quote.cost.minerals); attempt++) state = end(end(state));
   const before = structuredClone(state.session.treasuries.blue);
   command({ kind: 'enqueueProduction', systemId: 'sol', design: library.load().designs[0] });
   expect(state.session.treasuries.blue).toEqual({ credits: before.credits - quote.cost.credits, minerals: before.minerals - quote.cost.minerals });
   storage.clear();
-  for (let turn = 0; turn < quote.turns * 2; turn++) state = decodeConquestSave(encodeConquestSave(end(state)));
+  for (let turn = 0; turn < 2; turn++) state = decodeConquestSave(encodeConquestSave(end(state)));
   command({ kind: 'deployProduction', systemId: 'sol', orderId: 1 });
   expect(state.session.ships[0].design).toEqual(snapshot);
   command({ kind: 'sendShip', shipId: 1, systemId: 'sol', destinationId: 'rift' });
   const minerals = state.session.treasuries.blue.minerals;
-  expect(getConquestView(state, 'blue').income.minerals).toBe(13);
+  const mineralIncome = getConquestView(state, 'blue').income.minerals;
+  expect(mineralIncome).toBe(5314);
   command({ kind: 'endTurn' });
-  expect(state.session.treasuries.blue.minerals).toBe(minerals + 13);
+  expect(state.session.treasuries.blue.minerals).toBe(minerals + mineralIncome);
   expect(getConquestView(state, 'blue').galaxy.systems.find(system => system.id === 'dust')?.visibility).toBe('explored');
   expect(state.session.ships[0].fuel).toBe(2);
   expect(storage.size).toBe(0);

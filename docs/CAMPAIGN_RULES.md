@@ -2,16 +2,23 @@
 
 Н04 предоставляет чистый [API](../src/domain/campaignRules.ts), строгие схемы и
 [JSON-пример/fixture](../src/domain/fixtures/rules-default.json).
-Это **не игровые бонусы Conquest**. Новая библиотека не импортируется сценами,
-исследованиями, расчётом кораблей или военным save; их поведение и форматы сохранены.
-Н06 и последующие этапы подключают минимальных реальных потребителей вместе с изменением игровой схемы.
+Библиотечные examples не включаются в Conquest автоматически.
+Н09 подключает пять [колониальных технологических handlers](CAMPAIGN_COLONY_TECHNOLOGIES.md).
+Н06 подключил snapshot к партии/военному save и базовую
+[демографию](CAMPAIGN_POPULATION.md); Н07 добавляет исполнителя
+[выпуска колоний](CAMPAIGN_OUTPUT.md). Остальные технологические эффекты
+остаются будущими; ship-growth не является новым growth-rate.
 
 ## Формат и граница
 
-`format=orion-rules-snapshot`, `schemaVersion=1`, `rulesVersion=1` — один актуальный
+`format=orion-rules-snapshot`, `schemaVersion=5`, `rulesVersion=5` — один актуальный
 формат отдельной библиотеки. Обязательны ID снимка, `treeId/treeVersion`,
 `tablesId/tablesVersion`, `policyId/policyVersion`, реестры `handlers/policies` и `effects`.
-Поддерживаются только `research-tree-v2`, `campaign-tables-v1`, `component-bands-v1`;
+Обязательны также `population` с масштабом, исходным P, ростом, переселенцами,
+ценой основания и вместимостями и `colonyOutput` с коэффициентами выпуска,
+резервами и очередью, `researchPolicy='research-points-v1'`.
+Поддерживаются только `research-tree-v4`,
+`campaign-tables-v2`, `component-bands-v1`;
 это ссылки на контракт, не встроенное дерево/игровой state и не проверка наличия внешнего дерева по ID.
 ID — 1–64 ASCII символа `a-z`, `0-9`, `-`, без trim/coercion.
 
@@ -44,6 +51,13 @@ fallback, загрузки YAML-скриптов или исполнения `fo
 | fleet-capacity | fleet | percent, count | fleet-capacity |
 | planet-habitability | player, global | percent, points | campaign-policy |
 | component-unlock | component | count | component-stats |
+| growth-rate | own-colonies | percent, ratio | colony-growth |
+| capacity-add | own-colonies | count, flat | colony-capacity |
+| production-output, science-output, culture-output | own-colonies | percent, flat | colony-output |
+
+Пять колониальных targets требуют modifier, обязательный worldType
+habitable/barren и activationPhase=on-turn-start. Иные scope/type/phase
+отвергаются. У неколониальных effects worldType запрещён.
 
 - `modifier`: числовой эффект. `multiply` принимает только percent/ratio; отрицательный
   value разрешён только для add. Value конечен в ±1 000 000, cap конечен в 0..1 000 000
@@ -107,7 +121,10 @@ Capability/policy-reference и будущий growth не превращаютс
 - `library-numeric-v1`: чистые вычислители перечисленных выше stats.
 - `library-capability-v1`: чистый счётчик fleet-capacity и бинарный component-unlock.
 - У policy-reference и ship-growth нет runtime-потребителей.
-- `CURRENT_GAME_RULES_CONSUMERS=[]`: никакой эффект новой библиотеки не активен в Conquest.
+- `CURRENT_GAME_RULES_CONSUMERS` включает population-v1, colony-output-v1,
+  colony-technologies-v1. Последний активирует только пять новых targets
+  по IDs завершённых узлов. Conquest отвергает неисполняемые effects,
+  dangling/лишние IDs; библиотечные примеры не включаются.
 
 `always` применяется вместе с явно выбранной фазой; отсутствие phase — только always.
 `on-turn-start/on-build/on-research/before-combat/after-combat` — метки,
@@ -124,13 +141,13 @@ Capability/policy-reference и будущий growth не превращаютс
 
 | Контракт | Текущий формат | Producers | Consumers/readers | Связь с Н04 |
 | --- | --- | --- | --- | --- |
-| Исследования Conquest | tree2 / component-bands-v1 | campaignResearch, актуальный ResearchTreeYaml, research-default.yaml | Conquest/research availability/save5 | Без новых полей/эффектов; прежние диагностические tree1 API вне Н04 |
-| Военная кампания | save5 / rules3 | encodeConquestSave, ConquestSaveManager | decodeConquestSave, ConquestScene | Формат неизменен; не содержит новый rules snapshot |
-| Новая библиотека | rules snapshot1 / rules1 | encodeRulesSnapshot, JSON fixture/API | decodeRulesSnapshot, typed math/activation/tests | Единственная новая граница; только текущая версия |
+| Исследования Conquest | tree4 / research-points-v1 / component-bands-v1 | campaignResearch, ResearchTreeYaml, research-default.yaml | Conquest/access/UI/AI/save10 | Hull/family/tier и ссылки colony-effect |
+| Военная кампания | save10 / rules7 | encodeConquestSave, ConquestSaveManager | decodeConquestSave, ConquestScene, baseline6 | Rules/population/output/researchJournal; treeId/ссылки/прогресс/журнал согласованы |
+| Библиотека | rules snapshot5 / rules5 | encodeRulesSnapshot, JSON fixture/API | decodeRulesSnapshot, typed math/activation, Conquest | Пять handlers и worldType; только текущая версия |
 | Мирные/старые библиотечные save API | прежние самостоятельные форматы | существующие кодеки | прежние readers | Не изменялись; не запасной reader нового snapshot |
 
-Будущие номера schemas не резервируются. При подключении Н06 меняются только
-действительно необходимые игровые поля и их producers/consumers/fixtures в одном этапе.
+Будущие номера schemas не резервируются. Иные версии snapshot/save отвергаются;
+Н09 обновил producers/consumers/fixtures вместе, без миграций.
 
 ## Проверки
 

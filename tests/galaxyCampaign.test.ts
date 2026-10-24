@@ -8,7 +8,7 @@ import { createConquest, conquestSchema, executeConquestCommand, getConquestOutc
 import { executeConquestAiTurn } from '../src/domain/conquestAi';
 import { getGalaxyDefinition, areSystemsAdjacent, type CampaignFactionId } from '../src/domain/campaign';
 import { createDesign } from '../src/domain/shipDesign';
-import { getProductionQuote } from '../src/domain/production';
+import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { encodeConquestSave, decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { campaignSessionSchema } from '../src/domain/campaignSession';
 import { createOperationalState } from '../src/domain/campaignOperations';
@@ -40,12 +40,18 @@ function payAndBuild(count: number, faction: CampaignFactionId = 'blue'): Conque
   let state = createConquest({ mode: 'local' }, undefined, 12345, map());
   if (faction === 'red') state = command(state, { kind: 'endTurn' });
   const design = createDesign('fighter', true);
-  const quote = getProductionQuote(design);
+  const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   const home = getGalaxyDefinition(state.session.galaxy).factions.find(side => side.id === faction)!.homeSystemId;
-  while (state.session.treasuries[faction].credits < quote.cost.credits * count) state = round(state);
+  for (let rounds = 0; rounds < 10 && state.session.treasuries[faction].credits < quote.cost.credits * count; rounds++) {
+    state = round(state);
+  }
+  expect(state.session.treasuries[faction].credits).toBeGreaterThanOrEqual(quote.cost.credits * count);
   for (let index = 0; index < count; index++) state = command(state, { kind: 'enqueueProduction', systemId: home, design });
-  while (state.session.production.completed.length !== count) state = round(state);
-  for (const record of [...state.session.production.completed]) {
+  for (let rounds = 0; rounds < count && state.colonyOutput.production.completed.length !== count; rounds++) {
+    state = round(state);
+  }
+  expect(state.colonyOutput.production.completed).toHaveLength(count);
+  for (const record of [...state.colonyOutput.production.completed]) {
     state = command(state, { kind: 'deployProduction', systemId: home, orderId: record.id });
   }
   return state;
@@ -227,7 +233,8 @@ describe('generated campaign snapshots', () => {
   it('diagnostic mining and scanner queries use the generated map and conceal unseen enemy details', () => {
     const snapshot = map(), state = createConquest(undefined, undefined, snapshot.seed, snapshot);
     const barren = snapshot.worlds.find(world => world.type === 'barren')!;
-    state.research.blue.completed = ['support', 'ordnance'];
+    state.research.blue.completed = ['engineering', 'applied', 'support', 'ordnance'];
+    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
     const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
     design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
     design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('scanner', 'scanner');
@@ -236,13 +243,13 @@ describe('generated campaign snapshots', () => {
     state.operations = { '1': createOperationalState(design) };
     let checked = conquestSchema.parse(state);
     const view = getConquestView(checked, 'blue');
-    expect(view.income.minerals).toBe(13);
-    expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(63);
+    expect(view.income.minerals).toBe(5008);
+    expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(5058);
     const neighbour = snapshot.lanes.flatMap(([a, b]) => a === barren.id ? [b] : b === barren.id ? [a] : [])[0];
     checked = command(checked, { kind: 'explore', systemId: neighbour });
     expect(getConquestView(checked, 'blue').galaxy.systems.find(system => system.id === neighbour)?.visibility).toBe('explored');
     const next = command(checked, { kind: 'endTurn' });
-    expect(next.session.treasuries.blue.minerals).toBe(63);
+    expect(next.session.treasuries.blue.minerals).toBe(5058);
     expect(next.session.galaxy.systems.find(system => system.id === barren.id)?.ownerId).toBeNull();
     expect(decodeConquestSave(encodeConquestSave(next))).toEqual(next);
     expect(getConquestView(next, 'blue')).not.toHaveProperty('treasuries');

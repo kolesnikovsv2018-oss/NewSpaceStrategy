@@ -1,86 +1,107 @@
 import { z } from 'zod';
-import { componentSchema, createComponentWithId, hullIdSchema, designSchema, validateDesign,
+import { componentSchema, createComponentWithId, hullIdSchema, designSchema, validateDesign, HULLS,
   type ComponentDefinition, type ComponentKind, type ShipDesign } from './shipDesign';
 import { isCombatPresetDesign } from './combatPresets';
 import { isCivilianPresetDesign } from './civilianPresets';
+import { createDefaultRulesSnapshot, COLONY_EFFECT_TARGETS, type RulesEffect } from './campaignRules';
 
 export const researchIdSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
 const kindSchema = z.enum(['engine', 'beam', 'projectile', 'shield', 'armor', 'mining', 'repair', 'scanner', 'cargoExpansion']);
 const unlockSchema = z.object({ hulls: z.array(hullIdSchema).max(6), components: z.array(kindSchema).max(9) }).strict();
+export const MAX_RESEARCH_COST = 1_000_000_000;
+const pointsSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const researchEffectSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('hull-unlock'), hullId: hullIdSchema }).strict(),
+  z.object({ kind: z.literal('component-unlock'), component: kindSchema }).strict(),
+  z.object({ kind: z.literal('variant-tier'), tier: z.number().int().min(2).max(4) }).strict(),
+  z.object({ kind: z.literal('colony-effect'), effectId: researchIdSchema }).strict()
+]);
+export type ResearchEffect = z.infer<typeof researchEffectSchema>;
 const researchNodeSchema = z.object({
   id: researchIdSchema, name: z.string().trim().min(1).max(80),
   prerequisites: z.array(researchIdSchema).max(64),
-  credits: z.number().int().min(1).max(1000000),
-  turns: z.number().int().min(1).max(1000), unlocks: unlockSchema
+  researchCost: z.number().int().min(1).max(MAX_RESEARCH_COST),
+  effects: z.array(researchEffectSchema).min(1).max(32)
 }).strict();
-const treeFields = { id: researchIdSchema, initial: unlockSchema,
-  nodes: z.array(researchNodeSchema).min(1).max(64) };
-const legacyResearchTreeSchema = z.object({ ...treeFields, version: z.literal(1) }).strict();
 const variantTierSchema = z.object({
-  level: z.number().int().min(1).max(4), researchId: researchIdSchema.nullable(),
+  level: z.number().int().min(1).max(4),
   magnitude: z.number().finite().min(0).max(1), ratioStep: z.number().finite().min(0).max(1),
   ammo: z.number().finite().min(0).max(1), rechargeDelay: z.number().finite().min(0).max(60)
 }).strict();
-const profiledResearchTreeSchema = z.object({ ...treeFields, version: z.literal(2),
+export const researchTreeSchema = z.object({
+  version: z.literal(4), id: researchIdSchema, initial: unlockSchema,
+  nodes: z.array(researchNodeSchema).min(1).max(64),
   variantPolicy: z.object({ id: z.literal('component-bands-v1'), tiers: z.array(variantTierSchema).length(4) }).strict()
-}).strict();
-
-export const researchTreeSchema = z.union([legacyResearchTreeSchema, profiledResearchTreeSchema]).superRefine((tree, context) => {
+}).strict().superRefine((tree, context) => {
   const nodes = new Map(tree.nodes.map(node => [node.id, node]));
   const fail = () => context.addIssue({ code: z.ZodIssueCode.custom, message: 'Недопустимое дерево исследований' });
   if (nodes.size !== tree.nodes.length || !tree.initial.hulls.includes('fighter') ||
     !tree.initial.components.includes('engine') || !tree.initial.components.includes('beam')) fail();
-  const hulls = [...tree.initial.hulls, ...tree.nodes.flatMap(node => node.unlocks.hulls)];
-  const kinds = [...tree.initial.components, ...tree.nodes.flatMap(node => node.unlocks.components)];
-  if (new Set(hulls).size !== hulls.length || new Set(kinds).size !== kinds.length ||
-    hulls.length !== hullIdSchema.options.length || kinds.length !== kindSchema.options.length) fail();
+  const effects = tree.nodes.flatMap(node => node.effects);
+  const registeredIds = new Set(createDefaultRulesSnapshot().effects.filter(effect =>
+    COLONY_EFFECT_TARGETS.some(target => target === effect.target)).map(effect => effect.id));
+  if (effects.some(effect => effect.kind === 'colony-effect' && !registeredIds.has(effect.effectId))) fail();
+  const hulls = new Set([...tree.initial.hulls, ...effects.flatMap(effect => effect.kind === 'hull-unlock' ? [effect.hullId] : [])]);
+  const kinds = new Set([...tree.initial.components, ...effects.flatMap(effect => effect.kind === 'component-unlock' ? [effect.component] : [])]);
+  if (new Set(tree.initial.hulls).size !== tree.initial.hulls.length ||
+    new Set(tree.initial.components).size !== tree.initial.components.length ||
+    hulls.size !== hullIdSchema.options.length || kinds.size !== kindSchema.options.length) fail();
   for (const node of tree.nodes) {
     if (new Set(node.prerequisites).size !== node.prerequisites.length ||
       node.prerequisites.some(id => !nodes.has(id))) fail();
+    const keys = node.effects.map(effect => JSON.stringify(effect));
+    if (new Set(keys).size !== keys.length) fail();
+    if (node.effects.some(effect => effect.kind === 'hull-unlock' ? tree.initial.hulls.includes(effect.hullId)
+      : effect.kind === 'component-unlock' ? tree.initial.components.includes(effect.component) : false)) fail();
   }
   const resolved = new Set<string>();
   for (let pass = 0; pass < tree.nodes.length; pass++) {
     for (const node of tree.nodes) if (node.prerequisites.every(id => resolved.has(id))) resolved.add(node.id);
   }
   if (resolved.size !== nodes.size) fail();
-  if (tree.version === 2) {
-    const tiers = tree.variantPolicy.tiers;
-    if (tiers.some((tier, index) => tier.level !== index + 1 || (index === 0) !== (tier.researchId === null)) ||
-      new Set(tiers.flatMap(tier => tier.researchId ? [tier.researchId] : [])).size !== 3 ||
-      tiers.some(tier => tier.researchId !== null && !nodes.has(tier.researchId))) fail();
-  }
+  const fields = ['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const;
+  if (tree.variantPolicy.tiers.some((tier, index, tiers) => tier.level !== index + 1 ||
+    (index > 0 && fields.some(field => tier[field] < tiers[index - 1][field])))) fail();
 });
 export type ResearchTree = z.infer<typeof researchTreeSchema>;
-export type ProfiledResearchTree = Extract<ResearchTree, { version: 2 }>;
-
-/** New imports require v2 with monotonic profiles; saved v2 snapshots remain structurally readable. */
+export type ProfiledResearchTree = ResearchTree;
 export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree {
-  const tree = researchTreeSchema.parse(input);
-  if (tree.version !== 2) throw new Error('Новая кампания требует дерево с профилями вариантов');
-  const fields = ['magnitude', 'ratioStep', 'ammo', 'rechargeDelay'] as const;
-  if (tree.variantPolicy.tiers.some((tier, index, tiers) => index > 0 &&
-    fields.some(field => tier[field] < tiers[index - 1][field]))) {
-    throw new Error('Диапазоны вариантов не могут сужаться в новом дереве исследований');
-  }
-  return tree;
+  return researchTreeSchema.parse(input);
 }
 
 const defaultTree: ResearchTree = {
-  version: 2, id: 'orion-technologies-v2',
+  version: 4, id: 'orion-technologies-v4',
   initial: { hulls: ['fighter', 'corvette'], components: ['engine', 'beam'] },
   nodes: [
-    { id: 'support', name: 'Флотская инфраструктура', prerequisites: [], credits: 10, turns: 2,
-      unlocks: { hulls: ['frigate'], components: ['shield', 'armor', 'mining', 'repair', 'scanner', 'cargoExpansion'] } },
-    { id: 'ordnance', name: 'Тяжёлое вооружение', prerequisites: ['support'], credits: 20, turns: 3,
-      unlocks: { hulls: ['destroyer', 'cruiser'], components: ['projectile'] } },
-    { id: 'capital', name: 'Линейные корабли', prerequisites: ['ordnance'], credits: 30, turns: 4,
-      unlocks: { hulls: ['battleship'], components: [] } }
+    { id: 'engineering', name: 'Инженерные методы', prerequisites: [], researchCost: 2000,
+      effects: [{ kind: 'variant-tier', tier: 2 }] },
+    { id: 'applied', name: 'Прикладные службы', prerequisites: [], researchCost: 2000,
+      effects: ['mining', 'repair', 'scanner', 'cargoExpansion'].map(component =>
+        ({ kind: 'component-unlock' as const, component: kindSchema.parse(component) })) },
+    { id: 'support', name: 'Флотская инфраструктура', prerequisites: [], researchCost: 3000,
+      effects: [{ kind: 'hull-unlock', hullId: 'frigate' }, { kind: 'component-unlock', component: 'shield' },
+        { kind: 'component-unlock', component: 'armor' }] },
+    { id: 'ordnance', name: 'Тяжёлое вооружение', prerequisites: ['engineering', 'support'], researchCost: 6000,
+      effects: [{ kind: 'hull-unlock', hullId: 'destroyer' }, { kind: 'hull-unlock', hullId: 'cruiser' },
+        { kind: 'component-unlock', component: 'projectile' }, { kind: 'variant-tier', tier: 3 }] },
+    { id: 'capital', name: 'Линейные корабли', prerequisites: ['ordnance'], researchCost: 12000,
+      effects: [{ kind: 'hull-unlock', hullId: 'battleship' },       { kind: 'variant-tier', tier: 4 }] },
+    { id: 'biology', name: 'Биология', prerequisites: [], researchCost: 2000,
+      effects: [{ kind: 'colony-effect', effectId: 'biology-growth' }] },
+    { id: 'biosphere', name: 'Биосфера', prerequisites: ['biology'], researchCost: 4000,
+      effects: [{ kind: 'colony-effect', effectId: 'biosphere-capacity' }] },
+    { id: 'automation', name: 'Автоматизация', prerequisites: ['engineering'], researchCost: 3000,
+      effects: [{ kind: 'colony-effect', effectId: 'automation-output' }] },
+    { id: 'scientific-method', name: 'Научные методы', prerequisites: ['applied'], researchCost: 3000,
+      effects: [{ kind: 'colony-effect', effectId: 'scientific-output' }] },
+    { id: 'cultural-practices', name: 'Культурные практики', prerequisites: [], researchCost: 2000,
+      effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }] }
   ],
   variantPolicy: { id: 'component-bands-v1', tiers: [
-    { level: 1, researchId: null, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5 },
-    { level: 2, researchId: 'support', magnitude: 0.2, ratioStep: 0.1, ammo: 0.2, rechargeDelay: 1 },
-    { level: 3, researchId: 'ordnance', magnitude: 0.3, ratioStep: 0.15, ammo: 0.3, rechargeDelay: 1.5 },
-    { level: 4, researchId: 'capital', magnitude: 0.4, ratioStep: 0.2, ammo: 0.4, rechargeDelay: 2 }
+    { level: 1, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5 },
+    { level: 2, magnitude: 0.2, ratioStep: 0.1, ammo: 0.2, rechargeDelay: 1 },
+    { level: 3, magnitude: 0.3, ratioStep: 0.15, ammo: 0.3, rechargeDelay: 1.5 },
+    { level: 4, magnitude: 0.4, ratioStep: 0.2, ammo: 0.4, rechargeDelay: 2 }
   ] }
 };
 
@@ -88,10 +109,15 @@ export function getDefaultResearchTree(): ResearchTree { return researchTreeSche
 
 export const researchStateSchema = z.object({
   completed: z.array(researchIdSchema).max(64),
-  active: z.object({ id: researchIdSchema, progress: z.number().int().min(0).max(999) }).strict().nullable()
+  activeId: researchIdSchema.nullable(),
+  progress: z.record(researchIdSchema, z.number().int().min(0).max(MAX_RESEARCH_COST - 1))
+    .refine(value => Object.keys(value).length <= 64)
 }).strict();
 export type ResearchState = z.infer<typeof researchStateSchema>;
-export function createResearchState(): ResearchState { return { completed: [], active: null }; }
+export function createResearchState(): ResearchState { return { completed: [], activeId: null, progress: {} }; }
+export function getResearchProgress(state: ResearchState, id: string): number {
+  return Object.prototype.hasOwnProperty.call(state.progress, id) ? state.progress[id] : 0;
+}
 
 export function isResearchStateValid(state: ResearchState, tree: ResearchTree): boolean {
   if (new Set(state.completed).size !== state.completed.length) return false;
@@ -99,24 +125,25 @@ export function isResearchStateValid(state: ResearchState, tree: ResearchTree): 
     const node = tree.nodes.find(item => item.id === id);
     return !node || node.prerequisites.some(required => !state.completed.includes(required));
   })) return false;
-  if (!state.active) return true;
-  const node = tree.nodes.find(item => item.id === state.active!.id);
-  return !!node && !state.completed.includes(node.id) && state.active.progress < node.turns &&
-    node.prerequisites.every(id => state.completed.includes(id));
+  const available = (id: string): boolean => {
+    const node = tree.nodes.find(item => item.id === id);
+    return !!node && !state.completed.includes(id) && node.prerequisites.every(required => state.completed.includes(required));
+  };
+  return Object.entries(state.progress).every(([id, progress]) =>
+    available(id) && progress < tree.nodes.find(node => node.id === id)!.researchCost) &&
+    (state.activeId === null || (available(state.activeId) && Object.prototype.hasOwnProperty.call(state.progress, state.activeId)));
 }
 
 export function getResearchAccess(state: ResearchState, tree: ResearchTree): ResearchTree['initial'] {
   if (!isResearchStateValid(state, tree)) throw new Error('Недопустимый прогресс исследований');
-  return {
-    hulls: [...tree.initial.hulls, ...tree.nodes.filter(node => state.completed.includes(node.id)).flatMap(node => node.unlocks.hulls)],
-    components: [...tree.initial.components, ...tree.nodes.filter(node => state.completed.includes(node.id)).flatMap(node => node.unlocks.components)]
-  };
+  const effects = tree.nodes.filter(node => state.completed.includes(node.id)).flatMap(node => node.effects);
+  return { hulls: [...new Set([...tree.initial.hulls, ...effects.flatMap(effect => effect.kind === 'hull-unlock' ? [effect.hullId] : [])])],
+    components: [...new Set([...tree.initial.components, ...effects.flatMap(effect => effect.kind === 'component-unlock' ? [effect.component] : [])])] };
 }
 
 export function getCampaignVariantTier(state: ResearchState, tree: ResearchTree): number {
-  if (tree.version === 1) return 4;
-  return tree.variantPolicy.tiers.reduce((level, tier) =>
-    tier.researchId && state.completed.includes(tier.researchId) ? tier.level : level, 1);
+  return tree.nodes.filter(node => state.completed.includes(node.id)).flatMap(node => node.effects)
+    .reduce((level, effect) => effect.kind === 'variant-tier' ? Math.max(level, effect.tier) : level, 1);
 }
 
 export function getCampaignVariantProfile(tree: ProfiledResearchTree, tier: number) {
@@ -143,7 +170,6 @@ const ratioFields: Partial<Record<ComponentKind, readonly string[]>> = {
 };
 
 function componentWithinVariantTier(component: ComponentDefinition, tier: number, tree: ResearchTree): boolean {
-  if (tree.version === 1) return true;
   const profile = getCampaignVariantProfile(tree, tier);
   const defaults = createComponentWithId(component.kind, 'campaign-variant-default') as unknown as Record<string, number>;
   const values = component as unknown as Record<string, number>;
@@ -168,7 +194,7 @@ export function isCampaignComponentVariantAvailable(component: ComponentDefiniti
   if (!componentSchema.safeParse(component).success) return false;
   const access = getResearchAccess(state, tree);
   if (!access.components.includes(component.kind)) return false;
-  return tree.version === 1 || componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree);
+  return componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree);
 }
 
 export function isCampaignDesignAvailable(design: ShipDesign, state: ResearchState, tree: ResearchTree): boolean {
@@ -181,19 +207,62 @@ export function isCampaignDraftAvailable(design: ShipDesign, state: ResearchStat
   if (!access.hulls.includes(design.hullId)) return false;
   const components = design.slots.flatMap(slot => slot.component ? [slot.component] : []);
   if (components.some(component => !access.components.includes(component.kind))) return false;
-  if (tree.version === 1 || isCombatPresetDesign(design) || isCivilianPresetDesign(design)) return true;
+  if (isCombatPresetDesign(design) || isCivilianPresetDesign(design)) return true;
   return components.every(component => componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree));
 }
 
-export function advanceResearch(state: ResearchState, tree: ResearchTree): ResearchState {
+export interface ResearchTurnReceipt {
+  reserveBefore: number; produced: number; spent: number; overflow: number; reserveAfter: number;
+  cap: number; activeId: string | null; progressBefore: number; progressAfter: number;
+  completedId: string | null; accepted: number;
+}
+export type ResearchTiming = { status: 'idle' | 'paused'; reason: 'no-project' | 'no-colonies' | 'no-science' }
+  | { status: 'unavailable'; reason: 'turn-limit' | 'campaign-completed' }
+  | { status: 'progressing' | 'completes'; remainingOwnTurns: number };
+
+export function calculateResearchTurn(state: ResearchState, tree: ResearchTree, reserveInput: number,
+  producedInput: number, capInput: number, hasColonies: boolean): {
+    state: ResearchState; receipt: ResearchTurnReceipt; timing: ResearchTiming;
+  } {
   const next = researchStateSchema.parse(state);
   if (!isResearchStateValid(next, tree)) throw new Error('Недопустимый прогресс исследований');
-  if (next.active) {
-    const node = tree.nodes.find(item => item.id === next.active!.id)!;
-    next.active.progress++;
-    if (next.active.progress === node.turns) { next.completed.push(node.id); next.active = null; }
+  const reserve = pointsSchema.parse(reserveInput), produced = pointsSchema.parse(producedInput), cap = pointsSchema.parse(capInput);
+  if (!hasColonies && produced !== 0) throw new Error('Научный выпуск без колоний');
+  const node = tree.nodes.find(item => item.id === next.activeId);
+  const progressBefore = node ? next.progress[node.id] : 0;
+  const remaining = node ? node.researchCost - progressBefore : 0;
+  const fromReserve = node && hasColonies ? Math.min(reserve, remaining) : 0;
+  const fromOutput = node && hasColonies ? Math.min(produced, remaining - fromReserve) : 0;
+  const spent = fromReserve + fromOutput, afterSpend = reserve - fromReserve;
+  const accepted = Math.min(produced - fromOutput, Math.max(0, cap - afterSpend));
+  const progressAfter = progressBefore + spent;
+  const completedId = node && progressAfter === node.researchCost ? node.id : null;
+  let timing: ResearchTiming;
+  if (!node) timing = { status: 'idle', reason: 'no-project' };
+  else if (!hasColonies) timing = { status: 'paused', reason: 'no-colonies' };
+  else if (completedId) timing = { status: 'completes', remainingOwnTurns: 1 };
+  else if (produced === 0) timing = { status: 'paused', reason: 'no-science' };
+  else timing = { status: 'progressing', remainingOwnTurns: 1 + Math.ceil((remaining - spent) / produced) };
+  if (node) {
+    if (completedId) { next.completed.push(node.id); delete next.progress[node.id]; next.activeId = null; }
+    else next.progress[node.id] = progressAfter;
   }
-  return next;
+  return { state: next, timing, receipt: { reserveBefore: reserve, produced, spent,
+    overflow: produced - fromOutput - accepted, reserveAfter: afterSpend + accepted,
+    cap, activeId: state.activeId, progressBefore, progressAfter, completedId, accepted } };
+}
+
+export function describeResearchEffect(effect: ResearchEffect, tree: ResearchTree,
+  catalog: readonly RulesEffect[] = createDefaultRulesSnapshot().effects): string {
+  if (effect.kind === 'hull-unlock') return `корпус ${HULLS[effect.hullId].name}`;
+  if (effect.kind === 'component-unlock') return `семейство ${createComponentWithId(effect.component, 'research-label').name}`;
+  if (effect.kind === 'colony-effect') {
+    const entry = catalog.find(item => item.id === effect.effectId);
+    if (!entry) throw new Error('Неизвестный колониальный эффект');
+    return `${entry.description ?? entry.target}: ${entry.operation} ${entry.unit === 'percent' ? `${entry.value * 100}%` : entry.value}`;
+  }
+  const profile = getCampaignVariantProfile(tree, effect.tier);
+  return `все модули: параметры ±${Math.round(profile.magnitude * 100)}%, доли ±${profile.ratioStep}, боезапас ±${Math.round(profile.ammo * 100)}%, задержка щита ±${profile.rechargeDelay}с`;
 }
 
 export interface ResearchTreeSource { load(): Promise<unknown> }

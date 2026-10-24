@@ -2,8 +2,13 @@ import { z } from 'zod';
 import defaultFixture from './fixtures/rules-default.json';
 
 export const RULES_SNAPSHOT_FORMAT = 'orion-rules-snapshot';
-export const RULES_SNAPSHOT_SCHEMA_VERSION = 1;
-export const RULES_SNAPSHOT_RULES_VERSION = 1;
+export const RULES_SNAPSHOT_SCHEMA_VERSION = 5;
+export const RULES_SNAPSHOT_RULES_VERSION = 5;
+
+export const COLONY_EFFECT_TARGETS = [
+  'growth-rate', 'capacity-add', 'production-output', 'science-output', 'culture-output'
+] as const;
+export type ColonyEffectTarget = (typeof COLONY_EFFECT_TARGETS)[number];
 
 export const RULES_TARGETS = [
   'ship-speed',
@@ -14,7 +19,8 @@ export const RULES_TARGETS = [
   'facility-output',
   'fleet-capacity',
   'planet-habitability',
-  'component-unlock'
+  'component-unlock',
+  ...COLONY_EFFECT_TARGETS
 ] as const;
 
 export const RULES_UNITS = ['percent', 'ratio', 'flat', 'count', 'seconds', 'points'] as const;
@@ -40,7 +46,8 @@ export const RULES_HANDLERS = [
   'component-stats',
   'facility-output',
   'fleet-capacity',
-  'campaign-policy'
+  'campaign-policy',
+  'colony-growth', 'colony-capacity', 'colony-output'
 ] as const;
 export const RULES_POLICIES = ['component-bands-v1', 'campaign-policy-v1'] as const;
 
@@ -62,9 +69,14 @@ const ruleTargetUnitMap: Record<RuleTarget, readonly RuleUnit[]> = {
   'facility-output': ['percent', 'flat'],
   'fleet-capacity': ['percent', 'count'],
   'planet-habitability': ['percent', 'points'],
-  'component-unlock': ['count']
+  'component-unlock': ['count'],
+  'growth-rate': ['percent', 'ratio'],
+  'capacity-add': ['count', 'flat'],
+  'production-output': ['percent', 'flat'],
+  'science-output': ['percent', 'flat'],
+  'culture-output': ['percent', 'flat']
 };
-export const RULES_SCOPES = ['component', 'ship', 'fleet', 'planet', 'player', 'global'] as const;
+export const RULES_SCOPES = ['component', 'ship', 'fleet', 'planet', 'player', 'global', 'own-colonies'] as const;
 export type RuleScope = (typeof RULES_SCOPES)[number];
 const targetScopes: Record<RuleTarget, readonly RuleScope[]> = {
   'ship-speed': ['ship'],
@@ -75,7 +87,9 @@ const targetScopes: Record<RuleTarget, readonly RuleScope[]> = {
   'facility-output': ['planet'],
   'fleet-capacity': ['fleet'],
   'planet-habitability': ['player', 'global'],
-  'component-unlock': ['component']
+  'component-unlock': ['component'],
+  'growth-rate': ['own-colonies'], 'capacity-add': ['own-colonies'],
+  'production-output': ['own-colonies'], 'science-output': ['own-colonies'], 'culture-output': ['own-colonies']
 };
 const targetHandlers: Record<RuleTarget, RuleHandler> = {
   'ship-speed': 'ship-stats',
@@ -86,7 +100,9 @@ const targetHandlers: Record<RuleTarget, RuleHandler> = {
   'facility-output': 'facility-output',
   'fleet-capacity': 'fleet-capacity',
   'planet-habitability': 'campaign-policy',
-  'component-unlock': 'component-stats'
+  'component-unlock': 'component-stats',
+  'growth-rate': 'colony-growth', 'capacity-add': 'colony-capacity',
+  'production-output': 'colony-output', 'science-output': 'colony-output', 'culture-output': 'colony-output'
 };
 
 const capabilityEffectSchema = z.object({
@@ -109,7 +125,8 @@ const numericModifierEffectSchema = z.object({
   kind: z.literal('modifier'),
   id: ruleIdentifierSchema,
   target: z.enum(RULES_TARGETS),
-  scope: z.enum(['component', 'ship', 'fleet', 'planet', 'player', 'global']),
+  scope: z.enum(RULES_SCOPES),
+  worldType: z.enum(['habitable', 'barren']).optional(),
   unit: z.enum(RULES_UNITS),
   operation: z.enum(RULES_OPERATIONS),
   value: z.number().finite().min(-1000000).max(1000000),
@@ -144,6 +161,13 @@ const rulesEffectUnionSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const rulesEffectSchema = rulesEffectUnionSchema.superRefine((effect, ctx) => {
+  const colony = COLONY_EFFECT_TARGETS.some(target => target === effect.target);
+  if (colony && (effect.kind !== 'modifier' || !effect.worldType || effect.activationPhase !== 'on-turn-start')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Колониальный эффект требует modifier, тип мира и on-turn-start' });
+  }
+  if (!colony && effect.kind === 'modifier' && effect.worldType !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Тип мира разрешён только колониальному эффекту' });
+  }
   if (effect.kind === 'capability' || effect.kind === 'modifier') {
     if (!ruleTargetUnitMap[effect.target].includes(effect.unit)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Несовместимая пара target/unit для эффекта' });
@@ -188,6 +212,35 @@ export type CapabilityEffect = Extract<RulesEffect, { kind: 'capability' }>;
 export type NumericModifierEffect = Extract<RulesEffect, { kind: 'modifier' }>;
 export type PolicyReferenceEffect = Extract<RulesEffect, { kind: 'policy-reference' }>;
 
+const populationAmountSchema = z.number().int().min(0).max(1_000_000_000);
+const capacitySchema = z.object({
+  base: populationAmountSchema, absolute: populationAmountSchema
+}).strict().refine(value => value.base <= value.absolute, 'Базовая вместимость выше абсолютной');
+export const populationRulesSchema = z.object({
+  policy: z.literal('population-v1'), unit: z.literal('thousand-residents'),
+  home: populationAmountSchema.positive(), settlers: populationAmountSchema.positive(),
+  minimumSource: populationAmountSchema.positive(),
+  growthPercent: z.number().int().min(0).max(100),
+  foundingCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict(),
+  capacities: z.object({ habitable: capacitySchema, barren: capacitySchema }).strict()
+}).strict().refine(value => value.minimumSource >= value.settlers &&
+  value.home <= value.capacities.habitable.base && value.settlers <= value.capacities.habitable.base,
+'Начальные жители требуют вместимость и источник');
+export type PopulationRules = z.infer<typeof populationRulesSchema>;
+
+export const colonyOutputRulesSchema = z.object({
+  policy: z.literal('colony-output-v1'),
+  unit: z.literal('thousand-residents'),
+  creditsPerPopulation: z.number().int().min(0).max(1000),
+  mineralsPerPopulation: z.number().int().min(0).max(1000),
+  populationUpkeepPerPopulation: z.number().int().min(0).max(1000),
+  pointsPerWorker: z.number().int().positive().max(1000),
+  productionCreditsPerPoint: z.number().int().positive().max(1_000_000),
+  reserveWorkerTurns: z.number().int().positive().max(1_000_000),
+  assignmentReduction: z.literal('proportional-floor-priority-v1')
+}).strict();
+export type ColonyOutputRules = z.infer<typeof colonyOutputRulesSchema>;
+
 export const rulesSnapshotSchema = z.object({
   format: z.literal(RULES_SNAPSHOT_FORMAT),
   schemaVersion: z.literal(RULES_SNAPSHOT_SCHEMA_VERSION),
@@ -196,8 +249,9 @@ export const rulesSnapshotSchema = z.object({
   treeId: ruleIdentifierSchema,
   tablesId: ruleIdentifierSchema,
   policyId: ruleIdentifierSchema,
-  treeVersion: z.literal('research-tree-v2'),
-  tablesVersion: z.literal('campaign-tables-v1'),
+  treeVersion: z.literal('research-tree-v4'),
+  researchPolicy: z.literal('research-points-v1'),
+  tablesVersion: z.literal('campaign-tables-v2'),
   policyVersion: z.literal('component-bands-v1'),
   handlers: z.array(z.enum(RULES_HANDLERS)).min(1).max(32).refine(array => new Set(array).size === array.length, {
     message: 'Список обработчиков содержит дубликаты'
@@ -205,7 +259,9 @@ export const rulesSnapshotSchema = z.object({
   policies: z.array(z.enum(RULES_POLICIES)).min(1).max(32).refine(array => new Set(array).size === array.length, {
     message: 'Список политик содержит дубликаты'
   }),
-  effects: z.array(rulesEffectSchema).max(256)
+  effects: z.array(rulesEffectSchema).max(256),
+  population: populationRulesSchema,
+  colonyOutput: colonyOutputRulesSchema
 }).strict().superRefine((snapshot, ctx) => {
   const duplicateIds = new Set<string>();
   for (const effect of snapshot.effects) {
@@ -261,8 +317,8 @@ export function decodeRulesSnapshot(input: unknown): RulesSnapshot {
   return validateRulesSnapshot(parsed);
 }
 
-export type RulesConsumer = 'library-numeric-v1' | 'library-capability-v1';
-export const CURRENT_GAME_RULES_CONSUMERS: readonly RulesConsumer[] = Object.freeze([]);
+export type RulesConsumer = 'library-numeric-v1' | 'library-capability-v1' | 'population-v1' | 'colony-output-v1' | 'colony-technologies-v1';
+export const CURRENT_GAME_RULES_CONSUMERS: readonly RulesConsumer[] = Object.freeze(['population-v1', 'colony-output-v1', 'colony-technologies-v1']);
 const numericTargets: readonly RuleTarget[] = [
   'ship-speed', 'ship-shield', 'weapon-damage', 'weapon-range', 'facility-output', 'fleet-capacity'
 ];
@@ -271,13 +327,14 @@ export function activateRulesEffects(
   input: unknown, ids: readonly string[], consumers: readonly RulesConsumer[]
 ): RulesEffect[] {
   const snapshot = validateRulesSnapshot(input);
-  z.array(z.enum(['library-numeric-v1', 'library-capability-v1'])).parse(consumers);
+  z.array(z.enum(['library-numeric-v1', 'library-capability-v1', 'population-v1', 'colony-output-v1', 'colony-technologies-v1'])).parse(consumers);
   const selectedIds = z.array(ruleIdentifierSchema).refine(items => new Set(items).size === items.length).parse(ids);
   return selectedIds.map(id => {
     const effect = snapshot.effects.find(item => item.id === id);
     if (!effect) throw new RulesError('INVALID_RULES', `Неизвестный effect ID: ${id}`);
     const supported = effect.kind === 'modifier'
-      ? consumers.includes('library-numeric-v1') && numericTargets.includes(effect.target)
+      ? (consumers.includes('library-numeric-v1') && numericTargets.includes(effect.target)) ||
+        (consumers.includes('colony-technologies-v1') && COLONY_EFFECT_TARGETS.some(target => target === effect.target))
       : effect.kind === 'capability' && consumers.includes('library-capability-v1');
     if (!supported) throw new RulesError('UNSUPPORTED_EFFECT', `Нет исполнителя эффекта ${id}`);
     return effect;

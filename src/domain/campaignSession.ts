@@ -136,11 +136,13 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
   return executeStrategicCommand(inputState, inputCommand, false);
 }
 
-export function executeConquestSessionCommand(inputState: unknown, inputCommand: unknown): SessionResult {
-  return executeStrategicCommand(inputState, inputCommand, true);
+export function executeConquestSessionCommand(inputState: unknown, inputCommand: unknown,
+  conquestEndTurnBudget?: EndTurnBudget): SessionResult {
+  return executeStrategicCommand(inputState, inputCommand, true, conquestEndTurnBudget);
 }
 
-function executeStrategicCommand(inputState: unknown, inputCommand: unknown, allowHostile: boolean): SessionResult {
+function executeStrategicCommand(inputState: unknown, inputCommand: unknown, allowHostile: boolean,
+  conquestEndTurnBudget?: EndTurnBudget): SessionResult {
   const parsedState = (allowHostile ? conquestSessionSchema : campaignSessionSchema).safeParse(inputState);
   if (!parsedState.success) return { ok: false, code: 'INVALID_STATE', message: 'Недопустимое состояние стратегической партии' };
   const parsedCommand = sessionCommandSchema.safeParse(inputCommand);
@@ -298,7 +300,9 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
     state.galaxy = result.state;
     return { ok: true, state };
   }
-  const economy = economyFor(state, command.factionId);
+  const economy = allowHostile && conquestEndTurnBudget
+    ? { ok: true as const, ...conquestEndTurnBudget }
+    : economyFor(state, command.factionId);
   if (!economy.ok) {
     return { ok: false, code: economy.code, message: economy.code === 'TURN_LIMIT'
       ? 'Достигнут предел номера хода' : 'Доход превысит предел ресурсов; ход не завершён' };
@@ -306,7 +310,7 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
   const endTurnEconomy: EndTurnEconomy = { factionId: command.factionId, turn: state.turn,
     income: economy.income, upkeep: economy.upkeep, treasuryAfter: economy.treasuryAfter };
   state.treasuries[command.factionId] = { ...economy.treasuryAfter };
-  state.production = advanceProduction(state.production, command.factionId);
+  if (!allowHostile) state.production = advanceProduction(state.production, command.factionId);
   // Use the validated members' route before advancing ships; publish both arrivals together.
   for (const fleet of state.fleets.items) {
     const transit = getFleetTransit(fleet, state.ships);

@@ -6,10 +6,10 @@ import { generateGalaxy } from '../domain/galaxyGenerator';
 import { GALAXY_GENERATOR_VERSION, GALAXY_PROFILE_ID, validateGalaxyMap, type GalaxyMap } from '../domain/galaxyMap';
 import { getGalaxyDefinition, type CampaignFactionId } from '../domain/campaign';
 import { createOperationalState } from '../domain/campaignOperations';
-import { getProductionQuote } from '../domain/production';
+import { getColonyProductionQuote } from '../domain/campaignOutput';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
 
-export const BASELINE_VERSION = 2;
+export const BASELINE_VERSION = 6;
 export const BASELINE_SEEDS = [
   { mapSeed: 41, campaignSeed: 101 },
   { mapSeed: 12345, campaignSeed: 67890 },
@@ -39,6 +39,13 @@ export interface SideMetrics {
   firstShip: TurnMetric;
   firstEncounter: TurnMetric;
   gross: { credits: number; minerals: number };
+  productionPoints: number;
+  researchPoints: number;
+  researchSpent: number;
+  researchOverflow: number;
+  researchReserve: number;
+  researchProgress: number;
+  culturePoints: number;
   spent: Record<string, { credits: number; minerals: number }>;
   released: number;
   losses: number;
@@ -53,7 +60,7 @@ export interface CommandRecord {
 }
 export interface BaselineRun {
   input: BaselineInput;
-  versions: { baseline: 2; save: 6; rules: 3; battlePolicy: Conquest['battlePolicy']; tree: 2 };
+  versions: { baseline: 6; save: 10; rules: 7; battlePolicy: Conquest['battlePolicy']; tree: 4 };
   map: GalaxyMap;
   lineups: { first: CampaignFactionId; second: CampaignFactionId };
   controllers: 'diagnostic-all-ai-command-runner';
@@ -64,7 +71,7 @@ export interface BaselineRun {
   metrics: Record<CampaignFactionId, SideMetrics>;
   battleTimeouts: number;
   battles: Conquest['battles'];
-  unavailable: { scientificPoints: 'mechanic-not-implemented'; population: 'mechanic-not-implemented' };
+  population: Record<CampaignFactionId, { total: number; capacity: number }>;
   finalState: Conquest;
   checkpoint: { turnsExecuted: number; json: string } | null;
 }
@@ -106,7 +113,8 @@ export function createBaselineStart(input: BaselineInput): { state: Conquest; ma
       system.habitable && !state.session.galaxy.systems.find(item => item.id === system.id)?.ownerId)!.id;
     const count = options.kind === 'supply-boundary' ? 100 : 1;
     for (const side of ['blue', 'red'] as const) {
-      state.research[side].completed = ['support', 'ordnance', 'capital'];
+      state.research[side].completed = state.researchTree.nodes.map(node => node.id);
+      state.researchJournal[side] = Object.fromEntries(state.research[side].completed.map(id => [id, 1]));
       const candidates = buildConquestDesigns(state.research[side], state.researchTree);
       const design = structuredClone(options.kind === 'supply-boundary'
         ? candidates.find(candidate => candidate.hullId === 'corvette' &&
@@ -135,7 +143,9 @@ function sideMetrics(): SideMetrics {
   const missing = (): TurnMetric => ({ status: 'unavailable', reason: 'not-observed-before-stop' });
   return { firstResearch: missing(), firstResearchCompleted: missing(), firstColony: missing(),
     firstOrder: missing(), firstRelease: missing(), firstShip: missing(), firstEncounter: missing(),
-    gross: { credits: 0, minerals: 0 }, spent: {}, released: 0, losses: 0, ownEnds: 0 };
+    gross: { credits: 0, minerals: 0 }, productionPoints: 0, researchPoints: 0, culturePoints: 0,
+    researchSpent: 0, researchOverflow: 0, researchReserve: 0, researchProgress: 0,
+    spent: {}, released: 0, losses: 0, ownEnds: 0 };
 }
 
 function commandFor(state: Conquest, input: BaselineInput, first: CampaignFactionId): ConquestCommand {
@@ -148,14 +158,15 @@ function commandFor(state: Conquest, input: BaselineInput, first: CampaignFactio
     return normal.kind === 'enqueueProduction'
       ? { kind: 'endTurn', factionId: side, expectedTurn: view.turn } : normal;
   }
-  if (input.schedule === 'production-first' && !view.research.active && !view.research.completed.length &&
+  if (input.schedule === 'production-first' && !view.research.activeId && !view.research.completed.length &&
     !view.ships.length && !view.production.orders.length && !view.production.completed.length) {
     const colony = view.galaxy.systems.find(system => system.visibility === 'explored' && system.ownerId === side);
     const design = buildConquestDesigns(view.research, view.researchTree)
-      .sort((a, b) => getProductionQuote(a).cost.credits - getProductionQuote(b).cost.credits ||
+      .sort((a, b) => getColonyProductionQuote(a, view.colonyOutput.rules).cost.credits -
+        getColonyProductionQuote(b, view.colonyOutput.rules).cost.credits ||
         (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .find(candidate => {
-        const quote = getProductionQuote(candidate);
+        const quote = getColonyProductionQuote(candidate, view.colonyOutput.rules);
         return quote.cost.credits <= view.treasury.credits && quote.cost.minerals <= view.treasury.minerals;
       });
     if (colony && design) return { kind: 'enqueueProduction', factionId: side, expectedTurn: view.turn,
@@ -168,7 +179,7 @@ function commandFor(state: Conquest, input: BaselineInput, first: CampaignFactio
 function observations(state: Conquest, side: CampaignFactionId, input: BaselineInput): string[] {
   const view = getConquestView(state, side), reasons = ['no-further-command-in-diagnostic-schedule'];
   if (input.kind !== 'paid') reasons.push('boundary-end-only');
-  if (view.research.active) reasons.push('research-in-progress');
+  if (view.research.activeId) reasons.push('research-in-progress');
   if (view.production.orders.length) reasons.push('production-in-progress');
   if (view.ships.some(ship => ship.transit)) reasons.push('ships-in-transit');
   if (view.ships.some(ship => !ship.fuel)) reasons.push('ships-with-empty-fuel');
@@ -178,13 +189,14 @@ function observations(state: Conquest, side: CampaignFactionId, input: BaselineI
   if (input.schedule === 'research-first' && view.research.completed.length < view.researchTree.nodes.length) reasons.push('production-deliberately-delayed');
   const designs = buildConquestDesigns(view.research, view.researchTree);
   if (designs.length && designs.every(design => {
-    const quote = getProductionQuote(design);
+    const quote = getColonyProductionQuote(design, view.colonyOutput.rules);
     return quote.cost.credits + 5 > view.treasury.credits || quote.cost.minerals > view.treasury.minerals;
   })) reasons.push('no-affordable-ai-design-with-reserve');
   return reasons;
 }
 
 function measure(before: Conquest, after: Conquest, command: ConquestCommand,
+  turnReceipt: Extract<ReturnType<typeof executeConquestAction>, { ok: true }>['turnReceipt'],
   metrics: Record<CampaignFactionId, SideMetrics>, battles: Conquest['battles']): void {
   const side = command.factionId, metric = metrics[side], turn = command.expectedTurn;
   const mark = (key: keyof Pick<SideMetrics, 'firstResearch' | 'firstResearchCompleted' | 'firstColony' |
@@ -201,19 +213,36 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
       metrics[faction].firstColony = { status: 'measured', turn };
     }
   }
-  const releases = after.session.production.completed.filter(record => record.factionId === side &&
-    !before.session.production.completed.some(old => old.id === record.id));
+  const releases = after.colonyOutput.production.completed.filter(record => record.factionId === side &&
+    !before.colonyOutput.production.completed.some(old => old.id === record.id));
   if (releases.length) { mark('firstRelease'); metric.released += releases.length; }
   const treasuryBefore = before.session.treasuries[side], treasuryAfter = after.session.treasuries[side];
   if (command.kind === 'endTurn') {
+    if (!turnReceipt || turnReceipt.factionId !== side || turnReceipt.turn !== turn) {
+      throw new Error('Нет квитанции выпуска для успешного конца хода');
+    }
+    for (const faction of ['blue', 'red'] as const) {
+      const count = after.session.galaxy.systems.filter(system => system.ownerId === faction &&
+        !before.session.galaxy.systems.find(item => item.id === system.id)!.ownerId).length;
+      const cost = { credits: count * after.rules.population.foundingCost.credits,
+        minerals: count * after.rules.population.foundingCost.minerals };
+      if (count) {
+        const spending = metrics[faction].spent.founding ??= { credits: 0, minerals: 0 };
+        spending.credits += cost.credits; spending.minerals += cost.minerals;
+      }
+    }
     metric.ownEnds++;
-    const colonyIncome = before.session.galaxy.systems.filter(system => system.ownerId === side).length * 10;
-    const due = before.session.ships.filter(ship => ship.factionId === side).length;
-    const paid = Math.min(treasuryBefore.credits + colonyIncome, due);
-    metric.gross.credits += treasuryAfter.credits - treasuryBefore.credits + paid;
-    metric.gross.minerals += treasuryAfter.minerals - treasuryBefore.minerals;
+    metric.gross.credits += turnReceipt.populationIncome.credits;
+    metric.gross.minerals += turnReceipt.populationIncome.minerals + turnReceipt.miningMinerals;
+    metric.productionPoints += turnReceipt.productionPoints;
+    metric.researchPoints += turnReceipt.reserves.research.produced;
+    metric.researchSpent += turnReceipt.research.spent;
+    metric.researchOverflow += turnReceipt.research.overflow;
+    metric.researchReserve = turnReceipt.research.reserveAfter;
+    metric.researchProgress = Object.values(after.research[side].progress).reduce((sum, value) => sum + value, 0);
+    metric.culturePoints += turnReceipt.reserves.culture.produced;
     const upkeep = metric.spent.upkeep ??= { credits: 0, minerals: 0 };
-    upkeep.credits += paid;
+    upkeep.credits += turnReceipt.creditsPaid;
   } else {
     const credits = treasuryBefore.credits - treasuryAfter.credits;
     const minerals = treasuryBefore.minerals - treasuryAfter.minerals;
@@ -240,12 +269,12 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
   const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
   const result: BaselineRun = {
-    input: options, versions: { baseline: 2, save: 6, rules: 3, battlePolicy: state.battlePolicy, tree: 2 },
+    input: options, versions: { baseline: 6, save: 10, rules: 7, battlePolicy: state.battlePolicy, tree: 4 },
     map: start.map, lineups: { first, second: first === 'blue' ? 'red' : 'blue' },
     controllers: 'diagnostic-all-ai-command-runner', status: 'timeout', outcome: getConquestOutcome(state),
     turnsExecuted: resume?.turnsExecuted ?? 0, commands: [], metrics: { blue: sideMetrics(), red: sideMetrics() },
-    battles: [], battleTimeouts: 0, unavailable: { scientificPoints: 'mechanic-not-implemented',
-      population: 'mechanic-not-implemented' }, finalState: state, checkpoint: null
+    battles: [], battleTimeouts: 0,
+    population: { blue: { total: 0, capacity: 0 }, red: { total: 0, capacity: 0 } }, finalState: state, checkpoint: null
   };
   if (resume && (!Number.isInteger(resume.turnsExecuted) || resume.turnsExecuted < 0 ||
     resume.turnsExecuted > options.maxTurns || state.session.turn !== start.state.session.turn + resume.turnsExecuted ||
@@ -254,7 +283,8 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   }
   while (result.turnsExecuted < options.maxTurns && getConquestOutcome(state).status === 'ongoing') {
     let candidate = state;
-    const records: CommandRecord[] = [], steps: { before: Conquest; after: Conquest; command: ConquestCommand }[] = [];
+    const records: CommandRecord[] = [], steps: { before: Conquest; after: Conquest; command: ConquestCommand;
+      turnReceipt?: Extract<ReturnType<typeof executeConquestAction>, { ok: true }>['turnReceipt'] }[] = [];
     for (let action = 0; action < 24; action++) {
       const command: ConquestCommand = action === 23
         ? { kind: 'endTurn', factionId: candidate.session.turn % 2 ? 'blue' : 'red', expectedTurn: candidate.session.turn }
@@ -270,22 +300,29 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
         result.status = 'executor-error';
         break;
       }
-      steps.push({ before: candidate, after: executed.state, command });
+      steps.push({ before: candidate, after: executed.state, command, turnReceipt: executed.turnReceipt });
       candidate = executed.state;
       if (command.kind === 'endTurn') break;
     }
     result.commands.push(...records);
     if (result.status === 'executor-error') break;
-    for (const step of steps) measure(step.before, step.after, step.command, result.metrics, result.battles);
+    for (const step of steps) measure(step.before, step.after, step.command, step.turnReceipt, result.metrics, result.battles);
     state = candidate;
     result.turnsExecuted++;
-    if (!resume && result.turnsExecuted === Math.min(10, options.maxTurns)) {
+    if (!resume && result.turnsExecuted === Math.min(4, options.maxTurns)) {
       result.checkpoint = { turnsExecuted: result.turnsExecuted, json: encodeConquestSave(state) };
     }
   }
   result.outcome = getConquestOutcome(state);
   if (result.outcome.status === 'completed') result.status = 'completed';
   result.finalState = state;
+  for (const faction of ['blue', 'red'] as const) {
+    const colonies = state.session.galaxy.systems.filter(system => system.ownerId === faction);
+    result.population[faction] = {
+      total: colonies.reduce((sum, colony) => sum + state.population[colony.id].population, 0),
+      capacity: getConquestView(state, faction).population.reduce((sum, colony) => sum + colony.capacity, 0)
+    };
+  }
   result.battleTimeouts = result.battles.filter(battle => battle.timedOut).length;
   if (result.status === 'timeout') for (const metric of Object.values(result.metrics)) {
     for (const key of ['firstResearch', 'firstResearchCompleted', 'firstColony', 'firstOrder', 'firstRelease',

@@ -10,7 +10,7 @@
 
 Опоры: [генератор](../../src/domain/galaxyGenerator.ts), [формат](../../src/domain/galaxyMap.ts), [campaign](../../src/domain/campaign.ts), [conquest](../../src/domain/conquest.ts), [сцена](../../src/scenes/ConquestScene.ts), [сохранения](../../src/utils/ConquestSaveManager.ts).
 
-Это принятый результат, не поручение повторно реализовать генерацию. Сверка 2026-10-10: map 1/1, Conquest save 5/3, tree2, явный battlePolicy; latest-map port допускает Promise. Регрессии: [galaxyCampaign](../../tests/galaxyCampaign.test.ts), [conquestScene](../../tests/conquestScene.test.ts), [galaxyCli](../../tests/galaxyCli.test.ts). Меню уже объединено: «Новая кампания» — главный вход, мирная песочница — демонстрация. Каталог проектов Н05а и научная экономика пока не реализованы.
+Это принятый результат, не поручение повторно реализовать генерацию. Приёмка Н05 использовала map1/rules1, Conquest save5/rules3, tree2 и явный battlePolicy; latest-map port допускает Promise. Последующий Н05а добавил каталоги проектов и обновил save до6/rules3; научная экономика ещё не реализована. Регрессии: [galaxyCampaign](../../tests/galaxyCampaign.test.ts), [conquestScene](../../tests/conquestScene.test.ts), [galaxyCli](../../tests/galaxyCli.test.ts). «Новая кампания» — главный вход, мирная песочница и свободная верфь — демонстрации.
 
 ## Работы
 

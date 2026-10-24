@@ -4,7 +4,7 @@ import { createDesign, createComponentWithId, installComponent } from '../src/do
 import { MAX_CAMPAIGN_PROJECTS, MAX_PROJECT_ID } from '../src/domain/campaignProjects';
 import { isCampaignDraftAvailable, isCampaignDesignAvailable } from '../src/domain/campaignResearch';
 import { createCombatDesign } from '../src/domain/combatPresets';
-import { getProductionQuote } from '../src/domain/production';
+import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { ConquestSaveManager, decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../src/domain/campaign';
@@ -20,6 +20,14 @@ function apply(state: Conquest, payload: Record<string, unknown>): Conquest {
 }
 function round(state: Conquest): Conquest {
   return apply(apply(state, { kind: 'endTurn' }), { kind: 'endTurn' });
+}
+function advanceUntil(state: Conquest, ready: (candidate: Conquest) => boolean): Conquest {
+  for (let rounds = 0; rounds < 10; rounds++) {
+    if (ready(state)) return state;
+    state = round(state);
+  }
+  if (!ready(state)) throw new Error('Campaign condition was not reached within 10 rounds');
+  return state;
 }
 function save(state: Conquest, design = createDesign('fighter')): Conquest {
   return apply(state, { kind: 'createProject', name: design.name, design });
@@ -106,13 +114,15 @@ describe('campaign-owned project contract', () => {
     expect(isCampaignDraftAvailable(civilian, state.research.blue, state.researchTree)).toBe(true);
     expect(isCampaignDesignAvailable(civilian, state.research.blue, state.researchTree)).toBe(true);
     state = apply(state, { kind: 'replaceProject', projectId: 1, design: civilian });
-    while (state.session.treasuries.blue.credits < getProductionQuote(civilian).cost.credits) state = round(state);
-    expect(apply(state, { kind: 'enqueueProduction', systemId: 'sol', design: civilian }).session.production.orders).toHaveLength(1);
+    state = advanceUntil(state, candidate =>
+      candidate.session.treasuries.blue.credits >= getColonyProductionQuote(civilian, candidate.rules.colonyOutput).cost.credits);
+    expect(apply(state, { kind: 'enqueueProduction', systemId: 'sol', design: civilian }).colonyOutput.production.orders).toHaveLength(1);
   });
 
   it('keeps exact preset exemption but rejects modified numeric values', () => {
     const state = createConquest();
-    state.research.blue.completed = ['support', 'ordnance', 'capital'];
+    state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
+    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
     const preset = createCombatDesign('dreadnought');
     expect(isCampaignDraftAvailable(preset, state.research.blue, state.researchTree)).toBe(true);
     expect(save(state, preset).projects.blue.items).toHaveLength(1);
@@ -179,26 +189,32 @@ describe('campaign-owned project contract', () => {
     reject(state, { kind: 'replaceProject', projectId: 1, design: createDesign('battleship') }, 'INVALID_DESIGN');
     expect(decodeConquestSave(encodeConquestSave(state))).toEqual(accepted);
     const envelope = JSON.parse(encodeConquestSave(state));
-    expect(envelope.schemaVersion).toBe(6);
+    expect(envelope.schemaVersion).toBe(10);
     expect(() => decodeConquestSave(JSON.stringify({ ...envelope, schemaVersion: 5 }))).toThrow();
   });
 
   it('earned research expands the next draft without changing accepted blue/red designs or paid snapshots', () => {
     let state = save(createConquest(), createDesign('fighter', true));
     const design = structuredClone(state.projects.blue.items[0].design);
-    const quote = getProductionQuote(design);
-    while (state.session.treasuries.blue.credits < quote.cost.credits + 10) state = round(state);
+    const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
+    state = advanceUntil(state, candidate => candidate.session.treasuries.blue.credits >= quote.cost.credits + 10);
     state = apply(state, { kind: 'enqueueProduction', systemId: 'sol', design });
+    state = apply(state, { kind: 'assignWorkers', systemId: 'sol',
+      workers: { industry: 3500, research: 1500, culture: 0 } });
     state = apply(state, { kind: 'research', technologyId: 'support' });
     state = round(round(state));
     expect(state.research.blue.completed).toContain('support');
     expect(state.projects.blue.items[0].design).toEqual(design);
-    expect([...state.session.production.orders, ...state.session.production.completed][0].design).toEqual(design);
+    expect([...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed][0].design).toEqual(design);
     const next = installComponent(design, 'armor_1', createComponentWithId('armor', 'opened-armor'));
     expect(save(state, next).projects.blue.items).toHaveLength(2);
     expect(state.projects.blue.items).toHaveLength(1);
     expect(state.projects.red.items).toEqual([]);
   });
+});
+
+it('fails a stalled campaign condition after a finite number of rounds', () => {
+  expect(() => advanceUntil(createConquest(), () => false)).toThrow('within 10 rounds');
 });
 
 it('paid generated campaign projects survive FIFO, deletion, travel and real battle through independent load branches', () => {
@@ -207,7 +223,7 @@ it('paid generated campaign projects survive FIFO, deletion, travel and real bat
   let state = createConquest({ mode: 'local' }, undefined, 101, generated.map);
   const homes = getGalaxyDefinition(state.session.galaxy).factions;
   const home = (side: CampaignFactionId) => homes.find(item => item.id === side)!.homeSystemId;
-  const design = createDesign('fighter', true), quote = getProductionQuote(design);
+  const design = createDesign('fighter', true), quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   state = save(state, design);
   state = apply(state, { kind: 'endTurn' });
   state = save(state, design);
@@ -218,15 +234,16 @@ it('paid generated campaign projects survive FIFO, deletion, travel and real bat
     return loaded;
   };
   state = checkpoint(state);
-  while (state.session.treasuries.red.credits < quote.cost.credits) state = round(state);
+  state = advanceUntil(state, candidate => candidate.session.treasuries.red.credits >= quote.cost.credits);
   state = apply(state, { kind: 'enqueueProduction', systemId: home('red'), design: state.projects.red.items[0].design });
   state = apply(state, { kind: 'endTurn' });
   state = apply(state, { kind: 'enqueueProduction', systemId: home('blue'), design: state.projects.blue.items[0].design });
   state = apply(state, { kind: 'deleteProject', projectId: 1 });
-  const snapshots = state.session.production.orders.map(item => ({ id: item.id, design: structuredClone(item.design) }));
+  const snapshots = [...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]
+    .sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: structuredClone(item.design) }));
   state = checkpoint(state);
-  while (state.session.production.completed.length < 2) state = round(state);
-  expect([...state.session.production.completed].sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: item.design }))).toEqual(snapshots);
+  state = advanceUntil(state, candidate => candidate.colonyOutput.production.completed.length === 2);
+  expect([...state.colonyOutput.production.completed].sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: item.design }))).toEqual(snapshots);
   state = apply(state, { kind: 'deployProduction', systemId: home('blue'), orderId: 2 });
   state = apply(state, { kind: 'endTurn' });
   state = apply(state, { kind: 'deployProduction', systemId: home('red'), orderId: 1 });

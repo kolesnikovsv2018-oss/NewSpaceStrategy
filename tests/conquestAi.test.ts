@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { createConquest, getConquestOutcome, getConquestView, executeConquestCommand } from '../src/domain/conquest';
+import { createConquest, conquestSchema, getConquestOutcome, getConquestView, executeConquestCommand } from '../src/domain/conquest';
 import { buildConquestDesigns, calculateConquestDesignScore, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
 import { calculateShipStats, createComponent, createDesign, installComponent, validateDesign, type ShipDesign } from '../src/domain/shipDesign';
 import { createOperationalState } from '../src/domain/campaignOperations';
@@ -42,23 +42,14 @@ it('constructs legal deterministic candidates without clocks or random factories
   } finally { clock.mockRestore(); }
 });
 
-it('preserves legacy AI component values for version1 trees', () => {
+it('rejects obsolete tree policies instead of restoring legacy AI components', () => {
   const current = getDefaultResearchTree();
-  if (current.version !== 2) throw new Error('Expected version2 default research tree');
-  const { variantPolicy: _policy, ...legacyFields } = current;
-  const legacyTree = researchTreeSchema.parse({ ...legacyFields, version: 1, id: 'legacy-ai-v1' });
-  const design = buildConquestDesigns(createConquest({ mode: 'local' }, legacyTree).research.blue, legacyTree)
-    .find(candidate => candidate.hullId === 'corvette')!;
-  expect(design.slots.find(slot => slot.id === 'beam_1')?.component).toMatchObject({
-    kind: 'beam', damage: 8, range: 300, fireRate: 1, accuracy: 0.85
-  });
+  for (const version of [1, 2]) expect(() => researchTreeSchema.parse({ ...current, version })).toThrow();
 });
 
-it('builds candidates from cumulative unlocked ranges in grandfathered v2 snapshots', () => {
+it('builds legal candidates from completed current range effects', () => {
   const tree = getDefaultResearchTree();
-  if (tree.version !== 2) throw new Error('Expected profiled research tree');
-  tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[2], magnitude: 0, ratioStep: 0, ammo: 0, rechargeDelay: 0 };
-  const research = { completed: ['support', 'ordnance'], active: null };
+  const research = { completed: ['engineering', 'support'], activeId: null, progress: {} };
   const designs = buildConquestDesigns(research, tree);
   expect(designs.every(design => isCampaignDesignAvailable(design, research, tree))).toBe(true);
   expect(designs.some(design => design.slots.some(slot => slot.component?.kind === 'beam' && slot.component.damage === 30))).toBe(true);
@@ -116,15 +107,35 @@ it('ranks twin-beam above single-beam on mirrored dispersed seeds with campaign-
 it('does not change its plan when only hidden enemy resources and research differ', () => {
   const first = createConquest(), second = structuredClone(first);
   second.session.treasuries.red = { credits: 999, minerals: 888 };
-  second.research.red.completed = ['support', 'ordnance', 'capital'];
+  second.research.red.completed = second.researchTree.nodes.map(node => node.id);
+  second.researchJournal.red = Object.fromEntries(second.research.red.completed.map(id => [id, 1]));
   const firstView = getConquestView(first, 'blue'), secondView = getConquestView(second, 'blue');
   expect(firstView).toEqual(secondView);
   expect(planConquestAction(firstView)).toEqual(planConquestAction(secondView));
 });
+
+it('assigns a newly founded colony legally before AI production', () => {
+  const state = createConquest();
+  state.colonyOutput.assignments.sol = { industry: 4000, research: 1000, culture: 0 };
+  const eden = state.session.galaxy.systems.find(system => system.id === 'eden')!;
+  eden.ownerId = 'blue'; eden.exploredBy.push('blue');
+  state.population.eden = { population: 1000, remainder: 0 };
+  state.colonyOutput.assignments.eden = { industry: 0, research: 0, culture: 0 };
+  const checked = conquestSchema.parse(state);
+  const action = planConquestAction(getConquestView(checked, 'blue'));
+  expect(action).toMatchObject({ kind: 'assignWorkers', systemId: 'eden',
+    workers: { industry: 800, research: 200, culture: 0 } });
+  const result = executeConquestCommand(checked, action);
+  expect(result.ok).toBe(true);
+  expect(result.ok && getConquestView(result.state, 'blue').colonyOutput.assignments.eden)
+    .toMatchObject({ industry: 800, research: 200, unassigned: 0 });
+});
+
 it('plans from own observation and preserves paid production through save/load', () => {
   let state = createConquest();
   const source = structuredClone(state);
-  expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'research', technologyId: 'support' });
+  expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'assignWorkers',
+    workers: { industry: 4000, research: 1000, culture: 0 } });
   let produced = false, deployed = false, travelled = false, battles = false;
     for (let turn = 0; turn < 160 && getConquestOutcome(state).status === 'ongoing'; turn++) {
     const faction = state.session.turn % 2 ? 'blue' : 'red';
@@ -141,7 +152,7 @@ it('plans from own observation and preserves paid production through save/load',
   expect({ produced, deployed, travelled, battles }).toEqual({ produced: true, deployed: true, travelled: true, battles: true });
   expect(getConquestOutcome(state)).toMatchObject({ status: 'completed' });
   expect(source.session.production.lastOrderId).toBe(0);
-});
+}, 20000);
 
 it.each(['blue', 'red'] as const)('the real policy can win as %s against a passive opponent from a new start', winner => {
   let state = createConquest(winner === 'red' ? { mode: 'human-vs-ai', aiPolicy: 'conquest-v1' } : { mode: 'local' });

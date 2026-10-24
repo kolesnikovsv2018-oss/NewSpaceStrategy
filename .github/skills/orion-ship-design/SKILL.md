@@ -7,9 +7,22 @@ description: 'Модель кораблей, оборудование, верф�
 
 ## Conquest: исследования и проекты
 
-S3 и S4.18 приняты в минимальных согласованных границах; исправления R1–R6 из review-plan завершены. Н05/Г04 подключили общий генератор к браузеру, Н05а — собственные проекты сторон. Актуальный [военный контракт](../../../docs/CAMPAIGN_CONQUEST.md). Мирная MainScene/save3 не заменяется военной ConquestScene/save6/rules3. Военный IO принимает только актуальную версию с projects, tree2, полным снимком карты и явным battlePolicy, без миграций.
+S3 и S4.18 приняты в минимальных границах; R1–R6 завершены. Н05/Г04 — общий генератор, Н05а — проекты сторон, Н06 — демография, Н07 — выпуск, Н08 — [наука](../../../docs/CAMPAIGN_RESEARCH.md), Н09 — [колониальные технологии](../../../docs/CAMPAIGN_COLONY_TECHNOLOGIES.md). Мирная MainScene/save3 не заменяется ConquestScene/save10/rules7. Военный IO требует projects/rules snapshot5/rules5/population/colonyOutput/tree4/science progress/researchJournal/карту/явный battlePolicy, без миграций.
 
-- campaignResearch проверяет открытый hull и каждый kind до preset exemption/numeric caps поверх прежнего flight-валидатора, включая прямой enqueue. Начально fighter/corvette/engine/beam; support10/2 открывает службы/защиту/frigate, ordnance20/3 тяжёлые корпуса/projectile, capital30/4 battleship. Новый import дерева v2 требует, чтобы следующие tier не сужали ни одно поле; старые сохранённые v2 snapshots читаются с накоплением максимума каждого открытого диапазона без миграции/перезаписи. Дерево копируется в save; YAML-пример и строгий source-port для будущей БД, без развёрнутого backend.
+Н08 сохранил engineering2000/global bands2, applied2000/services, support3000/frigate/shield/armor; ordnance6000 после engineering/support, capital12000 после ordnance. Н09 добавил пять колониальных узлов через ссылки effects: рост/K/три выпуска по S0; modifier не переписывает design/цену paid orders/ships. Бесплатные выбор/смена/пауза, activeId/progress, резерв→выпуск→cap остатка и максимум одно завершение сохранены. Редактор, AI и enqueue используют один access; refit не реализован. Приняты3540/65, strict/build172,18 baseline repeat/checkpoint; native CSS1280×720/390×844 с7 paid openings/журналом/reload-next oracle. Далее Н10/Н12; не восстанавливать +1-turn или старые readers.
+
+Н07 хранит point-orders/completed в `Conquest.colonyOutput.production`, не в `session.production`; прежний session-счётчик сохраняется. Полный prepay, один head/колония/own-end, no spillover, proportional BigInt refund; waiting progress=0. Quote/валидация/UI/AI используют snapshot rules, цена points=`ceil(credits/productionCreditsPerPoint)`, default divisor10. Forecast даёт remainingOwnTurns либо null при paused, рост не создаёт выпуск в том же ходе. Мирные production API/формулы прежние. В тестах ожидания ограничивать раундами с явной ошибкой: старый неограниченный `while` по пустой session-очереди уже приводил к зависанию.
+
+Н06 не меняет корабельные quote/FIFO/тактику: основание обоими путями требует
+1000 единиц жителей из ближайшего own источника с≥2000 и20/10 ресурсов.
+Автоотказ сообщает notice без остановки хода; capture сохраняет P/остаток.
+AI использует own quote и распределяет равные nearest targets по ID корабля.
+`campaignPopulation.test.ts` покрывает основания/настоящий бой/захват/codec/рост;
+Историческая приёмка Н06:3469/62, strict/build170. После Н07:3490/63,
+strict/build171, browser paid progress/save/reload/completion/deploy/бой/next oracle;
+это история до Н08; актуальное расходование науки описано выше.
+
+- campaignResearch проверяет hull и каждый kind перед preset exemption/numeric caps поверх flight/draft validator. Начально fighter/corvette/engine/beam. Все текущие границы принимают только tree4 и монотонные4 bands, старые tree1/2/3 отвергаются. ResearchTreeYaml/source/default YAML и snapshot автономны, DB не развёрнута.
 - Combat preset matcher сравнивает весь точный текущий пресет и отдельно целый исторический dreadnought snapshot с прежней accuracy; смешанные значения не получают exemption. Все установленные семейства модулей всё равно должны быть открыты до численного exemption.
 - createComponent(kind) сохранил прежнюю сигнатуру (он передаётся в Array.map); новый createComponentWithId(kind,id) даёт общие канонические определения без часов. buildConquestDesigns перебирает ≤48 комбинаций открытых hull/engine/beam/projectile/armor, валидирует и удаляет дубликаты; это реальный подбор, не выбор готового пресета. Свободные параметры верфи не стали фиксированными уровнями технологии.
 - CampaignShip/fuel/проект отдельно от operations{hull,ammunition[{slotId,amount}]}. readOperationalState сверяет точные слоты/пределы с проектом; HP0 означает удаление ship. DesignedShip принимает необязательный четвёртый options{id,random,operational}, не произвольный ShipState. Щит/энергия/cooldown временные; HP/снаряды переносятся без лечения.
@@ -33,9 +46,21 @@ S4.11a: ShipBuilderPanel явно отображает три независим
 
 S4.11b: `ComponentBuilderPanel` использует относительные controls ±1%/±10% для каждого numeric field. Для нуля берётся существующий descriptor step; только поле с integer schema округляется минимум на1, значения ограничиваются `componentSchema`. `tests/shipyardDraft.test.ts` проверяет проценты, ноль, integer ammo и caps. Это свободная верфь, не Conquest research policy.
 
-S4.11c Conquest profiles: `campaignResearch.ts` defines tree v2 with embedded `component-bands-v1`; center values come from `createComponentWithId`. Four tiers are Base/Support/Ordnance/Capital: magnitude ±10/20/30/40%; ratio offsets ±0.05/0.10/0.15/0.20 with `[0,1]` bounds; shield `rechargeDelay` additive ±0.5/1/1.5/2s; projectile `ammoCapacity` integer bands ±10/20/30/40%, outward-rounded and minimum1. New imports reject narrowing any field; an already saved snapshot uses cumulative maxima for opened ranges. General schema bounds and full project validation still apply. Conquest eligibility/enqueue and AI candidates use the effective caps. Exact current combat/civilian presets and the whole historical dreadnought snapshot are exempt after hull/family checks; mixed/edited designs are not. Hull stats and derived mass/cost/power are not profile fields. Free Shipyard and its save/library schema remain unchanged.
+История S4.11c ввела component-bands-v1. Н08 сохранил формулы в tree3:
+глобальные Base/Engineering/Ordnance/Capital magnitude±10/20/30/40%,
+ratio±0.05/0.10/0.15/0.20 с bounds0..1, shield delay±0.5/1/1.5/2с,
+projectile ammo±10/20/30/40% с округлением наружу/min1.
+Сужение отвергается при import/save; effective caps используют max.
+Точные текущие presets и целый historical dreadnought получают exemption
+только после hull/family checks. Производные stats/масса/цена и hull
+не становятся редактируемыми полями профиля; свободная верфь прежняя.
 
-Актуальный Conquest save6/rules3 требует projects обеих сторон, tree2 и явную battlePolicy. Предыдущие конверты/дерево1 не читаются/не записываются этим IO. Внутренние прежние research API/диагностические fixtures не заменены миграциями; YAML/source import остаётся v2. `tests/conquest.test.ts` проверяет отказ прежних версий и отсутствующей policy, `campaignProjects.test.ts` — каталог и автономные snapshots, `campaignResearch.test.ts`/`conquestAi.test.ts` — tiers/imports/candidates. [Исторический отчёт S4.11c](../../../reports/2026-10-08/25-s4-conquest-variant-profiles.md) описывает формат до Н05 и не является текущим save-контрактом.
+Актуальны save10/rules7/snapshot5/tree4; старые конверты/research policies
+не читаются текущим путём. `campaignResearchPoints.test.ts` проверяет
+A→B→A/научный расход/late rollback/earned roots/AI/save-next; прежние
+Conquest/project/numeric/preset regressions сохранены на новой модели.
+[Отчёт S4.11c](../../../reports/2026-10-08/25-s4-conquest-variant-profiles.md)
+описывает историю до Н05, не актуальный save.
 
 Верфь при этом показывает независимые статусы draft/flight/battle. `validateDesign` вызывается по каждому режиму; безоружный flight-ready проект остаётся недопустимым для battle, а `ShipyardScene.startTrial` повторно проверяет режим перед запуском. Campaign numeric policy не переносится в свободный редактор.
 

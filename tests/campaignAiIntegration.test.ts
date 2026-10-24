@@ -229,19 +229,22 @@ describe('purity and integration boundary', () => {
     const imports = new Map<string, Set<string>>();
     function visit(path: string): void {
       if (visited.has(path)) return; visited.add(path);
-      const file = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
+      const source = readFileSync(path, 'utf8');
+      if (path.endsWith('.json')) { JSON.parse(source); return; }
+      const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
       for (const statement of file.statements) {
         if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier ||
           !ts.isStringLiteral(statement.moduleSpecifier)) continue;
         const specifier = statement.moduleSpecifier.text;
         if (!specifier.startsWith('.')) continue;
         if (ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly) continue;
-        const target = resolve(dirname(path), specifier.endsWith('.ts') ? specifier : specifier + '.ts');
+        const target = resolve(dirname(path), /\.(ts|json)$/.test(specifier) ? specifier : specifier + '.ts');
         const parents = imports.get(target) ?? new Set<string>(); parents.add(path); imports.set(target, parents);
         visit(target);
       }
     }
     visit(resolve(root, 'src/main.ts'));
+    expect(visited.has(resolve(root, 'src/domain/fixtures/rules-default.json'))).toBe(true);
     const executorPath = resolve(root, 'src/domain/campaignAiExecutor.ts');
     expect(visited.has(plannerPath)).toBe(true);
     expect(visited.has(executorPath)).toBe(true);

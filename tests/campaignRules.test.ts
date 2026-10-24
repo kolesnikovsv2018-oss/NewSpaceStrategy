@@ -104,8 +104,8 @@ describe('campaign rules snapshot', () => {
     expect(() => decodeRulesSnapshot('not-json')).toThrow();
   });
 
-  it.each(['format', 'schemaVersion', 'rulesVersion', 'id', 'treeId', 'treeVersion',
-    'tablesId', 'tablesVersion', 'policyId', 'policyVersion', 'handlers', 'policies', 'effects'])(
+  it.each(['format', 'schemaVersion', 'rulesVersion', 'id', 'treeId', 'treeVersion', 'researchPolicy',
+    'tablesId', 'tablesVersion', 'policyId', 'policyVersion', 'handlers', 'policies', 'effects', 'population'])(
     'rejects missing snapshot field %s', key => {
       const snapshot: Record<string, unknown> = buildRulesFixture();
       delete snapshot[key];
@@ -114,7 +114,7 @@ describe('campaign rules snapshot', () => {
     }
   );
 
-  it.each(['schemaVersion', 'rulesVersion', 'treeVersion', 'tablesVersion', 'policyVersion'])(
+  it.each(['schemaVersion', 'rulesVersion', 'treeVersion', 'tablesVersion', 'policyVersion', 'researchPolicy'])(
     'rejects other version %s without changing the source', key => {
       const snapshot = { ...buildRulesFixture(), [key]: 'unsupported' };
       const before = structuredClone(snapshot);
@@ -149,7 +149,8 @@ describe('campaign rules snapshot', () => {
     expect(() => activateRulesEffects(snapshot, ['ship-growth-bonus'], ['library-numeric-v1'])).toThrow();
     expect(() => activateRulesEffects(snapshot, ['policy-reference-v1'], ['library-numeric-v1'])).toThrow();
     expect(() => activateRulesEffects(snapshot, ['ship-speed-bonus'], CURRENT_GAME_RULES_CONSUMERS)).toThrow();
-    expect(activateRulesEffects(snapshot, ['ship-speed-bonus'], ['library-numeric-v1'])).toEqual([snapshot.effects[0]]);
+    expect(activateRulesEffects(snapshot, ['ship-speed-bonus'], ['library-numeric-v1'])).toEqual(
+      [snapshot.effects.find(effect => effect.id === 'ship-speed-bonus')]);
     expect(() => activateRulesEffects(snapshot, ['missing'], ['library-numeric-v1'])).toThrow();
     expect(() => activateRulesEffects(snapshot, ['ship-speed-bonus', 'ship-speed-bonus'], ['library-numeric-v1'])).toThrow();
   });
@@ -213,8 +214,8 @@ describe('campaign rules snapshot', () => {
     expect(applyNumericEffects(100, [effect])).toBe(100);
     expect(applyNumericEffects(100, [effect], { phase: 'before-combat' })).toBe(110);
     const snapshot = buildRulesFixture();
-    expect(() => applyNumericEffects(100, [snapshot.effects[2]], { phase: 'on-build' })).toThrow();
-    expect(() => applyNumericEffects(100, [snapshot.effects[3]], { phase: 'on-research' })).toThrow();
+    expect(() => applyNumericEffects(100, [snapshot.effects.find(item => item.id === 'fleet-bonus-slot')!], { phase: 'on-build' })).toThrow();
+    expect(() => applyNumericEffects(100, [snapshot.effects.find(item => item.kind === 'policy-reference')!], { phase: 'on-research' })).toThrow();
   });
 
   it('supports capability unlock and rejects malformed/noninteger capability values', () => {
@@ -232,20 +233,21 @@ describe('campaign rules snapshot', () => {
 
   it('detaches parsed, decoded, activated and calculated objects from caller/catalog', () => {
     const source = buildRulesFixture();
+    const original = source.effects[0].value;
     const parsed = validateRulesSnapshot(source);
     const decoded = decodeRulesSnapshot(encodeRulesSnapshot(source));
     const activated = activateRulesEffects(source, ['ship-speed-bonus'], ['library-numeric-v1']);
     source.effects[0].value = 99;
     source.handlers.pop();
-    expect(parsed.effects[0].value).toBe(0.1);
-    expect(decoded.effects[0].value).toBe(0.1);
+    expect(parsed.effects[0].value).toBe(original);
+    expect(decoded.effects[0].value).toBe(original);
     expect(activated[0].value).toBe(0.1);
-    expect(buildRulesFixture().effects[0].value).toBe(0.1);
+    expect(buildRulesFixture().effects[0].value).toBe(original);
     expect(validateRulesSnapshot(RULES_FIXTURE_CATALOG.default)).toEqual(buildRulesFixture());
     const externalCatalog = structuredClone(defaultFixture);
     const captured = validateRulesSnapshot(externalCatalog);
     externalCatalog.effects[0].value = 0.9;
-    expect(captured.effects[0].value).toBe(0.1);
+    expect(captured.effects[0].value).toBe(original);
   });
 
   it('never lets final rounding cross a fractional final cap', () => {
@@ -261,6 +263,6 @@ describe('campaign rules snapshot', () => {
     const count = { ...modifier(), target: 'fleet-capacity', scope: 'fleet', handler: 'fleet-capacity', unit: 'count' };
     expect(rulesEffectSchema.safeParse({ ...count, value: 0.5 }).success).toBe(false);
     expect(rulesEffectSchema.safeParse({ ...count, value: 1, cap: 0.5 }).success).toBe(false);
-    expect(rulesEffectSchema.safeParse({ ...buildRulesFixture().effects[3], value: -1 }).success).toBe(false);
+    expect(rulesEffectSchema.safeParse({ ...buildRulesFixture().effects.find(item => item.kind === 'policy-reference'), value: -1 }).success).toBe(false);
   });
 });

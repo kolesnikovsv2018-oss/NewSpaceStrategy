@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, expect, it, vi } from 'vitest';
 import { conquestSchema, createConquest, executeConquestCommand, type Conquest } from '../src/domain/conquest';
 import { createDesign } from '../src/domain/shipDesign';
+import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { createCombatDesign, isCombatPresetDesign } from '../src/domain/combatPresets';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
@@ -11,6 +12,7 @@ import * as ai from '../src/domain/conquestAi';
 import { LocalGalaxyMapRepository } from '../src/utils/GalaxyMapRepository';
 import { decodeGalaxyMap } from '../src/domain/galaxyMap';
 import * as browserGenerator from '../src/utils/BrowserGalaxyGenerator';
+import { getDefaultResearchTree } from '../src/domain/campaignResearch';
 
 vi.stubGlobal('Phaser', { Scene: class {} });
 const { ConquestScene } = await import('../src/scenes/ConquestScene');
@@ -86,6 +88,118 @@ function fixture(storage = new Map<string, string>(), initialize = true, width =
   return { scene, owner, nodes, events, keyboard, tasks, storage, read, write, find, click };
 }
 
+it.each([[1280, 720], [390, 844]])('shows domain breakdown and persisted own research journal at %sx%s without another turn', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  let state = test.owner.state;
+  for (const payload of [
+    { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 2500, research: 2500, culture: 0 } },
+    { kind: 'research', technologyId: 'biology' }, { kind: 'endTurn' }
+  ]) {
+    const result = executeConquestCommand(state, { factionId: 'blue', expectedTurn: 1, ...payload });
+    if (!result.ok) throw new Error(result.message);
+    state = result.state;
+  }
+  test.owner.replace(state);
+  test.owner.observer = 'blue'; test.owner.selected = 'sol'; test.owner.render();
+  const before = structuredClone(state);
+  if (width === 1280) test.click('conquest-tab-production');
+  test.click('conquest-effects');
+  test.click('choice-0');
+  expect(test.find('choice-0').text).toBe('База: 200');
+  expect(test.find('choice-5').text).toBe('Итог: 240');
+  test.click('close-choice');
+  test.click('conquest-tab-research');
+  test.click('conquest-research-journal');
+  expect(test.find('choice-0').text).toContain('открытие: ход 1');
+  expect(test.find('choice-1').text).toContain('конца хода 3');
+  expect(test.owner.state).toEqual(before);
+  test.events.emit('shutdown');
+});
+
+function pendingText() {
+  let resolve!: (text: string) => void, reject!: (error: Error) => void;
+  const promise = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+function fileInputs() {
+  const inputs: Array<{ files: Array<{ size: number; text: () => Promise<string> }>;
+    onchange: (() => Promise<void>) | null; remove: ReturnType<typeof vi.fn>; click: ReturnType<typeof vi.fn> }> = [];
+  vi.stubGlobal('document', { createElement: () => {
+    const input = { files: [], onchange: null, remove: vi.fn(), click: vi.fn() };
+    inputs.push(input); return input;
+  } });
+  return inputs;
+}
+
+it.each(['resolve', 'reject'])('accepts only the latest tree import when an older read later %ss', async outcome => {
+  const test = fixture(), inputs = fileInputs(), older = pendingText();
+  test.click('conquest-new'); test.click('conquest-import-tree');
+  inputs[0].files = [{ size: 100, text: () => older.promise }];
+  const stale = inputs[0].onchange!();
+  test.click('conquest-import-tree');
+  const selected = getDefaultResearchTree(); selected.id = 'latest-tree';
+  inputs[1].files = [{ size: 100, text: async () => JSON.stringify(selected) }];
+  await inputs[1].onchange!();
+  expect(test.find('conquest-tree-choice').text).toContain('latest-tree');
+  if (outcome === 'resolve') {
+    const old = getDefaultResearchTree(); old.id = 'obsolete-tree'; older.resolve(JSON.stringify(old));
+  } else older.reject(new Error('obsolete read failure'));
+  await stale;
+  expect(test.find('conquest-tree-choice').text).toContain('latest-tree');
+  expect(test.find('conquest-generation-error').text).toBe('');
+  test.events.emit('shutdown');
+});
+
+it.each(['cancel', 'shutdown', 'supersede'])('ignores late imported trees after %s', async action => {
+  const test = fixture(), inputs = fileInputs(), read = pendingText();
+  test.click('conquest-new'); test.click('conquest-import-tree');
+  inputs[0].files = [{ size: 100, text: () => read.promise }];
+  const stale = inputs[0].onchange!();
+  if (action === 'shutdown') { test.events.emit('shutdown'); test.scene.create(); }
+  else if (action === 'cancel') { test.click('conquest-new-cancel'); test.click('conquest-new'); }
+  else test.click('conquest-import-tree');
+  const old = getDefaultResearchTree(); old.id = 'obsolete-tree'; read.resolve(JSON.stringify(old));
+  await stale;
+  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v4');
+  expect(test.find('conquest-generation-error').text).toBe('');
+  test.events.emit('shutdown');
+});
+
+it('waits for the latest import, shows its error, and permits a successful retry', async () => {
+  const test = fixture(), inputs = fileInputs(), read = pendingText();
+  test.click('conquest-new'); test.click('conquest-import-tree');
+  inputs[0].files = [{ size: 100, text: () => read.promise }];
+  const importing = inputs[0].onchange!();
+  test.click('conquest-new-local');
+  expect(test.find('conquest-generation-error').text).toContain('Дождитесь');
+  read.reject(new Error('current failure')); await importing;
+  expect(test.find('conquest-generation-error').text).toContain('Дерево не принято');
+  test.click('conquest-import-tree');
+  const next = getDefaultResearchTree(); next.id = 'retry-tree';
+  inputs[1].files = [{ size: 100, text: async () => JSON.stringify(next) }];
+  await inputs[1].onchange!();
+  expect(test.find('conquest-tree-choice').text).toContain('retry-tree');
+  expect(test.find('conquest-generation-error').text).toBe('');
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('switches and pauses research without credit charges or IO at %ix%i', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  test.click('conquest-tab-research');
+  test.click('conquest-research-engineering');
+  expect(test.owner.state.research.blue.activeId).toBe('engineering');
+  expect(test.owner.state.session.treasuries.blue.credits).toBe(100);
+  if (width < 1280) test.click('conquest-page-next');
+  test.click('conquest-research-applied');
+  expect(test.owner.state.research.blue).toEqual({ completed: [], activeId: 'applied',
+    progress: { engineering: 0, applied: 0 } });
+  test.click('conquest-research-pause');
+  expect(test.owner.state.research.blue.activeId).toBeNull();
+  expect(test.find('conquest-research-forecast').text).toContain('проект не выбран');
+  expect(test.write).not.toHaveBeenCalled();
+  test.events.emit('shutdown');
+});
+
 it('creates without storage IO and cleans scene state and handlers on shutdown', () => {
   const test = fixture();
   expect(test.read).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
@@ -93,6 +207,86 @@ it('creates without storage IO and cleans scene state and handlers on shutdown',
   test.events.emit('shutdown');
   expect(test.nodes.every(node => node.destroyed)).toBe(true);
   expect(test.keyboard.listenerCount('keydown-ESC')).toBe(0);
+});
+
+it.each([[1280, 720], [390, 844]])('shows own population and growth, refreshes on end, and hides enemy demographics at %ix%i', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  expect(test.find('conquest-population').text).toContain('5/10 млн');
+  expect(test.find('conquest-population').text).toContain('+0,1 млн/свой ход');
+  test.click('conquest-end');
+  expect(test.find('conquest-population').text).toContain('5,1/10 млн');
+  test.owner.selected = 'vega'; test.owner.render();
+  expect(test.find('conquest-population').text).not.toContain('Население');
+  test.owner.observer = 'red'; test.owner.render();
+  expect(test.find('conquest-population').text).toContain('5/10 млн');
+  test.events.emit('shutdown');
+});
+
+it('assigns mobile colony workers through captured controls without changing total population', () => {
+  const test = fixture(new Map(), true, 390, 844);
+  test.click('conquest-tab-production');
+  test.click('conquest-workers-toggle');
+  test.click('conquest-workers-industry-minus');
+  test.click('conquest-workers-research-plus');
+  expect(test.owner.state.colonyOutput.assignments.sol).toEqual({ industry: 4999, research: 1, culture: 0 });
+  expect(test.owner.state.population.sol.population).toBe(5000);
+  expect(test.find('conquest-workers-culture-plus').input.enabled).toBe(false);
+  test.events.emit('shutdown');
+});
+
+it('keeps the mobile worker rows disjoint and renders the snapshot point rate', () => {
+  const test = fixture(new Map(), true, 390, 844);
+  test.owner.state.rules.colonyOutput.pointsPerWorker = 2;
+  test.owner.replace(conquestSchema.parse(test.owner.state));
+  test.click('conquest-tab-production');
+  test.click('conquest-workers-toggle');
+  test.click('conquest-workers-industry-minus');
+  test.click('conquest-workers-research-plus');
+  const controls = test.nodes.filter(node => !node.destroyed &&
+    node.name.startsWith('conquest-workers-') && node.name !== 'conquest-workers-toggle');
+  expect(controls).toHaveLength(6);
+  for (const control of controls) {
+    expect(control.width).toBeGreaterThanOrEqual(44);
+    expect(control.height).toBeGreaterThanOrEqual(44);
+    for (const other of controls) {
+      if (other === control) continue;
+      expect(control.x >= other.x + other.width || other.x >= control.x + control.width ||
+        control.y >= other.y + other.height || other.y >= control.y + control.height).toBe(true);
+    }
+  }
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('Наука: 1 · 2 очк./ход'))).toBe(true);
+  test.events.emit('shutdown');
+});
+
+it('shows paused industry without inventing a one-turn estimate and refreshes the own-turn estimate', () => {
+  const test = fixture();
+  const state = test.owner.state, design = createDesign('fighter', true);
+  const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
+  state.session.production.lastOrderId = 1;
+  state.colonyOutput.assignments.sol = { industry: 0, research: 0, culture: 0 };
+  state.colonyOutput.production.orders = [{ id: 1, factionId: 'blue', systemId: 'sol', design,
+    ...quote, productionProgress: 0 }];
+  test.owner.replace(conquestSchema.parse(state));
+  test.click('conquest-tab-production');
+  expect(test.find('conquest-production-forecast').text).toContain('приостановлено');
+  test.click('conquest-workers-industry-plus');
+  expect(test.find('conquest-production-forecast').text).toContain(`${quote.productionCost} своих ходов`);
+  test.events.emit('shutdown');
+});
+
+it('reports deferred automatic founding without exposing other-side refusal details', () => {
+  const test = fixture();
+  const state = createConquest(), design = createDesign('fighter', true);
+  state.session.production.lastOrderId = 1;
+  state.session.ships.push({ id: 1, factionId: 'blue', systemId: 'eden', fuel: 3, design });
+  state.operations['1'] = createOperationalState(design);
+  state.population.sol.population = 1000;
+  state.colonyOutput.assignments.sol = { industry: 1000, research: 0, culture: 0 };
+  test.owner.replace(state);
+  test.click('conquest-end');
+  expect(test.find('conquest-message').text).toContain('основание отложено');
+  expect(test.find('conquest-message').text).toContain('нет колонистов');
+  test.events.emit('shutdown');
 });
 
 it('saves an owned campaign blueprint without paying production or creating a ship', () => {
@@ -261,7 +455,8 @@ it('limits component variants individually while allowing and saving an exact av
 it('does not expose exempt preset modules as individual variants', () => {
   const test = fixture();
   const advanced = structuredClone(test.owner.state);
-  advanced.research.blue.completed = ['support', 'ordnance', 'capital'];
+  advanced.research.blue.completed = advanced.researchTree.nodes.map(node => node.id);
+  advanced.researchJournal.blue = Object.fromEntries(advanced.research.blue.completed.map(id => [id, 1]));
   test.owner.replace(conquestSchema.parse(advanced));
   test.click('conquest-projects');
   test.click('campaign-project-preset');
@@ -469,7 +664,7 @@ it('guards obsolete callbacks and consumes each scheduled AI ticket only once', 
   const executor = vi.spyOn(ai, 'executeConquestAiTurn');
   test.tasks[0].callback(); test.tasks[0].callback();
   expect(executor).toHaveBeenCalledTimes(1);
-  expect(test.owner.state.session.turn).toBe(3);
+  expect(test.owner.state.session.turn, `${test.owner.phase}: ${test.find('conquest-message').text}`).toBe(3);
 });
 
 it('save cancels AI before confirmation and cancel does not reschedule', () => {
@@ -486,7 +681,7 @@ it('save cancels AI before confirmation and cancel does not reschedule', () => {
   expect(test.tasks).toHaveLength(1);
 });
 
-it('saves a full version5 snapshot and loads AI-red paused in a fresh scene', () => {
+it('saves a full version8 snapshot and loads AI-red paused in a fresh scene', () => {
   const test = fixture();
   test.click('conquest-new'); test.click('conquest-new-ai'); test.click('conquest-end');
   const before = structuredClone(test.owner.state);
@@ -522,7 +717,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   const design = createDesign('fighter', true);
   const state = test.owner.state;
   state.session.production.lastOrderId = 5;
-  state.session.production.completed = Array.from({ length: 5 }, (_, index) => ({
+  state.colonyOutput.production.completed = Array.from({ length: 5 }, (_, index) => ({
     id: index + 1, factionId: 'blue' as const, systemId: 'sol' as const, design: structuredClone(design)
   }));
   test.owner.state = conquestSchema.parse(state);
@@ -580,9 +775,9 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   test.owner.render();
   expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
   test.owner.tab = 'research';
-  test.owner.page = 1;
+  test.owner.page = 99;
   test.owner.render();
-  expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
+  expect(test.nodes.some(node => !node.destroyed && node.text === '5 / 5')).toBe(true);
   test.events.emit('shutdown');
 });
 
@@ -601,7 +796,8 @@ it.each([[1280, 720], [390, 844]])('keeps primary controls >=44 and text >=14 at
     for (let i = 0; i < controls.length; i++) for (const other of controls.slice(i + 1)) {
       const node = controls[i];
       expect(node.x >= other.x + other.width || other.x >= node.x + node.width ||
-        node.y >= other.y + other.height || other.y >= node.y + node.height).toBe(true);
+        node.y >= other.y + other.height || other.y >= node.y + node.height,
+      `${node.name} (${node.x},${node.y},${node.width},${node.height}) overlaps ${other.name} (${other.x},${other.y},${other.width},${other.height})`).toBe(true);
     }
     expect(test.nodes.filter(node => !node.destroyed && node.text).every(node => node.fontSize >= 14)).toBe(true);
   }
@@ -638,13 +834,14 @@ it.each(['Очень длинное название проекта '.repeat(2).
   const state = test.owner.state;
   state.session.treasuries.blue.credits = 0;
   state.session.production.lastOrderId = 1;
-  state.session.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
+  state.colonyOutput.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
   test.owner.replace(conquestSchema.parse(state));
   test.click('conquest-tab-research');
   const before = structuredClone(test.owner.state);
-  const result = executeConquestCommand(before, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'support' });
+  const result = executeConquestCommand(before, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'ordnance' });
   expect(result.ok).toBe(false);
-  test.click('conquest-research-support');
+  for (let page = 0; page < 3; page++) test.click('conquest-page-next');
+  test.click('conquest-research-ordnance');
   expect(test.find('conquest-message').text).toBe(!result.ok ? result.message : '');
   expect(test.owner.state).toEqual(before);
   test.click('conquest-tab-production'); test.click('conquest-order-1');
