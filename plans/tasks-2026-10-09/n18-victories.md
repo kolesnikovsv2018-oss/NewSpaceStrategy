@@ -23,6 +23,10 @@
 
 ## Приёмка и проверки
 
+Дополнительно выполнить [контроль AI после Н18 из отчёта Д16](../../reports/2026-10-26/02-ai-development-and-post-n15-n19.md#после-н18):
+policy-specific прогресс и final-project demand, текущие архивы/валидаторы,
+paid пути каждой цели и terminal/save/scheduler oracle. Н-граф не меняется.
+
 - По одной достижимой paid end-to-end партии на каждый способ победы; не подставлять готовый финал вместо проектного цикла.
 - Прервать/захватить scientific project перед finish; при потере prerequisites действует утверждённое правило.
 - Голоса duplicate/stale/ineligible/abstain, точный quorum/threshold и tie; исчезновение участника во время vote.

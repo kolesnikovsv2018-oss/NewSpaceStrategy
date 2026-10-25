@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "40-12345-current-ai-mirror",
+    "worldCount": 40,
+    "mapSeed": 12345,
+    "campaignSeed": 67890,
+    "mirrored": true,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 65,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 184761,
+  "file": "40-12345-current-ai-mirror.run.json.gz",
+  "sha256": "0c8e1846a71d7baccc63247a729495a5a0f13243e629a05e22ffd2663bf53c9e"
+}

@@ -1,0 +1,1354 @@
+{
+  "format": "orion-ai-recon-comparison",
+  "schemaVersion": 1,
+  "sourceSha256": "23cc9665f1e785067f31ba8d5e16ff5aadc6486ae0aeb890d37317beb900b38c",
+  "rows": [
+    {
+      "id": "6-41-current-ai-direct",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 35,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 199,
+      "maxOwned": {
+        "blue": 4,
+        "red": 5
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 20,
+        "startIndex": 118,
+        "fromTurn": 119,
+        "toTurn": 199,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1393432,
+            "minerals": 696856
+          },
+          {
+            "side": "red",
+            "credits": 1740780,
+            "minerals": 870530
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 60,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 199,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 2,
+          "refuelShip": 197,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-41-current-ai-mirror",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 35,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 199,
+      "maxOwned": {
+        "blue": 4,
+        "red": 5
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 20,
+        "startIndex": 117,
+        "fromTurn": 118,
+        "toTurn": 198,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1389608,
+            "minerals": 694944
+          },
+          {
+            "side": "red",
+            "credits": 1740780,
+            "minerals": 870530
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 60,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 200,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 2,
+          "refuelShip": 198,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-41-research-first-direct",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 54,
+      "checkpointAt": 53,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 54,
+      "maxOwned": {
+        "blue": 2,
+        "red": 6
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-41-research-first-mirror",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 53,
+      "checkpointAt": 52,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 53,
+      "maxOwned": {
+        "blue": 6,
+        "red": 2
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-41-production-first-direct",
+      "oldStatus": "completed",
+      "status": "completed",
+      "turnsExecuted": 65,
+      "checkpointAt": 60,
+      "battles": 12,
+      "battleTimeouts": 2,
+      "lastBattle": 62,
+      "lastOwnershipChange": 65,
+      "maxOwned": {
+        "blue": 6,
+        "red": 3
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": [
+            "world-001"
+          ]
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "endTurn": 0,
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "enqueueProduction": 0,
+          "survey": 0,
+          "colonize": 0,
+          "deployProduction": 0,
+          "refuelShip": 0,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-41-production-first-mirror",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 80,
+      "checkpointAt": 60,
+      "battles": 22,
+      "battleTimeouts": 5,
+      "lastBattle": 79,
+      "lastOwnershipChange": 80,
+      "maxOwned": {
+        "blue": 3,
+        "red": 6
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": [
+            "world-001"
+          ]
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-current-ai-direct",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 36,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 199,
+      "maxOwned": {
+        "blue": 4,
+        "red": 5
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 22,
+        "startIndex": 117,
+        "fromTurn": 118,
+        "toTurn": 184,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1006260,
+            "minerals": 503235
+          },
+          {
+            "side": "red",
+            "credits": 1509314,
+            "minerals": 754762
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 54,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 224,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 2,
+          "refuelShip": 222,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-current-ai-mirror",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 36,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 198,
+      "maxOwned": {
+        "blue": 4,
+        "red": 4
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 22,
+        "startIndex": 119,
+        "fromTurn": 120,
+        "toTurn": 186,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1269030,
+            "minerals": 634620
+          },
+          {
+            "side": "red",
+            "credits": 1269410,
+            "minerals": 634810
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 54,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 229,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 3,
+          "refuelShip": 226,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-research-first-direct",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 53,
+      "checkpointAt": 52,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 54,
+      "maxOwned": {
+        "blue": 2,
+        "red": 6
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-research-first-mirror",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 52,
+      "checkpointAt": 51,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 53,
+      "maxOwned": {
+        "blue": 6,
+        "red": 2
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-production-first-direct",
+      "oldStatus": "completed",
+      "status": "completed",
+      "turnsExecuted": 65,
+      "checkpointAt": 60,
+      "battles": 12,
+      "battleTimeouts": 2,
+      "lastBattle": 62,
+      "lastOwnershipChange": 65,
+      "maxOwned": {
+        "blue": 6,
+        "red": 3
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": [
+            "world-001"
+          ]
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "endTurn": 0,
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "enqueueProduction": 0,
+          "survey": 0,
+          "colonize": 0,
+          "deployProduction": 0,
+          "refuelShip": 0,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-12345-production-first-mirror",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 22,
+      "battleTimeouts": 5,
+      "lastBattle": 86,
+      "lastOwnershipChange": 196,
+      "maxOwned": {
+        "blue": 5,
+        "red": 5
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 22,
+        "startIndex": 104,
+        "fromTurn": 105,
+        "toTurn": 193,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1938676,
+            "minerals": 969506
+          },
+          {
+            "side": "red",
+            "credits": 1288328,
+            "minerals": 644304
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 54,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 248,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 248,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-current-ai-direct",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 36,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 195,
+      "maxOwned": {
+        "blue": 4,
+        "red": 4
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 24,
+        "startIndex": 112,
+        "fromTurn": 113,
+        "toTurn": 185,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1241580,
+            "minerals": 620895
+          },
+          {
+            "side": "red",
+            "credits": 1483750,
+            "minerals": 741980
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 48,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 244,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 2,
+          "refuelShip": 242,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-current-ai-mirror",
+      "oldStatus": "timeout",
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "checkpointAt": 60,
+      "battles": 36,
+      "battleTimeouts": 12,
+      "lastBattle": 97,
+      "lastOwnershipChange": 195,
+      "maxOwned": {
+        "blue": 4,
+        "red": 4
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": {
+        "period": 24,
+        "startIndex": 111,
+        "fromTurn": 112,
+        "toTurn": 184,
+        "economicDrift": [
+          {
+            "side": "blue",
+            "credits": 1222722,
+            "minerals": 611466
+          },
+          {
+            "side": "red",
+            "credits": 1483750,
+            "minerals": 741980
+          }
+        ]
+      },
+      "activityAfter100": {
+        "captures": 48,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 227,
+          "research": 0,
+          "sendShip": 245,
+          "endTurn": 100,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 2,
+          "refuelShip": 243,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-research-first-direct",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 53,
+      "checkpointAt": 52,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 54,
+      "maxOwned": {
+        "blue": 2,
+        "red": 6
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-research-first-mirror",
+      "oldStatus": "timeout",
+      "status": "completed",
+      "turnsExecuted": 52,
+      "checkpointAt": 51,
+      "battles": 0,
+      "battleTimeouts": 0,
+      "lastBattle": null,
+      "lastOwnershipChange": 53,
+      "maxOwned": {
+        "blue": 6,
+        "red": 2
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-production-first-direct",
+      "oldStatus": "completed",
+      "status": "completed",
+      "turnsExecuted": 65,
+      "checkpointAt": 60,
+      "battles": 12,
+      "battleTimeouts": 2,
+      "lastBattle": 62,
+      "lastOwnershipChange": 65,
+      "maxOwned": {
+        "blue": 6,
+        "red": 3
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "blue"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "blue"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": []
+        },
+        {
+          "side": "red",
+          "targets": [
+            "world-001"
+          ]
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "endTurn": 0,
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "enqueueProduction": 0,
+          "survey": 0,
+          "colonize": 0,
+          "deployProduction": 0,
+          "refuelShip": 0,
+          "repairShip": 0
+        }
+      }
+    },
+    {
+      "id": "6-98765-production-first-mirror",
+      "oldStatus": "completed",
+      "status": "completed",
+      "turnsExecuted": 66,
+      "checkpointAt": 60,
+      "battles": 12,
+      "battleTimeouts": 2,
+      "lastBattle": 63,
+      "lastOwnershipChange": 66,
+      "maxOwned": {
+        "blue": 3,
+        "red": 6
+      },
+      "finalOwners": [
+        {
+          "id": "world-001",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-002",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-003",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-004",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-005",
+          "ownerId": "red"
+        },
+        {
+          "id": "world-006",
+          "ownerId": "red"
+        }
+      ],
+      "blindTargets": [
+        {
+          "side": "blue",
+          "targets": [
+            "world-001"
+          ]
+        },
+        {
+          "side": "red",
+          "targets": []
+        }
+      ],
+      "recurrence": null,
+      "activityAfter100": {
+        "captures": 0,
+        "battles": 0,
+        "commandKinds": {
+          "assignWorkers": 0,
+          "research": 0,
+          "sendShip": 0,
+          "endTurn": 0,
+          "survey": 0,
+          "colonize": 0,
+          "enqueueProduction": 0,
+          "deployProduction": 0,
+          "refuelShip": 0,
+          "repairShip": 0
+        }
+      }
+    }
+  ]
+}

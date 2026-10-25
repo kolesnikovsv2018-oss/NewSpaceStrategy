@@ -1,0 +1,747 @@
+{
+  "format": "orion-ai-development-recon-witnesses",
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "40-41-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": [
+            {
+              "shipId": 48,
+              "repeatedLegs": 8,
+              "stableForeignTargets": [
+                "world-031",
+                "world-036"
+              ],
+              "currentlyAffordableFreshRoutes": [
+                {
+                  "id": "world-020",
+                  "distance": 376.2998305872592,
+                  "fuelCost": 1882
+                },
+                {
+                  "id": "world-038",
+                  "distance": 437.5,
+                  "fuelCost": 2188
+                },
+                {
+                  "id": "world-025",
+                  "distance": 503.8911092686593,
+                  "fuelCost": 2520
+                },
+                {
+                  "id": "world-003",
+                  "distance": 517.9732614884672,
+                  "fuelCost": 2590
+                },
+                {
+                  "id": "world-001",
+                  "distance": 518.3877263400437,
+                  "fuelCost": 2592
+                },
+                {
+                  "id": "world-015",
+                  "distance": 523.8454566950066,
+                  "fuelCost": 2620
+                },
+                {
+                  "id": "world-002",
+                  "distance": 536.3733905601583,
+                  "fuelCost": 2682
+                },
+                {
+                  "id": "world-010",
+                  "distance": 537.6453291901641,
+                  "fuelCost": 2689
+                },
+                {
+                  "id": "world-034",
+                  "distance": 539.4586406760021,
+                  "fuelCost": 2698
+                },
+                {
+                  "id": "world-028",
+                  "distance": 562.5,
+                  "fuelCost": 2813
+                },
+                {
+                  "id": "world-017",
+                  "distance": 563.3673867912484,
+                  "fuelCost": 2817
+                },
+                {
+                  "id": "world-039",
+                  "distance": 594.571799701264,
+                  "fuelCost": 2973
+                }
+              ],
+              "evidenceScope": "actual old moves and stable old ownership; own-view route quotes, not authorization for an inactive observer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "40-41-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-41-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-41-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-41-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-41-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-41-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-12345-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-12345-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "40-98765-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-current-ai-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-current-ai-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-research-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-research-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-production-first-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "256-98765-production-first-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-256-17-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-256-17-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-256-314159-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-256-314159-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-40-17-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-40-17-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-40-314159-direct",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": []
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    },
+    {
+      "id": "extra-40-314159-mirror",
+      "sides": [
+        {
+          "side": "blue",
+          "witnesses": [
+            {
+              "shipId": 48,
+              "repeatedLegs": 4,
+              "stableForeignTargets": [
+                "world-010",
+                "world-038"
+              ],
+              "currentlyAffordableFreshRoutes": [
+                {
+                  "id": "world-029",
+                  "distance": 209.6313728906053,
+                  "fuelCost": 1049
+                },
+                {
+                  "id": "world-024",
+                  "distance": 225.34695471649934,
+                  "fuelCost": 1127
+                },
+                {
+                  "id": "world-017",
+                  "distance": 294.8119103767688,
+                  "fuelCost": 1475
+                },
+                {
+                  "id": "world-016",
+                  "distance": 312.5,
+                  "fuelCost": 1563
+                },
+                {
+                  "id": "world-032",
+                  "distance": 332.1920566479578,
+                  "fuelCost": 1661
+                },
+                {
+                  "id": "world-008",
+                  "distance": 364.4344934278312,
+                  "fuelCost": 1823
+                },
+                {
+                  "id": "world-028",
+                  "distance": 376.29983058725924,
+                  "fuelCost": 1882
+                },
+                {
+                  "id": "world-012",
+                  "distance": 400.19526483955303,
+                  "fuelCost": 2001
+                },
+                {
+                  "id": "world-001",
+                  "distance": 406.06899797940736,
+                  "fuelCost": 2031
+                },
+                {
+                  "id": "world-003",
+                  "distance": 415.63249048769035,
+                  "fuelCost": 2079
+                },
+                {
+                  "id": "world-002",
+                  "distance": 421.5967035414296,
+                  "fuelCost": 2108
+                },
+                {
+                  "id": "world-035",
+                  "distance": 425.0459533979826,
+                  "fuelCost": 2126
+                },
+                {
+                  "id": "world-030",
+                  "distance": 469.79051182415344,
+                  "fuelCost": 2349
+                },
+                {
+                  "id": "world-018",
+                  "distance": 668.0486977009984,
+                  "fuelCost": 3341
+                },
+                {
+                  "id": "world-037",
+                  "distance": 691.748238161833,
+                  "fuelCost": 3459
+                },
+                {
+                  "id": "world-023",
+                  "distance": 698.7712429686842,
+                  "fuelCost": 3494
+                },
+                {
+                  "id": "world-025",
+                  "distance": 702.2564079451323,
+                  "fuelCost": 3512
+                }
+              ],
+              "evidenceScope": "actual old moves and stable old ownership; own-view route quotes, not authorization for an inactive observer"
+            }
+          ]
+        },
+        {
+          "side": "red",
+          "witnesses": []
+        }
+      ]
+    }
+  ]
+}

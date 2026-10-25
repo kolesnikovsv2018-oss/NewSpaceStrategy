@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { baselineMatrix, runBaseline, BASELINE_TRACE_VERSION, type BaselineWindowTrace } from '../src/diagnostics/conquestBaseline';
 import * as conquest from '../src/domain/conquest';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
-import { main } from '../src/cli/conquestTimeouts';
+import { createLateBaselineCheckpoint, main } from '../src/cli/conquestTimeouts';
 import { mkdtemp, readdir, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -83,6 +83,37 @@ describe('Opt-in baseline trace', () => {
       expect(runBaseline(input, undefined, { onWindow }).status).toBe('executor-error');
       expect(onWindow).not.toHaveBeenCalled();
     } finally { spy.mockRestore(); }
+  });
+
+  it('fails explicitly if an allegedly accepted endTurn does not advance the ongoing state', () => {
+    const original = conquest.executeConquestAction;
+    let ends = 0;
+    const spy = vi.spyOn(conquest, 'executeConquestAction').mockImplementation((state, command, automated) => {
+      if (typeof command === 'object' && command && 'kind' in command && command.kind === 'endTurn') {
+        if (++ends > 2) throw new Error('runaway-test-guard');
+        return { ok: true, state: conquest.conquestSchema.parse(state) };
+      }
+      return original(state, command, automated);
+    });
+    try {
+      const onWindow = vi.fn();
+      expect(() => runBaseline(input, undefined, { onWindow })).toThrow('не продвинуло ход');
+      expect(ends).toBe(1);
+      expect(onWindow).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('replays a nonempty late suffix for a run shorter than sixty windows', () => {
+    const run = runBaseline(input), before = structuredClone(run), checkpoint = createLateBaselineCheckpoint(run);
+    expect(checkpoint.turnsExecuted).toBe(7);
+    const continued = runBaseline(input, { state: decodeConquestSave(checkpoint.json),
+      turnsExecuted: checkpoint.turnsExecuted });
+    expect(continued.commands.length).toBeGreaterThan(0);
+    expect(continued.commands).toEqual(run.commands.filter(record => record.command.expectedTurn > 7));
+    expect(continued.finalState).toEqual(run.finalState);
+    expect(run).toEqual(before);
+    expect(() => createLateBaselineCheckpoint(runBaseline({ ...input, maxTurns: 1 })))
+      .toThrow('Нет поздней контрольной точки до остановки');
   });
 
   it('surfaces observer errors instead of reporting a successful run', () => {

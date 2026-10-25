@@ -1,0 +1,204 @@
+{
+  "format": "orion-conquest-bounded-checks",
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "input": {
+        "id": "symmetric-boundary-direct",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 6,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "symmetric-boundary",
+        "maxTurns": 8
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 8,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 1,
+      "battleTimeouts": 0,
+      "commands": 8,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "d8d62dde5acc77a260ac607f035fea69a7d3703fdd4a3bf0bec5ae4e5272f595"
+    },
+    {
+      "input": {
+        "id": "symmetric-boundary-mirror",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 6,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "symmetric-boundary",
+        "maxTurns": 8
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 8,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 1,
+      "battleTimeouts": 0,
+      "commands": 8,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "865f01cbd740a937814173e486694b67839f4d5d5095310367492c314f882db3"
+    },
+    {
+      "input": {
+        "id": "supply-boundary-direct",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 6,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "supply-boundary",
+        "maxTurns": 8
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 8,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 8,
+      "battleTimeouts": 8,
+      "commands": 8,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "eb04f51acd54ea5234e82c30d3a04c8d92cbeb97c8938318d6ac006c41d1fa0a"
+    },
+    {
+      "input": {
+        "id": "supply-boundary-mirror",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 6,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "supply-boundary",
+        "maxTurns": 8
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 8,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 8,
+      "battleTimeouts": 8,
+      "commands": 8,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "b4d4dfd77d5ad9653117d280a343518e8887401bc9cd892a7ff5210242b42667"
+    },
+    {
+      "input": {
+        "id": "40-41-current-ai-direct",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 40,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 16
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 16,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 0,
+      "battleTimeouts": 0,
+      "commands": 150,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "2065eaec3b04b8a0cfcce9efd562c439fde7e3493bf91527783376a1cd854e9c"
+    },
+    {
+      "input": {
+        "id": "256-41-current-ai-direct",
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "worldCount": 256,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 16
+      },
+      "versions": {
+        "baseline": 12,
+        "save": 16,
+        "rules": 13,
+        "battlePolicy": "campaign-v2",
+        "tree": 10,
+        "tacticalRules": "design-combat-v1"
+      },
+      "status": "timeout",
+      "turnsExecuted": 16,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "battles": 0,
+      "battleTimeouts": 0,
+      "commands": 173,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed"
+      },
+      "finalStateSha256": "f83ab1dc9d292f406b9ff551ca6406f8348fa2be665128de0e29f656e78f96eb"
+    }
+  ]
+}

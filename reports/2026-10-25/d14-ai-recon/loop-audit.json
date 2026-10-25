@@ -1,0 +1,925 @@
+{
+  "format": "orion-loop-audit",
+  "schemaVersion": 1,
+  "sourceSha256": "23cc9665f1e785067f31ba8d5e16ff5aadc6486ae0aeb890d37317beb900b38c",
+  "filesScanned": 97,
+  "counts": {
+    "ForOfStatement": 121,
+    "ForStatement": 23,
+    "WhileStatement": 8
+  },
+  "loops": [
+    {
+      "file": "src/cli/conquestBaseline.ts",
+      "line": 15,
+      "kind": "ForOfStatement",
+      "header": "for (const input of baselineMatrix())"
+    },
+    {
+      "file": "src/cli/conquestTimeouts.ts",
+      "line": 38,
+      "kind": "ForOfStatement",
+      "header": "for (const input of baselineMatrix().filter(item => item.kind === 'paid' && item.worldCount === 6))"
+    },
+    {
+      "file": "src/cli/generateGalaxy.ts",
+      "line": 40,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < args.length; index += 2)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 144,
+      "kind": "ForOfStatement",
+      "header": "for (const seeds of BASELINE_SEEDS)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 144,
+      "kind": "ForOfStatement",
+      "header": "for (const worldCount of [6, 40, 256] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 145,
+      "kind": "ForOfStatement",
+      "header": "for (const schedule of scheduleSchema.options)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 145,
+      "kind": "ForOfStatement",
+      "header": "for (const mirrored of [false, true])"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 150,
+      "kind": "ForOfStatement",
+      "header": "for (const kind of ['symmetric-boundary', 'supply-boundary'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 150,
+      "kind": "ForOfStatement",
+      "header": "for (const mirrored of [false, true])"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 181,
+      "kind": "ForOfStatement",
+      "header": "for (const side of ['blue', 'red'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 191,
+      "kind": "ForOfStatement",
+      "header": "for (const slot of design.slots)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 194,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < count; index++)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 276,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of ['blue', 'red'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 290,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of ['blue', 'red'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 320,
+      "kind": "ForOfStatement",
+      "header": "for (const battle of after.battles.filter(report => report.id > before.lastBattleId))"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 322,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of ['blue', 'red'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 355,
+      "kind": "WhileStatement",
+      "header": "while (result.turnsExecuted < options.maxTurns && getConquestOutcome(state).status === 'ongoing')"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 359,
+      "kind": "ForStatement",
+      "header": "for (let action = 0; action < 24; action++)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 370,
+      "kind": "ForOfStatement",
+      "header": "for (const previous of records.slice(0, -1))"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 384,
+      "kind": "ForOfStatement",
+      "header": "for (const step of steps)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 397,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of ['blue', 'red'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 405,
+      "kind": "ForOfStatement",
+      "header": "for (const metric of Object.values(result.metrics))"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 406,
+      "kind": "ForOfStatement",
+      "header": "for (const key of ['firstResearch', 'firstResearchCompleted', 'firstColony', 'firstOrder', 'firstRelease',\n      'firstShip', 'firstEncounter'] as const)"
+    },
+    {
+      "file": "src/diagnostics/conquestBaseline.ts",
+      "line": 433,
+      "kind": "ForOfStatement",
+      "header": "for (const run of runs)"
+    },
+    {
+      "file": "src/domain/campaign.ts",
+      "line": 86,
+      "kind": "ForOfStatement",
+      "header": "for (const system of state.systems)"
+    },
+    {
+      "file": "src/domain/campaignAiExecutor.ts",
+      "line": 90,
+      "kind": "ForOfStatement",
+      "header": "for (const command of parsed.data.commands)"
+    },
+    {
+      "file": "src/domain/campaignAiExecutor.ts",
+      "line": 128,
+      "kind": "ForOfStatement",
+      "header": "for (const command of commands)"
+    },
+    {
+      "file": "src/domain/campaignFleets.ts",
+      "line": 31,
+      "kind": "ForOfStatement",
+      "header": "for (const fleet of state.items)"
+    },
+    {
+      "file": "src/domain/campaignFleets.ts",
+      "line": 36,
+      "kind": "ForOfStatement",
+      "header": "for (const id of fleet.shipIds)"
+    },
+    {
+      "file": "src/domain/campaignFleets.ts",
+      "line": 41,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 62,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 71,
+      "kind": "ForOfStatement",
+      "header": "for (const order of production.orders)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 134,
+      "kind": "ForOfStatement",
+      "header": "for (const system of habitable)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 147,
+      "kind": "ForOfStatement",
+      "header": "for (const record of [...output.production.orders, ...output.production.completed, ...output.projects])"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 153,
+      "kind": "ForOfStatement",
+      "header": "for (const system of habitable)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 159,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 165,
+      "kind": "ForOfStatement",
+      "header": "for (const order of output.production.orders)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 172,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 190,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; remaining > 0; index = (index + 1) % values.length)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 297,
+      "kind": "ForOfStatement",
+      "header": "for (const row of forecast.production)"
+    },
+    {
+      "file": "src/domain/campaignOutput.ts",
+      "line": 316,
+      "kind": "ForOfStatement",
+      "header": "for (const kind of ['research', 'culture'] as const)"
+    },
+    {
+      "file": "src/domain/campaignPopulation.ts",
+      "line": 54,
+      "kind": "ForOfStatement",
+      "header": "for (const system of galaxy.systems)"
+    },
+    {
+      "file": "src/domain/campaignProjects.ts",
+      "line": 25,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignResearch.ts",
+      "line": 61,
+      "kind": "ForOfStatement",
+      "header": "for (const node of tree.nodes)"
+    },
+    {
+      "file": "src/domain/campaignResearch.ts",
+      "line": 70,
+      "kind": "ForStatement",
+      "header": "for (let pass = 0; pass < tree.nodes.length; pass++)"
+    },
+    {
+      "file": "src/domain/campaignResearch.ts",
+      "line": 71,
+      "kind": "ForOfStatement",
+      "header": "for (const node of tree.nodes)"
+    },
+    {
+      "file": "src/domain/campaignResearch.ts",
+      "line": 217,
+      "kind": "ForOfStatement",
+      "header": "for (const key of magnitudeFields[component.kind] ?? [])"
+    },
+    {
+      "file": "src/domain/campaignResearch.ts",
+      "line": 221,
+      "kind": "ForOfStatement",
+      "header": "for (const key of ratioFields[component.kind] ?? [])"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 276,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of snapshot.effects)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 362,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of effects)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 390,
+      "kind": "ForOfStatement",
+      "header": "for (const group of RULES_STACKING_GROUPS)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 398,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of members)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 403,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of members)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 409,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of effects)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 443,
+      "kind": "ForOfStatement",
+      "header": "for (const group of RULES_STACKING_GROUPS)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 450,
+      "kind": "ForOfStatement",
+      "header": "for (const effect of effects)"
+    },
+    {
+      "file": "src/domain/campaignRules.ts",
+      "line": 466,
+      "kind": "ForOfStatement",
+      "header": "for (const target of RULES_TARGETS)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 39,
+      "kind": "ForOfStatement",
+      "header": "for (const record of [...state.production.orders, ...state.production.completed])"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 47,
+      "kind": "ForOfStatement",
+      "header": "for (const fleet of state.fleets.items)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 53,
+      "kind": "ForOfStatement",
+      "header": "for (const id of fleet.shipIds)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 61,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of state.ships)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 217,
+      "kind": "ForOfStatement",
+      "header": "for (const [index, ship] of members.entries())"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 230,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of members)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 237,
+      "kind": "ForOfStatement",
+      "header": "for (const id of command.shipIds)"
+    },
+    {
+      "file": "src/domain/campaignSession.ts",
+      "line": 371,
+      "kind": "ForOfStatement",
+      "header": "for (const fleet of state.fleets.items)"
+    },
+    {
+      "file": "src/domain/campaignShips.ts",
+      "line": 63,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/campaignShips.ts",
+      "line": 81,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of ships)"
+    },
+    {
+      "file": "src/domain/cargo.ts",
+      "line": 43,
+      "kind": "ForOfStatement",
+      "header": "for (const item of cargo)"
+    },
+    {
+      "file": "src/domain/combatPresets.ts",
+      "line": 81,
+      "kind": "ForOfStatement",
+      "header": "for (const { slotId, component } of preset.modules)"
+    },
+    {
+      "file": "src/domain/combatSeries.ts",
+      "line": 118,
+      "kind": "WhileStatement",
+      "header": "while (steps < COMBAT_SIMULATION_MAX_STEPS && bothSidesAlive())"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 91,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 105,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 121,
+      "kind": "ForOfStatement",
+      "header": "for (const project of state.colonyOutput.projects)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 148,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of state.session.ships)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 152,
+      "kind": "ForOfStatement",
+      "header": "for (const record of [...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed])"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 155,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 155,
+      "kind": "ForOfStatement",
+      "header": "for (const project of state.projects[faction].items)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 221,
+      "kind": "ForOfStatement",
+      "header": "for (const world of session.galaxy.systems)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 223,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of getGalaxyDefinition(session.galaxy).factions)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 242,
+      "kind": "ForOfStatement",
+      "header": "for (const winner of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 251,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of state.session.ships)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 255,
+      "kind": "ForOfStatement",
+      "header": "for (const system of getGalaxyDefinition(state.session.galaxy).systems)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 311,
+      "kind": "ForOfStatement",
+      "header": "for (const id of visible)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 376,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 376,
+      "kind": "ForOfStatement",
+      "header": "for (const id of visibleConquestSystems(state, faction))"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 421,
+      "kind": "ForOfStatement",
+      "header": "for (const definition of getGalaxyDefinition(state.session.galaxy).systems)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 432,
+      "kind": "ForOfStatement",
+      "header": "for (const id of result.destroyed)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 433,
+      "kind": "ForOfStatement",
+      "header": "for (const survivor of result.survivors)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 434,
+      "kind": "ForOfStatement",
+      "header": "for (const fleet of state.session.fleets.items)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 661,
+      "kind": "ForOfStatement",
+      "header": "for (const fleet of state.session.fleets.items)"
+    },
+    {
+      "file": "src/domain/conquest.ts",
+      "line": 712,
+      "kind": "ForOfStatement",
+      "header": "for (const project of output.completedProjects)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 46,
+      "kind": "ForOfStatement",
+      "header": "for (const colony of view.population)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 48,
+      "kind": "ForOfStatement",
+      "header": "for (const [role, target] of [\n      ['production', 'production-output'], ['science', 'science-output'], ['culture', 'culture-output']\n    ] as const)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 78,
+      "kind": "ForOfStatement",
+      "header": "for (const kind of access.components)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 82,
+      "kind": "ForStatement",
+      "header": "for (let variant = 0; variant < 8; variant++)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 82,
+      "kind": "ForOfStatement",
+      "header": "for (const hullId of access.hulls.filter(id => id !== 'colonizer'))"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 85,
+      "kind": "ForOfStatement",
+      "header": "for (const [kind, component] of components)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 168,
+      "kind": "ForOfStatement",
+      "header": "for (const weapon of stats.weapons)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 217,
+      "kind": "ForOfStatement",
+      "header": "for (const colony of colonies)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 255,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of view.ships)"
+    },
+    {
+      "file": "src/domain/conquestAi.ts",
+      "line": 373,
+      "kind": "ForStatement",
+      "header": "for (let action = 0; action < 24; action++)"
+    },
+    {
+      "file": "src/domain/conquestBattle.ts",
+      "line": 34,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of ships)"
+    },
+    {
+      "file": "src/domain/conquestBattle.ts",
+      "line": 71,
+      "kind": "WhileStatement",
+      "header": "while (step < CONQUEST_BATTLE_STEPS && aliveSides().size > 1)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 53,
+      "kind": "ForStatement",
+      "header": "for (let index = items.length - 1; index > 0; index--)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 84,
+      "kind": "ForStatement",
+      "header": "for (let row = 0; row <= divisions; row++)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 85,
+      "kind": "ForStatement",
+      "header": "for (let column = 0; column <= divisions; column++)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 104,
+      "kind": "ForStatement",
+      "header": "for (let participantIndex = 0; participantIndex < participantCount; participantIndex++)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 130,
+      "kind": "ForStatement",
+      "header": "for (let targetIndex = 0; targetIndex < GUARANTEED_NEUTRAL_WORLDS; targetIndex++)"
+    },
+    {
+      "file": "src/domain/galaxyGenerator.ts",
+      "line": 155,
+      "kind": "ForOfStatement",
+      "header": "for (const candidate of candidates)"
+    },
+    {
+      "file": "src/domain/galaxyMap.ts",
+      "line": 164,
+      "kind": "ForOfStatement",
+      "header": "for (const participant of map.participants)"
+    },
+    {
+      "file": "src/domain/galaxyMap.ts",
+      "line": 176,
+      "kind": "ForStatement",
+      "header": "for (let leftIndex = 0; leftIndex < map.worlds.length; leftIndex++)"
+    },
+    {
+      "file": "src/domain/galaxyMap.ts",
+      "line": 177,
+      "kind": "ForStatement",
+      "header": "for (let rightIndex = leftIndex + 1; rightIndex < map.worlds.length; rightIndex++)"
+    },
+    {
+      "file": "src/domain/galaxyMap.ts",
+      "line": 185,
+      "kind": "ForOfStatement",
+      "header": "for (const participant of map.participants)"
+    },
+    {
+      "file": "src/domain/galaxyMap.ts",
+      "line": 190,
+      "kind": "ForOfStatement",
+      "header": "for (const world of nearest)"
+    },
+    {
+      "file": "src/domain/production.ts",
+      "line": 42,
+      "kind": "ForOfStatement",
+      "header": "for (const faction of factionIdSchema.options)"
+    },
+    {
+      "file": "src/domain/production.ts",
+      "line": 48,
+      "kind": "ForOfStatement",
+      "header": "for (const order of state.orders)"
+    },
+    {
+      "file": "src/domain/seededRandom.ts",
+      "line": 21,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < key.length; index++)"
+    },
+    {
+      "file": "src/domain/shipDesign.ts",
+      "line": 316,
+      "kind": "ForOfStatement",
+      "header": "for (const slot of design.slots)"
+    },
+    {
+      "file": "src/domain/shipDesign.ts",
+      "line": 405,
+      "kind": "ForOfStatement",
+      "header": "for (const slot of design.slots)"
+    },
+    {
+      "file": "src/entities/BattleManager.ts",
+      "line": 153,
+      "kind": "ForStatement",
+      "header": "for (let attempt = 0; attempt < ship.getAttackAttemptsPerStep(); attempt++)"
+    },
+    {
+      "file": "src/entities/BattleManager.ts",
+      "line": 181,
+      "kind": "ForOfStatement",
+      "header": "for (const candidate of this.allShips)"
+    },
+    {
+      "file": "src/entities/CombatShipFactory.ts",
+      "line": 55,
+      "kind": "ForOfStatement",
+      "header": "for (const [preset, count] of presets)"
+    },
+    {
+      "file": "src/entities/CombatShipFactory.ts",
+      "line": 56,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < count; index++)"
+    },
+    {
+      "file": "src/entities/DesignedShip.ts",
+      "line": 32,
+      "kind": "ForOfStatement",
+      "header": "for (const weapon of initialState.weapons)"
+    },
+    {
+      "file": "src/entities/DesignedShip.ts",
+      "line": 101,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < this.state.weapons.length; index++)"
+    },
+    {
+      "file": "src/scenes/BattleScene.ts",
+      "line": 157,
+      "kind": "ForStatement",
+      "header": "for (let i = 0; i < 200; i++)"
+    },
+    {
+      "file": "src/scenes/BattleScene.ts",
+      "line": 286,
+      "kind": "ForStatement",
+      "header": "for (let step = 0; manager && !this.battleEnded && step < COMBAT_SIMULATION_MAX_STEPS &&\n      this.simulationAccumulator + 1e-10 >= COMBAT_SIMULATION_STEP; step++)"
+    },
+    {
+      "file": "src/scenes/BattleScene.ts",
+      "line": 307,
+      "kind": "ForOfStatement",
+      "header": "for (const event of this.battleManager?.drainEvents() ?? [])"
+    },
+    {
+      "file": "src/scenes/BattleScene.ts",
+      "line": 353,
+      "kind": "ForStatement",
+      "header": "for (let i = 0; i < 20; i++)"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 427,
+      "kind": "ForStatement",
+      "header": "for (let index = 0; index < 90; index++)"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 475,
+      "kind": "ForOfStatement",
+      "header": "for (const system of view.galaxy.systems)"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 554,
+      "kind": "ForOfStatement",
+      "header": "for (const [role, label, x] of rows)"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 955,
+      "kind": "ForOfStatement",
+      "header": "for (const [index, [role, caption]] of ([\n          ['industry', 'Промышленность'], ['research', 'Наука'], ['culture', 'Культура']\n        ] as const).entries())"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 1091,
+      "kind": "ForOfStatement",
+      "header": "for (const ship of frame.ships)"
+    },
+    {
+      "file": "src/scenes/ConquestScene.ts",
+      "line": 1096,
+      "kind": "ForOfStatement",
+      "header": "for (const event of frame.events)"
+    },
+    {
+      "file": "src/scenes/ShipTestScene.ts",
+      "line": 131,
+      "kind": "ForStatement",
+      "header": "for (let i = 0; i < 200; i++)"
+    },
+    {
+      "file": "src/ui/CampaignPanel.ts",
+      "line": 101,
+      "kind": "ForOfStatement",
+      "header": "for (const [from, to] of view.lanes)"
+    },
+    {
+      "file": "src/ui/CampaignPanel.ts",
+      "line": 105,
+      "kind": "ForOfStatement",
+      "header": "for (const system of view.systems)"
+    },
+    {
+      "file": "src/ui/ComponentBuilderPanel.ts",
+      "line": 114,
+      "kind": "ForOfStatement",
+      "header": "for (const [label, sign, percentage, x] of [\n        ['−10%', -1, 0.1, 280], ['−1%', -1, 0.01, 320], ['+1%', 1, 0.01, 360], ['+10%', 1, 0.1, 400]\n      ] as const)"
+    },
+    {
+      "file": "src/ui/ConquestWidgets.ts",
+      "line": 9,
+      "kind": "WhileStatement",
+      "header": "while (label.context.measureText(label.text).width > width && characters.length > 1)"
+    },
+    {
+      "file": "src/ui/FleetPanel.ts",
+      "line": 80,
+      "kind": "WhileStatement",
+      "header": "while (text.width > width && end > 0)"
+    },
+    {
+      "file": "src/ui/FleetTravelPanel.ts",
+      "line": 72,
+      "kind": "WhileStatement",
+      "header": "while (text.width > width && end > 0)"
+    },
+    {
+      "file": "src/ui/ProductionPanel.ts",
+      "line": 121,
+      "kind": "WhileStatement",
+      "header": "while (text.width > width && end > 0)"
+    },
+    {
+      "file": "src/ui/ShipBlueprint.ts",
+      "line": 21,
+      "kind": "ForOfStatement",
+      "header": "for (const point of hull.slots)"
+    },
+    {
+      "file": "src/ui/ShipBuilderPanel.ts",
+      "line": 208,
+      "kind": "ForOfStatement",
+      "header": "for (const [field, value] of Object.entries(component))"
+    },
+    {
+      "file": "src/ui/ShipBuilderPanel.ts",
+      "line": 210,
+      "kind": "ForOfStatement",
+      "header": "for (const [label, factor] of [['−1%', 0.99], ['+1%', 1.01], ['−10%', 0.9], ['+10%', 1.1]] as const)"
+    },
+    {
+      "file": "src/ui/ShipBuilderPanel.ts",
+      "line": 280,
+      "kind": "ForOfStatement",
+      "header": "for (const [label, delta, x] of [['←', -1, 14], ['→', 1, 90]] as const)"
+    },
+    {
+      "file": "src/ui/ShipBuilderPanel.ts",
+      "line": 301,
+      "kind": "ForOfStatement",
+      "header": "for (const jump of ['standard', 'extended', 'deep', 'galactic'] as const)"
+    },
+    {
+      "file": "src/ui/TravelPanel.ts",
+      "line": 71,
+      "kind": "WhileStatement",
+      "header": "while (text.width > width && end > 0)"
+    },
+    {
+      "file": "src/utils/ShipDesignManager.ts",
+      "line": 10,
+      "kind": "ForOfStatement",
+      "header": "for (const entries of [state.designs, state.components])"
+    },
+    {
+      "file": "src/utils/ShipDesignManager.ts",
+      "line": 81,
+      "kind": "ForOfStatement",
+      "header": "for (const design of incoming.designs)"
+    },
+    {
+      "file": "src/utils/ShipDesignManager.ts",
+      "line": 86,
+      "kind": "ForOfStatement",
+      "header": "for (const component of incoming.components)"
+    }
+  ]
+}

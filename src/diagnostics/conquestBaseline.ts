@@ -29,6 +29,7 @@ const inputSchema = z.object({
   kind: z.enum(['paid', 'symmetric-boundary', 'supply-boundary']),
   maxTurns: z.number().int().min(1).max(200)
 }).strict();
+export const baselineInputSchema = inputSchema;
 export type BaselineInput = z.infer<typeof inputSchema>;
 export type TurnMetric = { status: 'measured'; turn: number } |
   { status: 'timeout'; throughTurn: number } |
@@ -330,6 +331,12 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
   }
 }
 
+export function getBaselineWindowAdvance(before: Conquest, after: Conquest, id: string): 0 | 1 {
+  const advanced = after.session.turn - before.session.turn;
+  if (advanced === 1 || advanced === 0 && getConquestOutcome(after).status === 'completed') return advanced;
+  throw new Error(`Принятое окно baseline не продвинуло ход: ${id}`);
+}
+
 export function runBaseline(input: BaselineInput, resume?: { state: unknown; turnsExecuted: number },
   diagnostics?: BaselineDiagnostics): BaselineRun {
   const options = inputSchema.parse(input), start = createBaselineStart(options);
@@ -377,8 +384,9 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
     }
     result.commands.push(...records);
     if (result.status === 'executor-error') break;
+    const advanced = getBaselineWindowAdvance(state, candidate, options.id);
     for (const step of steps) measure(step.before, step.after, step.command, step.turnReceipt, result.metrics, result.battles);
-    result.turnsExecuted += candidate.session.turn - state.session.turn;
+    result.turnsExecuted += advanced;
     if (diagnostics) diagnostics.onWindow(traceWindow(state, candidate, records, result.turnsExecuted),
       diagnostics.checkpointAt === result.turnsExecuted && candidate.session.turn > state.session.turn
         ? encodeConquestSave(candidate) : undefined);

@@ -114,13 +114,12 @@ describe('AI fuel planning without imaginary refuelling', () => {
     expect(next.session.ships.find(ship => ship.id === colonizer.id)!.fuel).toBe(0);
     expect(plan(next, faction).kind).not.toBe('enqueueProduction');
     next = finishWorkTravel(next, colonizer.id);
-    const workers = plan(next, faction);
-    expect(workers.kind).toBe('assignWorkers');
-    next = apply(next, workers);
+    const workers = { ...next.colonyOutput.assignments[home] };
     expect(plan(next, faction)).toMatchObject({ kind: 'refuelShip', shipId: colonizer.id, systemId: home });
     const before = { ...next.session.treasuries[faction] };
     next = apply(next, plan(next, faction));
     expect(next.session.ships.find(ship => ship.id === colonizer.id)!.fuel).toBe(3000);
+    expect(next.colonyOutput.assignments[home]).toEqual(workers);
     expect(next.session.treasuries[faction]).toEqual({ credits: before.credits - 15, minerals: before.minerals - 6 });
   });
 

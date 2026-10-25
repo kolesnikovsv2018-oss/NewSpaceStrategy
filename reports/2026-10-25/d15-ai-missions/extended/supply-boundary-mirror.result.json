@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "supply-boundary-mirror",
+    "worldCount": 6,
+    "mapSeed": 41,
+    "campaignSeed": 101,
+    "mirrored": true,
+    "schedule": "current-ai",
+    "kind": "supply-boundary",
+    "maxTurns": 8
+  },
+  "status": "timeout",
+  "turnsExecuted": 8,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 8,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 18456,
+  "file": "supply-boundary-mirror.run.json.gz",
+  "sha256": "98c404603b4c2000702ee389584333080403c97df8172c1a97cf41a00f621548"
+}

@@ -5,7 +5,55 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 # Orion: быстрый вход в проект
 
-## Актуальная отправная точка Н14
+## Актуальная отправная точка Н14/Д16
+
+**Д16 выполнен2026-10-26:** [результаты и проверки после Н15–Н19](../../../reports/2026-10-26/02-ai-development-and-post-n15-n19.md).
+Исправлены две неэффективности: чистый прирост industry без головы FIFO
+не расходует AI-команду; colonizer предпочитает видимую свободную цель,
+затем новые unknown-направления, а не повторные ближайшие визиты.
+Known-unsurveyed остаётся fallback, type knowledge не означает свободного
+owner. Общий hasColonizationAccess у основания/AI сохраняет toxic unlock.
+Цены/200/24/48/4/8/100/no auto-refit/форматы прежние.3928/77,
+strict/build173 прошли;18 paid6 completed53–143, repeat/early/late равны.
+44 парных продолжения старых состояний160→200: idle assignments25739→0,
+основания101→321 (37 лучше/3 равно/4 меньше), все replay/repeat/save равны.
+Все44 всё ещё cutoff200, но в каждом наблюдается новая разведка/экспансия.
+Это не свежие large openings и не приёмка темпа/универсальной завершаемости.
+CLI: `yarn baseline:conquest --development --archive <case.run.json.gz> --output-dir <new-dir> --from-window 160`; replay настоящих команд/strict
+saves, не второй симулятор. SSR helper без WS/client optimizer.
+Actual Chromium40/256 на CSS1280×720/390×844: pointer paused-load/Resume/
+save/reload/full next oracle,1canvas/14px/44px/0pageerrors, storage restored.
+Не новый paid E2E/FPS/quota. Н15–Н19 не реализованы; следующий контроль
+в каждом этапе по отчёту Д16, итоговые темп/баланс при Н20, Н-граф прежний.
+
+**История Д15/Р2:** [контракт миссий](../../../docs/CAMPAIGN_AI.md),
+[основная матрица](../../../reports/2026-10-25/d15-ai-missions/baseline/summary.json).
+18 paid6 завершились75–113:0 timeout/0 executor-error, сохранены4 контроля,
+repeat/early4/late60 равны. Цель фиксированной выборки выполнена, не
+обещана завершаемость любого симметричного save. Форматы/боевые числа
+прежние. Чистые миссии из own-view: защита наблюдаемой своей колонии,
+покрытие альтернатив уже отправленными ships, ограниченная наступательная
+сборка разнесённых отрядов у своего наиболее многочисленного отряда.
+Ожидание только фактических own combat transit; после arrival продолжается
+наступление, последняя цель не задерживается ради сборки. Колонизатор
+покрывает разведку, но не заменяет боевую поддержку. Группы используют
+createFleet/sendFleet и общий min speed/jump/индивидуальные баки.
+Полезная группа не расформировывается ради одиночной логики; исключения —
+несовместимость состава, избыточная концентрация либо отсутствие общего
+возвращения при законном пути участника. Derived canCreateFleet проверяет
+лимиты20/ID без выдачи глобального счётчика. Refit-lock/depleted ammo
+исключаются из боевого состава. Р3 не понадобился;4/8/100 и no auto-refit
+прежние.26 новых миссионных регрессий включают7 реальных Д14 saves;
+3912/75, strict/build173 прошли. Actual Chromium CSS1280×720/390×844:
+2 диагностических paid checkpoint, pointer load/Resume/save, настоящий
+reload/full next-state oracle,1canvas/14px/44px/0pageerrors; storage
+восстановлен, временные сервер/браузер остановлены. Это не новый paid E2E,
+не FPS/quota/physical touch. Нижние Д14/Н14 результаты — история приёмок.
+Полная58:18 completed/40 timeout (36 paid40/256 до200 и4 boundary до8),
+0 executor-error. Дополнительные12:4 paid6 completed85–139/8 large
+timeout200; bounded40/25616 окон повторены. Все72 repeat/save-checks
+прошли; тогда причины44 large timeout ещё не разбирались. Результат Д16
+выше не является основанием молча менять баланс/Р3. Н15 не начинался.
 
 **Н14 принят2026-10-25:** [travel-контракт](../../../docs/CAMPAIGN_TRAVEL.md),
 [аудит17](../../../reports/2026-10-25/17-n14-readiness.md),
@@ -45,21 +93,24 @@ AI-red paused/load/Resume oracle, free library5 и мирный paid save8/reloa
 в настоящем Chromium, pointer AI/Resume/save/reload/full next oracle,
 CSS1280×720/390×844,1canvas/14px/44px; это не новое paid E2E.
 Полные58/quota/FPS/physical touch не измерены.
-Д13 разобрал14 timeout: [доказательства23](../../../reports/2026-10-25/23-d13-timeout-analysis.md).
-Игровой AI/баланс не исправлялись. Подтверждён фильтр, ошибочно исключающий
-known, но unsurveyed цель; visible hostile colony без среды тоже
-отвергается по habitable. Ни одно из этих состояний не означает barren.
-Current/direct имеет20-оконную операционную проекцию при росте экономики;
-зеркала — продолжающуюся войну/ремонт, не доказанный полный цикл.
-15 однокомандных контрфактов:7 исходных таймаутов завершились к105/106;
-это вмешательства, не18/18 новой policy. Основные18 всё ещё4/14.
+Д13 исторически разобрал14 timeout: [доказательства23](../../../reports/2026-10-25/23-d13-timeout-analysis.md).
+**Д14/Р1 исправлен:** [отчёт24](../../../reports/2026-10-25/24-ai-recon-and-bounds.md).
+Unknown отвергается только по подтверждённому barren, а не known без survey;
+visible hostile colony не требует изучения среды для военной атаки.
+Основание нейтрального мира и real fuel/return не ослаблены; own-only прежний.
+Новые18 paid6:11 completed52–80/7 timeout200,4 контроля сохранены.
+Тогда оставшиеся7 имели6/6 surveys у обеих сторон,0 боёв после100 и периоды
+военной проекции20/22/24 с ростом экономики. Этот остаток исправлен Д15 выше:
+[план устранения остатка](../../../plans/ai-timeout-remediation-2026-10-25.md).
 Opt-in `yarn baseline:conquest --trace-timeouts --output-dir <new-dir>`
-даёт18 paid6, repeat/early4/late60, gzip trace1 и fingerprint runtime.
-`conquestBaselineTrace.test.ts` проверяет отделённость/ошибки/границы,
-в том числе null population у barren.3863/73, strict/build173.
-Далее отдельное исправление разведки по рекомендациям23 и повтор матрицы,
-потом решение о миссиях/Н15; Н15 не начинался. Формальные Н-зависимости
-прежние. Нижние версии/«далее» — история своих приёмок.
+даёт18 paid6, repeat/early4/late60, для короткой партии late до остановки.
+Ongoing-окно без turn+1 явно отклоняется; терминальный colonize без end
+разрешён. BattleScene catch-up≤2400 steps/update, сверх120 sim seconds
+отбрасываются с warning; replay игнорирует invalid delta/исчезнувшие frames.
+3886/74, strict/build173,24 выбранных repeat/checkpoints и настоящий
+browser diagnostic catch-up/replay/6 paid checkpoint oracle прошли.
+Это не новый paid E2E/FPS/full58/large200. Н15 не начинался; формальные
+Н-зависимости прежние. Нижние версии/«далее» — история своих приёмок.
 
 ## История отправной точки Н13
 

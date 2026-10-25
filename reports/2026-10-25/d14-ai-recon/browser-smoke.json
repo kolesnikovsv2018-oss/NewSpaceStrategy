@@ -1,0 +1,50 @@
+{
+  "format": "orion-browser-catchup-check",
+  "schemaVersion": 1,
+  "scenario": "Настоящие Phaser BattleScene, BattleManager и два безоружных DesignedShip; изолированная диагностика, не paid E2E",
+  "input": {
+    "delta": "Number.MAX_VALUE",
+    "simulationSpeed": 4
+  },
+  "result": {
+    "firstMs": 120000,
+    "afterOrdinaryMs": 124000,
+    "noBacklog": true,
+    "hudLive": true,
+    "accumulatorFinite": true,
+    "uiFinite": true,
+    "survivors": 2,
+    "battleEnded": false,
+    "canvasCount": 1,
+    "storageUnchanged": true,
+    "unhandledPageErrors": 0
+  },
+  "expectedConsoleWarning": {
+    "message": "Избыточный догоняющий расчёт боя ограничен",
+    "maxSeconds": 120
+  },
+  "replay": {
+    "realBattleFrames": 121,
+    "invalidIgnored": true,
+    "ordinarySeconds": 0.5,
+    "boundedSeconds": 120,
+    "stableAtEnd": true,
+    "replayCleared": true,
+    "campaignUnchanged": true,
+    "canvasCount": 1,
+    "storageUnchanged": true,
+    "unhandledPageErrors": 0
+  },
+  "paidCheckpointBrowserOracle": {
+    "mapSeeds": [41, 12345, 98765],
+    "schedule": "research-first",
+    "completedWindowDirect": 62,
+    "completedWindowMirror": 61,
+    "cases": 6,
+    "roundTrip": "passed",
+    "inputUnchanged": true,
+    "unhandledPageErrors": 0
+  },
+  "cleanup": "Возврат в MenuScene без изменения callback движка; временный HTTP-сервер остановлен после проверок",
+  "limitations": "Не измерены FPS/layout/touch/quota; работа с paid checkpoints не является новым paid E2E"
+}

@@ -40,11 +40,13 @@ class Node extends EventEmitter {
   setDepth() { return this; }
   setWordWrapWidth() { return this; }
   setStrokeStyle() { return this; }
+  clear() { return this; }
   fillStyle() { return this; }
   fillRect() { return this; }
   fillRoundedRect() { return this; }
   strokeRoundedRect() { return this; }
   fillCircle() { return this; }
+  fillTriangle() { return this; }
   lineStyle() { return this; }
   lineBetween() { return this; }
 }
@@ -673,6 +675,34 @@ it('draws the replay backdrop once and only clears the dynamic layer per frame',
   expect(graphics[0].fillRect).toHaveBeenCalledWith(0, 0, 1280, 720);
   expect(graphics[0].clear).not.toHaveBeenCalled();
   expect(graphics[1].clear).toHaveBeenCalledTimes(2);
+  closeShipyardModal(test.scene);
+  test.events.emit('shutdown');
+});
+
+it('bounds replay time, ignores invalid deltas and tolerates disappearing frames without changing the campaign', () => {
+  const test = fixture(), before = structuredClone(test.owner.state);
+  const owner = test.scene as unknown as {
+    frames: { seconds: number; ships: { id: number; factionId: 'blue'; x: number; y: number; hull: number }[]; events: [] }[];
+    replay?: { seconds: number; paused: boolean };
+    openReplay(): void;
+  };
+  owner.frames = [0, 1].map(seconds => ({ seconds,
+    ships: [{ id: 1, factionId: 'blue', x: 200, y: 200, hull: 100 }], events: [] }));
+  owner.openReplay();
+  for (const delta of [NaN, Infinity, -Infinity, -1]) {
+    test.scene.update(0, delta);
+    expect(owner.replay?.seconds).toBe(0);
+  }
+  test.scene.update(0, 62.5);
+  expect(owner.replay?.seconds).toBe(0.5);
+  test.scene.update(0, Number.MAX_VALUE);
+  expect(owner.replay?.seconds).toBe(1);
+  test.scene.update(0, 16);
+  expect(owner.replay?.seconds).toBe(1);
+  expect(test.owner.state).toEqual(before);
+  owner.frames = [];
+  expect(() => test.scene.update(0, 16)).not.toThrow();
+  expect(owner.replay).toBeUndefined();
   closeShipyardModal(test.scene);
   test.events.emit('shutdown');
 });

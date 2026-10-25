@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { componentSchema, createComponentWithId, hullIdSchema, designSchema, validateDesign, HULLS,
   type ComponentDefinition, type ComponentKind, type ShipDesign } from './shipDesign';
 import { createDefaultRulesSnapshot, COLONY_EFFECT_TARGETS, type RulesEffect, type RulesSnapshot } from './campaignRules';
+import type { WorldType } from './worldEnvironment';
 
 export const researchIdSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
 const kindSchema = z.enum(['engine', 'beam', 'projectile', 'shield', 'armor', 'mining', 'repair', 'scanner', 'cargoExpansion']);
@@ -173,6 +174,11 @@ export function isResearchStateValid(state: ResearchState, tree: ResearchTree): 
   return Object.entries(state.progress).every(([id, progress]) =>
     available(id) && progress < tree.nodes.find(node => node.id === id)!.researchCost) &&
     (state.activeId === null || (available(state.activeId) && Object.prototype.hasOwnProperty.call(state.progress, state.activeId)));
+}
+
+export function hasColonizationAccess(worldType: WorldType, state: ResearchState, tree: ResearchTree): boolean {
+  return worldType === 'habitable' || worldType === 'toxic' && tree.nodes.some(node => state.completed.includes(node.id) &&
+    node.effects.some(effect => effect.kind === 'colonization-unlock' && effect.worldType === worldType));
 }
 
 export function getResearchAccess(state: ResearchState, tree: ResearchTree): ResearchTree['initial'] {

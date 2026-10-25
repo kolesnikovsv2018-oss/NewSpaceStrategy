@@ -1,0 +1,32 @@
+{
+  "input": {
+    "id": "6-98765-production-first-mirror",
+    "mapSeed": 98765,
+    "campaignSeed": 43210,
+    "worldCount": 6,
+    "mirrored": true,
+    "schedule": "production-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 143,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "traceSha256": "24266564bee2ee3ee4d6bc9fc5a5c88556f6a982a73c2f119994aac58126a879",
+  "checkpointSha256": "fe2c430d32ea4a9acf0969bc70dcea9cc235efebfc0c5be3c85be798bbe35bfc",
+  "finalStateSha256": "f9fe39fb6c187aca29fc3bea54c8d744b22effbd30f11b48c337a9f5e7e365ca",
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "lateRoundTrip": "passed",
+    "checkpointAt": 60,
+    "provenance": "missing case freshly run with verifyBaseline and late AI continuation",
+    "recoveredTraceReplay": "passed",
+    "repeatedLateAiAfterDeadline": "passed"
+  }
+}

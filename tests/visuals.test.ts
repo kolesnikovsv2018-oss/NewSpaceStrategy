@@ -303,6 +303,35 @@ describe('simulation/view boundary', () => {
     expect(statsText.setText).toHaveBeenCalledOnce();
   });
 
+  it.each([1, 4])('bounds catch-up and keeps the HUD live after an extreme finite frame at %sx', speed => {
+    const scene = new BattleScene();
+    let budget = COMBAT_SIMULATION_MAX_STEPS;
+    const update = vi.fn(() => {
+      if (update.mock.calls.length > budget) throw new Error('unbounded-catch-up-test-guard');
+    });
+    const stop = vi.fn(), updateUI = vi.fn();
+    Object.assign(scene, {
+      isPaused: false, simulationAccumulator: 0, simulationSpeed: speed, uiAccumulator: 0, battleEnded: false,
+      trialDesign: undefined, battleManager: { update, stop, drainEvents: () => [] },
+      shipSprites: new Map(), updateUI
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(() => scene.update(0, Number.MAX_VALUE)).not.toThrow();
+      expect(update).toHaveBeenCalledTimes(COMBAT_SIMULATION_MAX_STEPS);
+      expect(updateUI).toHaveBeenCalledOnce();
+      scene.update(1, 0);
+      expect(update).toHaveBeenCalledTimes(COMBAT_SIMULATION_MAX_STEPS);
+      const ordinarySteps = 2 * speed;
+      budget += ordinarySteps;
+      scene.update(2, 100);
+      expect(update).toHaveBeenCalledTimes(COMBAT_SIMULATION_MAX_STEPS + ordinarySteps);
+      expect(updateUI).toHaveBeenCalledTimes(2);
+      expect(stop).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledExactlyOnceWith('Избыточный догоняющий расчёт боя ограничен', { maxSeconds: 120 });
+    } finally { warn.mockRestore(); }
+  });
+
   it('shutdown clears retained state and removes only its own keyboard handlers', () => {
     const scene = new BattleScene();
     const off = vi.fn();

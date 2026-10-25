@@ -1,0 +1,551 @@
+{
+  "format": "orion-ai-development-comparison",
+  "schemaVersion": 1,
+  "input": {
+    "id": "256-98765-research-first-direct",
+    "worldCount": 256,
+    "mapSeed": 98765,
+    "campaignSeed": 43210,
+    "mirrored": false,
+    "schedule": "research-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "source": {
+    "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+    "files": [
+      {
+        "path": "src/cli/conquestBaseline.ts",
+        "sha256": "68cbed1c961af08f0b55185c388efd761f2c9f9159a912ad02df616be4f2143e"
+      },
+      {
+        "path": "src/cli/conquestDevelopment.ts",
+        "sha256": "4460e06a312ff0b168983f469ae5d9e0205cf9cdfe560371f5392846cb1b984e"
+      },
+      {
+        "path": "src/cli/conquestTimeouts.ts",
+        "sha256": "79aa4c9b373db246fee0322ad6846a96a405afe9ccf57d08a35f2ee7bdba0772"
+      },
+      {
+        "path": "src/cli/generateGalaxy.ts",
+        "sha256": "ac2585cba4a5d0bab5ffd4be15bf03239194850c045e2120b223584f0cc26a33"
+      },
+      {
+        "path": "src/cli/runConquestBaseline.mjs",
+        "sha256": "554db6f517523ad3a5d6851fbdeb095f8ace5c1a0986fbe9011421603f7daee3"
+      },
+      {
+        "path": "src/diagnostics/conquestBaseline.ts",
+        "sha256": "6c0f489ccd7417009d067bd96b23ae62986004da0ec82216f5aa2e9fdfd2d577"
+      },
+      {
+        "path": "src/diagnostics/conquestDevelopment.ts",
+        "sha256": "e54d8e5af1ffafb9b145e3756874869608431499094a8b629784869484f138cb"
+      },
+      {
+        "path": "src/domain/campaign.ts",
+        "sha256": "fd7011e173a3613d51ae48861b0b3d67bff1237b76b57f4dcd145ef44be2d4ec"
+      },
+      {
+        "path": "src/domain/campaignAiExecutor.ts",
+        "sha256": "c89c38be6182ee3194a5bb651dd7c2a8e2597259ab7025161e2767926765e53a"
+      },
+      {
+        "path": "src/domain/campaignAiPlanner.ts",
+        "sha256": "511c5cec56aabe2b80124f8b4ec7f20b7cd5d1df3db91a0e002ae7a031c251ff"
+      },
+      {
+        "path": "src/domain/campaignColonyEffects.ts",
+        "sha256": "011e12d46bfdad04324207bd047e3c9ca80e0e3dfe958e6327fbf79dd00dcabe"
+      },
+      {
+        "path": "src/domain/campaignControl.ts",
+        "sha256": "e354228a5951406003d6b2911f94e5d1032f95552d0489f4c93198cbab587865"
+      },
+      {
+        "path": "src/domain/campaignEconomy.ts",
+        "sha256": "837d67cca8dcd44acd26dd0bf782996013b93a4077ff9fb9c46c86700407a5d4"
+      },
+      {
+        "path": "src/domain/campaignFleets.ts",
+        "sha256": "41b5ef4d9afa296ebbc4d79e24eddd290850f4e0266916937a1246e0490040cc"
+      },
+      {
+        "path": "src/domain/campaignMatch.ts",
+        "sha256": "46d05871044f9df9308cb5ea5681df53f2d76bbf1c9ceab54163fe7768ded4bb"
+      },
+      {
+        "path": "src/domain/campaignMatchSave.ts",
+        "sha256": "86e3f3832933ddaab77a01192610fb1405909ca2244817a06efaae4ad52d40c3"
+      },
+      {
+        "path": "src/domain/campaignOperations.ts",
+        "sha256": "ed2188119de10e8c28b755668bbd8907c2f8c2b17e276abc418ce967b06270de"
+      },
+      {
+        "path": "src/domain/campaignOutput.ts",
+        "sha256": "5cf6708cb21089820c306697d346d326dc65a2ad1adaa2e1052bcec57d630d30"
+      },
+      {
+        "path": "src/domain/campaignPopulation.ts",
+        "sha256": "73a8fd23a6eb57db8a18ae398aca147b745473b7c2b609d595c5eccca988504f"
+      },
+      {
+        "path": "src/domain/campaignProjects.ts",
+        "sha256": "d845b6656f76cb1f91729697e26910efab328b5bdada9ee11e0d6e3798fe59e6"
+      },
+      {
+        "path": "src/domain/campaignResearch.ts",
+        "sha256": "62209b0380e72b066b31766149c0c2fdf6d6884bbd505d4ba2502d221af03802"
+      },
+      {
+        "path": "src/domain/campaignRules.ts",
+        "sha256": "3e3937e8f141cf7bcff6954774504bb82b2c7bf53e94e0072444c23043c962d2"
+      },
+      {
+        "path": "src/domain/campaignRun.ts",
+        "sha256": "2ca4e1ac97629f37619910a6512450273cf40fb43e1d4d7eb8fa48b196270484"
+      },
+      {
+        "path": "src/domain/campaignRunSave.ts",
+        "sha256": "edb888d1f702b60ac1e148d0cf4f0f3c86bdc85bf49926d98faff09b79d8a85b"
+      },
+      {
+        "path": "src/domain/campaignSave.ts",
+        "sha256": "7e806c1dd99d3ec7b3f64adb38e251ce54d70f792b0066aee6f21a0c68cad208"
+      },
+      {
+        "path": "src/domain/campaignSession.ts",
+        "sha256": "73f785fd034c0156ed21fe9a94596df9784946a9bc7e8daf93202c5fe98b2ada"
+      },
+      {
+        "path": "src/domain/campaignShips.ts",
+        "sha256": "ef6ceafcb48fbafd67fedb3cb4b7d5e447b0b7fc7bcc23e5c80a66868ee1a552"
+      },
+      {
+        "path": "src/domain/campaignTravel.ts",
+        "sha256": "f61aef44a5707996817eae471deb793176334d271b5f3760d442e6eecdf6439d"
+      },
+      {
+        "path": "src/domain/campaignUpkeep.ts",
+        "sha256": "63030c001cd06c98f02be8cd30f76aaddb952a9dd302740c02f43dbc7c78b116"
+      },
+      {
+        "path": "src/domain/cargo.ts",
+        "sha256": "da76edefba7edef96f41a909e8c080f21745e01b0877fb8da5bcf686266ec600"
+      },
+      {
+        "path": "src/domain/civilianPresets.ts",
+        "sha256": "b543a5a29ffb6d1b7b902c5fda8381d2caf91f4a7c69e272004c8c5725a8470a"
+      },
+      {
+        "path": "src/domain/combatPresets.ts",
+        "sha256": "6475a6da04f3bfc1ec516acc1a23aa82f546d6964f696414c26743151b4bae3f"
+      },
+      {
+        "path": "src/domain/combatSeries.ts",
+        "sha256": "0d0d1a9c59d2e0a2bec8bee65ab6e5cb57be9c64207d78a2b14f6f1eaed71ed7"
+      },
+      {
+        "path": "src/domain/combatSimulation.ts",
+        "sha256": "8b2df1420755f66871898f76cf5a14f1906b8515bd4b05e9458e98d46f66f2c3"
+      },
+      {
+        "path": "src/domain/conquest.ts",
+        "sha256": "674ee24431a1ef2f315372b7dd7e3998e1cdf86b7cf24afad2fd6fad94aaff20"
+      },
+      {
+        "path": "src/domain/conquestAi.ts",
+        "sha256": "2381e964bf677e8f279ea7e797c2e9d73295c381df989031d20cd95ea04f12d4"
+      },
+      {
+        "path": "src/domain/conquestBattle.ts",
+        "sha256": "1307691f55d41663fa70efc2404e96ee486e3936e2e99d63e5826ded05fbefc5"
+      },
+      {
+        "path": "src/domain/flightEstimate.ts",
+        "sha256": "449d9c1f9244198e930d55990e0062badce9bf9a3e858da7f7a795b01bfe72b5"
+      },
+      {
+        "path": "src/domain/galaxyGenerator.ts",
+        "sha256": "99c2ac7fd1e48ebae275dff3670d10915d6e92ab972f659c2425fcc520b3f5c0"
+      },
+      {
+        "path": "src/domain/galaxyMap.ts",
+        "sha256": "ccb040e26d9996a1ff1175e2b4b23ea0dad43013bf28c52e65320c78afd40bd6"
+      },
+      {
+        "path": "src/domain/production.ts",
+        "sha256": "3b6283ff948101dea48b0d5a60d617d0a1fd3c2e6e77bcc14301a011526a2e8e"
+      },
+      {
+        "path": "src/domain/runtimeNumbers.ts",
+        "sha256": "ddf7b75a0534ff6b566c18eeb46088eff760b6242df0c351a4eb3da91f048e88"
+      },
+      {
+        "path": "src/domain/seededRandom.ts",
+        "sha256": "d412bd38f3245a5bc8c6bda61e796010d534eac4adb92fc33b7c92bc784bb846"
+      },
+      {
+        "path": "src/domain/shipDesign.ts",
+        "sha256": "b901b5b7827b50ed642a51e484765f38af5859a5c90c98d34a1af7d94670bf26"
+      },
+      {
+        "path": "src/domain/shipDraft.ts",
+        "sha256": "b7083f5ec06d535ccc8ba95dda789b32640f5f79c487f7b0a9ef09b66f0c8744"
+      },
+      {
+        "path": "src/domain/shipState.ts",
+        "sha256": "c8851886d8324cf9d0c9fdf9ea82f609a10f8770738160d492c0fce8f2827ea5"
+      },
+      {
+        "path": "src/domain/worldEnvironment.ts",
+        "sha256": "15718c32a79ce42092682aec1248dc96f057384a20ba007cba681471b90a26d4"
+      },
+      {
+        "path": "src/entities/BattleManager.ts",
+        "sha256": "341fdcc7e40259173ce4cb13c958a5c44139e66deccc82fc81c5630ac11cb33d"
+      },
+      {
+        "path": "src/entities/CombatShip.ts",
+        "sha256": "b7475aa216c0edc6bf2a8771f384dbb1de0b613049c9f2631d10b354ec6fbcc8"
+      },
+      {
+        "path": "src/entities/CombatShipFactory.ts",
+        "sha256": "50aac8acc2cdf71ab617e98c82d4a5e1363b76826fba86fc908b3e97f6265b47"
+      },
+      {
+        "path": "src/entities/DesignedShip.ts",
+        "sha256": "a3f3bd78e831fbca27698b81ef93e37bd6d3ca10d6a4d866d5360f1a6967c17e"
+      },
+      {
+        "path": "src/entities/GameObject.ts",
+        "sha256": "77b70ff660c6a90eb5de0df902f7c048826bf7411bf9ff290a2837c5130fdf89"
+      },
+      {
+        "path": "src/entities/Ship.ts",
+        "sha256": "52a9cde34b2fdca32d3b22c0ea7db6a9ed1f5dcf8c7ceb59d5ccef886e8de24e"
+      },
+      {
+        "path": "src/entities/ShipComponentFactory.ts",
+        "sha256": "be25cebb26fcf983a6b15ad999701f44be0550699e44cebd2e5852ce8643bb1b"
+      },
+      {
+        "path": "src/entities/ShipFactory.ts",
+        "sha256": "4e5de08c2b64ba6cee468980a5b8d8ff7326aef0a7aac187761348d6a7a0629e"
+      },
+      {
+        "path": "src/entities/ShipRuntime.ts",
+        "sha256": "0db7910238b3f43cce01f2170595a7973e43114737a92306f8ddc74825c104f0"
+      },
+      {
+        "path": "src/entities/TacticalShip.ts",
+        "sha256": "52a4d33d81c6163cd854c27c02204e7edaa487dcc09abf05a6ee3b95abcc0a11"
+      },
+      {
+        "path": "src/entities/interfaces/CombatSystem.ts",
+        "sha256": "9ff76ecb8b179c839d4308def84722bba091b5141516f268533abf8ebe78f5ef"
+      },
+      {
+        "path": "src/entities/interfaces/FlightShip.ts",
+        "sha256": "e215a82de6f5acfaa447370f3ef8c3528b4f4ecab1434672b349804b375ed4d2"
+      },
+      {
+        "path": "src/entities/interfaces/ShipComponents.ts",
+        "sha256": "249d7c5be681a3271c9077cd7f79ca4292be1110c653f5c94ebc716f95bffbb0"
+      },
+      {
+        "path": "src/entities/interfaces/ShipView.ts",
+        "sha256": "5e7206e7e56e07a0cbd9856f348ad5e4e11576b5292855b3947d249e10470b19"
+      },
+      {
+        "path": "src/entities/visuals/ShipSprite.ts",
+        "sha256": "1a271d2463c0487dea02b3216c21547e81c6ad7b5fae2cedb82ced513a0b3f9e"
+      },
+      {
+        "path": "src/legacy/DesignCompatibilityViews.ts",
+        "sha256": "86ecd7744047ff46e99c5293ed309c1b3c4a8edded7f285bc286533a9bba6a8e"
+      },
+      {
+        "path": "src/legacy/LegacyShipComponentFactory.ts",
+        "sha256": "e4b155faa545bae1d134de6849c64bac85b09bb6cef61ece36802aa9d0c943b2"
+      },
+      {
+        "path": "src/legacy/LegacyShipFactory.ts",
+        "sha256": "5adf65fcb66715009f1a0414fbfd2c695c3300c04309280cb0c67fcded08974c"
+      },
+      {
+        "path": "src/legacy/cargoCompatibility.ts",
+        "sha256": "6091a5ba1b40d58098b9febff0452c252f114d949382aec8400467c1f59d791c"
+      },
+      {
+        "path": "src/legacy/legacyShipConfig.ts",
+        "sha256": "8ff13774dd6227cf3e98b72cfdb3286662befd10366891ada8560244d2ad34d4"
+      },
+      {
+        "path": "src/main.ts",
+        "sha256": "2ce37bcd288f7addf588d281e91fea1113d67c24dde791cdb7f4643894fe1dd0"
+      },
+      {
+        "path": "src/scenes/BattleScene.ts",
+        "sha256": "bef79f5cef1bd3514b9cecfba1bc337ec0987747b6edd24dbcb515a2030a5fd5"
+      },
+      {
+        "path": "src/scenes/ConquestScene.ts",
+        "sha256": "49177be0444d864d354af8064ffb5aeb8cf8001e1f61b1b530cbbba6c8d0488a"
+      },
+      {
+        "path": "src/scenes/LoadingScene.ts",
+        "sha256": "8b63081a48464920223b5c5cfa209499a5789ccef11bcb74c5385217f918c39a"
+      },
+      {
+        "path": "src/scenes/MainScene.ts",
+        "sha256": "58463b93eb6f1845c85e62562f8a0c05a46198a68d568f76d23f48223627b544"
+      },
+      {
+        "path": "src/scenes/MenuScene.ts",
+        "sha256": "33331fc15648f298c9837e684b23b1355633564c0fbe864d87391b73671057a7"
+      },
+      {
+        "path": "src/scenes/ShipTestScene.ts",
+        "sha256": "4a33cb956f66e48b5b836f053d2d6684aba39c30af74748f1c3e6fec8415c908"
+      },
+      {
+        "path": "src/scenes/ShipyardScene.ts",
+        "sha256": "d0ffcbaaf8fec845a3e44273b3ffe20f9f9493dbdf1ce6ee584ccabd934eb0b8"
+      },
+      {
+        "path": "src/ui/BudgetPanel.ts",
+        "sha256": "22892b500cfc093b6e7bc6775db2dcdb4b36f205a2062c089ebf7b17669bf00b"
+      },
+      {
+        "path": "src/ui/CampaignPanel.ts",
+        "sha256": "0a5ccc9f2087e036e61905376a3e2bbca64235e038449be21cab29ca7c3c9214"
+      },
+      {
+        "path": "src/ui/CampaignProjectPanel.ts",
+        "sha256": "5b62df541e3c271ab55c3fccb928a21b8ecd7afd3bd48bd621a0c75b39b6670f"
+      },
+      {
+        "path": "src/ui/CampaignViewport.ts",
+        "sha256": "c3b4cf2e6ef1ff4a1aca3b8c220bbc70e58ab9005803b8af58eb9ed3f79bc00b"
+      },
+      {
+        "path": "src/ui/ComponentBuilderPanel.ts",
+        "sha256": "bbd17953273245a3d7f65cc8db10a1c62ba86990cd8240b8b0126b8b4341b785"
+      },
+      {
+        "path": "src/ui/ConquestWidgets.ts",
+        "sha256": "7ce944252e3b19427bba0d44c85dff61df3d466e4a64092d38a11b458c28f470"
+      },
+      {
+        "path": "src/ui/FleetPanel.ts",
+        "sha256": "30e526bb53378203aad599051c61f5de86eb1ee8d2812c6fa81969de9a3b95c0"
+      },
+      {
+        "path": "src/ui/FleetTravelPanel.ts",
+        "sha256": "904ef7fa72e46f7fea3b4d6c5fcbf4238f78fe3715d95ed64ccd364cbaf31afb"
+      },
+      {
+        "path": "src/ui/ProductionPanel.ts",
+        "sha256": "70355817bbb92e267ace11eac430551dac3ac841441f56bcd4df5ed3367a65e4"
+      },
+      {
+        "path": "src/ui/ShipBlueprint.ts",
+        "sha256": "e9e67348c466b65a6f54601c2566426ae4dfa56e12df48c6936552928d4a0ba8"
+      },
+      {
+        "path": "src/ui/ShipBuilderPanel.ts",
+        "sha256": "e0fbc3a3be0c82da7cebbe3ee19967a64c6bcaeb241c71bcbaa367fdb595e8f6"
+      },
+      {
+        "path": "src/ui/ShipInfoPanel.ts",
+        "sha256": "5317521658d63af0fd492a8854e4dacd876b52ddebbc7e708adc5bad1c2d3161"
+      },
+      {
+        "path": "src/ui/ShipyardModal.ts",
+        "sha256": "bb76cc690b8f07722bfc98c355075b13014a9ca4df1f73b291f5685a210a68d6"
+      },
+      {
+        "path": "src/ui/ShipyardWidgets.ts",
+        "sha256": "27161b3ce7e5fc4c4de5c56d3d0bb1b49ebc3c9828449718072b0a46779078a7"
+      },
+      {
+        "path": "src/ui/TravelPanel.ts",
+        "sha256": "9d13d9719d9511f7cdfc2e29edf029aabdf8f17394a3c59c7517f64f95233a9a"
+      },
+      {
+        "path": "src/utils/BrowserGalaxyGenerator.ts",
+        "sha256": "505aee70f2ed4ee6238dd895a09dcbca0d2cf076c0bb400daa24e53525ed0857"
+      },
+      {
+        "path": "src/utils/CampaignMatchSaveManager.ts",
+        "sha256": "909450bc73281a5df8378184161c04fe17b8b69d6dfe3d3a0cf21a685b8aa3a2"
+      },
+      {
+        "path": "src/utils/CampaignRunSaveManager.ts",
+        "sha256": "f3463d505f5d3781171f10f03c1c9fa016e99359e7e47dd8aec9610314195e9f"
+      },
+      {
+        "path": "src/utils/CampaignSaveManager.ts",
+        "sha256": "bb8cefc58c35a9f6aa70795b978a277379891c0dc5e195fd464a563af4cd4bca"
+      },
+      {
+        "path": "src/utils/ConquestSaveManager.ts",
+        "sha256": "91a545715e310a405d80dc8fe330fa1cba816c9c3e601ae98c83f48fb9933e10"
+      },
+      {
+        "path": "src/utils/GalaxyMapRepository.ts",
+        "sha256": "8820faed05b2cedadc41e1f613e8741ac37e83baed09d4a96c7c37d6072c91d1"
+      },
+      {
+        "path": "src/utils/ProductionCatalog.ts",
+        "sha256": "80dff0a411f09245f8f54afd75bcd5cbd1ce920d795cc60e5ee5d3a69f9286c1"
+      },
+      {
+        "path": "src/utils/ResearchTreeYaml.ts",
+        "sha256": "47ee8a63e17e71d25bea1de5a5044704745421469923cf97c30c3661b5f2f41a"
+      },
+      {
+        "path": "src/utils/ShipDesignManager.ts",
+        "sha256": "d246f0a2e639b508812e443f5f8ca7a66397393d6021cdc9558fbd46842a714c"
+      },
+      {
+        "path": "yarn.lock",
+        "sha256": "023de5de40d8340ec75f428f2b7f3b8567c7d514384559d44fdf176067b56cf1"
+      }
+    ]
+  },
+  "archivedSha256": "40aab6ba7dc14b11e8ad69ea2e5cd92b508d37ebb80aaf99934e8223e921881a",
+  "fromWindow": 160,
+  "throughWindow": 200,
+  "verification": {
+    "archivedReplay": "passed",
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "middleRoundTrip": "passed"
+  },
+  "observer": "full-state-diagnostic-only",
+  "before": {
+    "turn": 161,
+    "outcome": {
+      "status": "ongoing"
+    },
+    "victory": "all-planets-v1",
+    "totalGoals": 181,
+    "neutralGoals": 150,
+    "sides": [
+      {
+        "side": "blue",
+        "colonies": 16,
+        "surveys": 29,
+        "research": 21,
+        "ships": 5
+      },
+      {
+        "side": "red",
+        "colonies": 15,
+        "surveys": 36,
+        "research": 21,
+        "ships": 8
+      }
+    ]
+  },
+  "archived": {
+    "position": {
+      "turn": 201,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "victory": "all-planets-v1",
+      "totalGoals": 181,
+      "neutralGoals": 145,
+      "sides": [
+        {
+          "side": "blue",
+          "colonies": 19,
+          "surveys": 38,
+          "research": 21,
+          "ships": 5
+        },
+        {
+          "side": "red",
+          "colonies": 17,
+          "surveys": 38,
+          "research": 21,
+          "ships": 9
+        }
+      ]
+    },
+    "activity": {
+      "windows": 40,
+      "ownEnds": {
+        "blue": 20,
+        "red": 20
+      },
+      "commands": 956,
+      "idleIndustryAssignments": 687,
+      "fullBudgetWindows": 36,
+      "ownershipChanges": 5,
+      "commandKinds": {
+        "assignWorkers": 692,
+        "survey": 11,
+        "sendShip": 175,
+        "colonize": 5,
+        "enqueueProduction": 6,
+        "endTurn": 40,
+        "deployProduction": 6,
+        "refuelShip": 21
+      }
+    }
+  },
+  "current": {
+    "status": "timeout",
+    "position": {
+      "turn": 201,
+      "outcome": {
+        "status": "ongoing"
+      },
+      "victory": "all-planets-v1",
+      "totalGoals": 181,
+      "neutralGoals": 139,
+      "sides": [
+        {
+          "side": "blue",
+          "colonies": 22,
+          "surveys": 38,
+          "research": 21,
+          "ships": 5
+        },
+        {
+          "side": "red",
+          "colonies": 20,
+          "surveys": 46,
+          "research": 21,
+          "ships": 9
+        }
+      ]
+    },
+    "activity": {
+      "windows": 40,
+      "ownEnds": {
+        "blue": 20,
+        "red": 20
+      },
+      "commands": 348,
+      "idleIndustryAssignments": 0,
+      "fullBudgetWindows": 0,
+      "ownershipChanges": 11,
+      "commandKinds": {
+        "survey": 19,
+        "sendShip": 211,
+        "colonize": 11,
+        "assignWorkers": 22,
+        "enqueueProduction": 12,
+        "endTurn": 40,
+        "deployProduction": 12,
+        "refuelShip": 21
+      }
+    }
+  }
+}

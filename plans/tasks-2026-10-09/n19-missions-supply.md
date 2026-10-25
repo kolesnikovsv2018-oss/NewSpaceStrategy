@@ -24,6 +24,10 @@
 
 ## Приёмка и проверки
 
+Дополнительно выполнить [контроль AI после Н19 из отчёта Д16](../../reports/2026-10-26/02-ai-development-and-post-n15-n19.md#после-н19):
+finite reward/stock/rate, реальные полевые quotes, scanner knowledge и
+совместную конкуренцию миссий/служб в бюджете24. Н-граф не меняется.
+
 - Real travel→mission start→progress→reward, при отсутствии технологии/модуля/источника отказ.
 - Одно completion даёт ровно одну награду; stale/repeat/load/reentry/cancel не дублируют её.
 - Два претендента в один общий период разрешаются принятой policy, без случайной привилегии array order.

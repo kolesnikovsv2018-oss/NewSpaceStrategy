@@ -1083,8 +1083,9 @@ export class ConquestScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     const replay = this.replay;
-    if (!replay || !this.frames || !isShipyardModalOpen(this)) { this.replay = undefined; return; }
-    if (!replay.paused) replay.seconds += delta / 1000 * 8;
+    if (!replay || !this.frames?.length || !isShipyardModalOpen(this)) { this.replay = undefined; return; }
+    const elapsed = Number.isFinite(delta) && delta > 0 ? delta / 1000 * 8 : 0;
+    if (!replay.paused) replay.seconds = Math.min(this.frames[this.frames.length - 1].seconds, replay.seconds + elapsed);
     const frame = this.frames.find(item => item.seconds >= replay.seconds) ?? this.frames[this.frames.length - 1];
     replay.graphics.clear();
     for (const ship of frame.ships) {

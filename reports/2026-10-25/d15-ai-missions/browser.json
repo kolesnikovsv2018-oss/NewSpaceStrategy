@@ -1,0 +1,68 @@
+{
+  "format": "orion-ai-missions-browser-check",
+  "schemaVersion": 1,
+  "scenario": "Диагностические строгие paid checkpoints Д14; controller переключён явно, не новое paid E2E",
+  "cases": [
+    {
+      "id": "6-41-current-ai-direct",
+      "viewport": [
+        1280,
+        720
+      ],
+      "sourceTurn": 62,
+      "resultTurn": 63,
+      "pausedLoad": "passed",
+      "pointerResume": "passed",
+      "pointerSave": "passed",
+      "actualReload": "passed",
+      "fullNextStateOracle": "passed",
+      "nextCommand": "deployProduction",
+      "geometry": {
+        "css": [
+          1280,
+          720
+        ],
+        "canvas": [
+          1280,
+          720
+        ],
+        "canvasCount": 1,
+        "actualCanvas": true,
+        "minText": 14,
+        "minButton": 44
+      }
+    },
+    {
+      "id": "6-12345-production-first-mirror",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourceTurn": 62,
+      "resultTurn": 63,
+      "pausedLoad": "passed",
+      "pointerResume": "passed",
+      "pointerSave": "passed",
+      "actualReload": "passed",
+      "fullNextStateOracle": "passed",
+      "nextCommand": "deployProduction",
+      "geometry": {
+        "css": [
+          390,
+          844
+        ],
+        "canvas": [
+          390,
+          844
+        ],
+        "canvasCount": 1,
+        "actualCanvas": true,
+        "minText": 14,
+        "minButton": 44
+      }
+    }
+  ],
+  "pageErrors": 0,
+  "storageRestored": true,
+  "limitations": "Не измерены FPS, quota, physical touch; нового оплаченного прохождения нет"
+}

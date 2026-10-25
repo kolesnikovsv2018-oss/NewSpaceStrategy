@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "40-98765-research-first-mirror",
+    "worldCount": 40,
+    "mapSeed": 98765,
+    "campaignSeed": 43210,
+    "mirrored": true,
+    "schedule": "research-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 7,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 129171,
+  "file": "40-98765-research-first-mirror.run.json.gz",
+  "sha256": "77816f3b909f36ba130094930b9033d4e85110cf0b560ce5635e09e5ad51ab4a"
+}

@@ -5,7 +5,39 @@ description: 'Боевая симуляция Orion, CombatShip, BattleManager, 
 
 # Orion: бой и визуализация
 
-## Актуальная отправная точка Н14
+## Актуальная отправная точка Н14/Д16
+
+**Д16:** [результаты и контроль Н15–Н19](../../../reports/2026-10-26/02-ai-development-and-post-n15-n19.md).
+Resolver/120с/2400/HP/ammo/fuel/цены прежние. AI не расходует команды на
+unused industrial growth и не путает изученную среду со свободным owner:
+colonizer предпочитает новые unknown-направления, known-unsurveyed — fallback.
+18 paid6 completed53–143;44 paired suffix160→200 прошли replay/repeat/save,
+но остаются cutoff. Основания101→321, idle25739→0;4 ветви дали меньше
+оснований — не обещать безусловного улучшения/баланса.3928/77 и strict/build173
+прошли. Browser40/256 CSS1280×720/390×844: pointer/paused AI/save/reload/
+full next oracle,1canvas/14px/44px/0pageerrors, storage restored/helpers stopped.
+Это не новый paid E2E/FPS/quota. Гипотеза лишнего защитного отряда отвергнута:
+более быстрое подкрепление может быть полезно; защита не переписана.
+
+**История Д15/Р2:** наступательный AI исправлен без изменения resolver/урона/
+120с/HP/ammo/fuel/экономики.18 paid6 completed75–113,0 timeout/
+executor-error,4 контроля сохранены, repeat/early4/late60 равны.
+[Миссии](../../../docs/CAMPAIGN_AI.md) вычисляются из own-view:
+защита при наблюдаемом враге в своей колонии, покрытие альтернатив,
+сборка разнесённых готовых ships у своей колонии и ожидание только
+действительно летящей боевой поддержки. Последнюю цель сборка не задерживает.
+CreateFleet/sendFleet сохраняют полезные группы, min speed/jump и
+индивидуальные баки. Р3/auto-refit не включались,4/8/100 прежние.
+26 новых регрессий в conquestAiMissions, включая7 настоящих paid Д14 saves;
+3912/75 и strict/build173 прошли. Настоящий headless Chromium:
+CSS1280×720/390×844,2 diagnostic checkpoints, pointer paused-load/
+Resume/save, reload/full next-state oracle,1canvas/14px/44px/0pageerrors;
+storage восстановлен, helpers остановлены. Это не новый paid E2E/FPS/quota.
+Нижние матрицы Д14/Н14 — история, а не текущий остаток.
+Полная58:18 completed/40 timeout (36 paid40/256 до200 и4 boundary8),
+дополнительные12:4 paid6 completed85–139/8 large timeout200.
+Bounded40/25616 окон, все72 repeat/save-checks прошли, executor-error0.
+Большие timeout не разобраны и не выданы за победу/отсутствие прогресса.
 
 Н14 не меняет design-combat-v1, fixed step/инициативу/RNG или тактику.
 Текущие ShipDesign5/library5/Conquest16/rules13/snapshot11/tree10/
@@ -23,7 +55,7 @@ Baseline18:4 completed65–66/14 timeout200, все repeat/checkpoint равны
 Полные58/quota/natural FPS не измерены.
 
 Д13: [разбор14 timeout](../../../reports/2026-10-25/23-d13-timeout-analysis.md)
-не меняет resolver/AI/правила.18 paid6 воспроизводят4 completed/14 timeout,
+исторически не менял resolver/AI/правила.18 paid6 воспроизводили4 completed/14 timeout,
 repeat/early4/late60 равны;10 trace-регрессий, полный3863/73, strict/build173.
 В этих трассах нет projectile/ammo0: нельзя объяснять их нехваткой снарядов.
 Current/direct после94 не имеет боёв и повторяет20-оконную операционную
@@ -32,8 +64,22 @@ Current/direct после94 не имеет боёв и повторяет20-о�
 В mirror120 изолированный resolver точно воспроизводит реальный endTurn;
 три встречи с переносом HP без промежуточных служб дают потери на третьей.
 Shield0, оплаченный ремонт в основной трассе и лимит120 — не баг
-бессмертия/сброса щита. Следующая работа — known/unsurveyed фильтр AI,
-затем отдельное решение о миссиях, не произвольное изменение тактики.
+бессмертия/сброса щита. Эти числа не являются новой матрицей Д14.
+
+Д14/Р1: [отчёт24](../../../reports/2026-10-25/24-ai-recon-and-bounds.md).
+Фильтр разведки исправлен;18 paid6 дают11 completed/7 timeout200,
+повтор/early/late,4 boundary и bounded40/256 проходят. Все7 остатка
+тогда без боёв после100: циклы20/22/24 с полной изученностью6/6,
+а не прежняя ремонтная война. Этот остаток исправлен Д15
+по [отдельному плану](../../../plans/ai-timeout-remediation-2026-10-25.md).
+BattleScene догоняет максимум2400 fixed steps/update и хранит≤120 sim
+seconds долга; сверхлимитное время отбрасывает с warning. Обычные
+1×/2×/4× и trial120 прежние; demo не получает новую автоматическую победу.
+Replay clock игнорирует invalid delta, ограничен последним кадром,
+исчезнувшие frames безопасно снимают replay.3886/74, strict/build173.
+Actual browser: два real unarmed DesignedShip/manager, huge finite delta,
+HUD продолжает работать;121 real replay frames и6 paid checkpoints
+проверены без изменения storage. Это диагностика, не paid E2E/FPS.
 
 ## История отправной точки Н13
 

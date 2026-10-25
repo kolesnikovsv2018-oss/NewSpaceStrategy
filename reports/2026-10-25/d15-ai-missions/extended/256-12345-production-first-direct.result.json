@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "256-12345-production-first-direct",
+    "worldCount": 256,
+    "mapSeed": 12345,
+    "campaignSeed": 67890,
+    "mirrored": false,
+    "schedule": "production-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 0,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 518271,
+  "file": "256-12345-production-first-direct.run.json.gz",
+  "sha256": "98fc51b95d647565b40a0b93045e335e1a40bb311c88959e1f363d87667433ca"
+}

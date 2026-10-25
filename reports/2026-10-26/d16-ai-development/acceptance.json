@@ -1,0 +1,61 @@
+{
+  "format": "orion-ai-development-acceptance",
+  "schemaVersion": 1,
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "primary6": {
+    "completed": 18,
+    "timeout": 0,
+    "executorError": 0,
+    "windows": [
+      53,
+      143
+    ],
+    "repeatEarlyLate": "passed",
+    "originalCliExit": 124,
+    "recovery": "retained committed cases; missing last case rerun; every trace and late AI checked"
+  },
+  "pairedLarge": {
+    "cases": 44,
+    "fromWindow": 160,
+    "throughWindow": 200,
+    "statuses": {
+      "timeout": 44
+    },
+    "oldIdleIndustryAssignments": 25739,
+    "newIdleIndustryAssignments": 0,
+    "oldCommands": 35955,
+    "newCommands": 12931,
+    "oldColonizations": 101,
+    "newColonizations": 321,
+    "moreColonizations": 37,
+    "sameColonizations": 3,
+    "fewerColonizations": 4,
+    "oldClasses": {
+      "expansion-or-new-surveys-observed": 40,
+      "territory-and-surveys-unchanged-other-state-may-change": 3,
+      "military-ownership-changes-observed": 1
+    },
+    "newClasses": {
+      "expansion-or-new-surveys-observed": 44
+    },
+    "allReplayRepeatAndSavePassed": true
+  },
+  "browser": {
+    "cases": 2,
+    "pageErrors": 0,
+    "storageRestored": true,
+    "sourceFingerprintMatched": true
+  },
+  "bySize": {
+    "40": {
+      "cases": 22,
+      "oldColonizations": 25,
+      "newColonizations": 55
+    },
+    "256": {
+      "cases": 22,
+      "oldColonizations": 76,
+      "newColonizations": 266
+    }
+  }
+}

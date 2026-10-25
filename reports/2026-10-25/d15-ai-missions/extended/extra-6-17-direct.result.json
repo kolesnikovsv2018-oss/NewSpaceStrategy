@@ -1,0 +1,36 @@
+{
+  "selection": "extra",
+  "input": {
+    "id": "extra-6-17-direct",
+    "worldCount": 6,
+    "mapSeed": 17,
+    "campaignSeed": 2027,
+    "mirrored": false,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 85,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "battles": 12,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 28589,
+  "file": "extra-6-17-direct.run.json.gz",
+  "sha256": "034e3b16bfd9e8e444708fa894c7ef6b0118b2bcea0b2742287f8e870b4d43f2"
+}

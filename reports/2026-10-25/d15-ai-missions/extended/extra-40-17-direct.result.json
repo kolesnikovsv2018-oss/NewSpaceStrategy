@@ -1,0 +1,34 @@
+{
+  "selection": "extra",
+  "input": {
+    "id": "extra-40-17-direct",
+    "worldCount": 40,
+    "mapSeed": 17,
+    "campaignSeed": 2027,
+    "mirrored": false,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 12,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 167578,
+  "file": "extra-40-17-direct.run.json.gz",
+  "sha256": "7b7577cd80c70d9c6abbbe25152a5f704b840bef38ff521bc92002fb6a546120"
+}

@@ -1,0 +1,34 @@
+{
+  "selection": "extra",
+  "input": {
+    "id": "extra-40-314159-mirror",
+    "worldCount": 40,
+    "mapSeed": 314159,
+    "campaignSeed": 271828,
+    "mirrored": true,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 8,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 132466,
+  "file": "extra-40-314159-mirror.run.json.gz",
+  "sha256": "8aa30b1de3aa47faf04b4954b202502b204152a0f5dc6811f847c476c0119078"
+}

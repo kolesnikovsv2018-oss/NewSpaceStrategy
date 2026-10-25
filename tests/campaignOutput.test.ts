@@ -50,6 +50,25 @@ it('reduces assignments proportionally with deterministic industry/research/cult
     .toEqual({ industry: 5, research: 3, culture: 2 });
 });
 
+it('terminates workforce rounding at zero and integer caps, including products beyond safe Number precision', () => {
+  const values = [0, 1, 2, 999_999_999, 1_000_000_000];
+  for (const industry of values) for (const research of values) for (const culture of values) {
+    const input = { industry, research, culture }, total = industry + research + culture;
+    for (const population of [0, 1, 2, 1_000_000_000]) {
+      const before = { ...input }, output = reduceWorkforce(input, population);
+      expect(output.industry + output.research + output.culture).toBe(Math.min(total, population));
+      expect(Object.values(output).every(value => Number.isSafeInteger(value) && value >= 0)).toBe(true);
+      expect(output.industry).toBeLessThanOrEqual(industry);
+      expect(output.research).toBeLessThanOrEqual(research);
+      expect(output.culture).toBeLessThanOrEqual(culture);
+      expect(input).toEqual(before);
+    }
+  }
+  for (const invalid of [NaN, Infinity, -1, 0.5, 1_000_000_001]) {
+    expect(() => reduceWorkforce({ industry: 1, research: 0, culture: 0 }, invalid)).toThrow();
+  }
+});
+
 it('quotes point costs and computes exact proportional refunds including large integer products', () => {
   const design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
   expect(quote.productionCost).toBe(Math.ceil(quote.cost.credits / 10));

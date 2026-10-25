@@ -1,0 +1,147 @@
+{
+  "source": "world-014",
+  "command": {
+    "factionId": "blue",
+    "expectedTurn": 199,
+    "kind": "sendShip",
+    "systemId": "world-014",
+    "shipId": 49,
+    "destinationId": "world-013"
+  },
+  "nearest": [
+    {
+      "id": "world-013",
+      "distance": 132.58252147247768,
+      "known": true,
+      "studied": null
+    },
+    {
+      "id": "world-033",
+      "distance": 156.25,
+      "known": true,
+      "studied": "habitable"
+    },
+    {
+      "id": "world-015",
+      "distance": 251.94555463432965,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-010",
+      "distance": 265.16504294495536,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-018",
+      "distance": 282.9807855667943,
+      "known": true,
+      "studied": null
+    },
+    {
+      "id": "world-034",
+      "distance": 282.9807855667943,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-025",
+      "distance": 312.5,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-004",
+      "distance": 340.3124811404954,
+      "known": false,
+      "studied": null
+    }
+  ],
+  "neverDetected": [
+    {
+      "id": "world-015",
+      "distance": 251.94555463432965,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-010",
+      "distance": 265.16504294495536,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-034",
+      "distance": 282.9807855667943,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-025",
+      "distance": 312.5,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-004",
+      "distance": 340.3124811404954,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-005",
+      "distance": 349.37056129702745,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-006",
+      "distance": 356.17506175615387,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-009",
+      "distance": 407.45015032516557,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-032",
+      "distance": 500,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-024",
+      "distance": 531.25,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-035",
+      "distance": 553.7514108334173,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-026",
+      "distance": 613.9650845121406,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-040",
+      "distance": 662.9126073623884,
+      "known": false,
+      "studied": null
+    },
+    {
+      "id": "world-023",
+      "distance": 674.5947857788408,
+      "known": false,
+      "studied": null
+    }
+  ]
+}

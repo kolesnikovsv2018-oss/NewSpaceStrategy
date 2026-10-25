@@ -1,0 +1,32 @@
+{
+  "input": {
+    "id": "6-12345-research-first-mirror",
+    "mapSeed": 12345,
+    "campaignSeed": 67890,
+    "worldCount": 6,
+    "mirrored": true,
+    "schedule": "research-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 53,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "traceSha256": "dd6e2e5225a8a11b2a3a8397d901567eda7ca6887c91d3aa9ec66b3bc2aabf2d",
+  "checkpointSha256": "414efea677c37aff453bc72d479d9ba22b873a73ef5aab0dfd6d055a39ff69ba",
+  "finalStateSha256": "5fe4739a259fbb71c570ab9ae8490ea8519ef6b5a1a4f185b73663af26f583e1",
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "lateRoundTrip": "passed",
+    "checkpointAt": 52,
+    "provenance": "original CLI published files only after repeat/early/late guards passed",
+    "recoveredTraceReplay": "passed",
+    "repeatedLateAiAfterDeadline": "passed"
+  }
+}

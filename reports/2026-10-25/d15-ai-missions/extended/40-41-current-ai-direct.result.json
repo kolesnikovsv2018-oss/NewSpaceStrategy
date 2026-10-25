@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "40-41-current-ai-direct",
+    "worldCount": 40,
+    "mapSeed": 41,
+    "campaignSeed": 101,
+    "mirrored": false,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "timeout",
+  "turnsExecuted": 200,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 11,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 198230,
+  "file": "40-41-current-ai-direct.run.json.gz",
+  "sha256": "bb61f26fb1a6c0593bdb1923f1d62e8a6fbecbe4806df4bf970003f32f368fb0"
+}

@@ -4,10 +4,20 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { baselineMatrix, runBaseline, verifyBaseline, BASELINE_TRACE_VERSION,
-  type BaselineWindowTrace } from '../diagnostics/conquestBaseline';
+  type BaselineRun, type BaselineWindowTrace } from '../diagnostics/conquestBaseline';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
 
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
+
+export function createLateBaselineCheckpoint(run: BaselineRun) {
+  const turnsExecuted = Math.min(60, run.turnsExecuted - 1);
+  if (turnsExecuted < 1) throw new Error(`Нет поздней контрольной точки до остановки: ${run.input.id}`);
+  const prefix = runBaseline({ ...run.input, maxTurns: turnsExecuted });
+  if (prefix.turnsExecuted !== turnsExecuted || prefix.outcome.status !== 'ongoing') {
+    throw new Error(`Префикс поздней контрольной точки не соответствует партии: ${run.input.id}`);
+  }
+  return { turnsExecuted, json: encodeConquestSave(prefix.finalState) };
+}
 
 export async function main(args: string[]): Promise<number> {
   if (args.length === 1 && args[0] === '--help') {
@@ -33,7 +43,7 @@ export async function main(args: string[]): Promise<number> {
       if (json) checkpoint = { turnsExecuted: window.turnsExecuted, json };
     } });
     const verification = verifyBaseline(run);
-    if (!checkpoint) throw new Error(`Нет поздней контрольной точки: ${input.id}`);
+    if (!checkpoint || checkpoint.turnsExecuted >= run.turnsExecuted) checkpoint = createLateBaselineCheckpoint(run);
     const checkpointTurn = checkpoint.turnsExecuted;
     const continuationWindows: BaselineWindowTrace[] = [];
     const continued = runBaseline(input, { turnsExecuted: checkpointTurn,

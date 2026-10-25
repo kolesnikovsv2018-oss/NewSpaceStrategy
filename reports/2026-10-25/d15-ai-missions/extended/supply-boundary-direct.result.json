@@ -1,0 +1,34 @@
+{
+  "selection": "full58",
+  "input": {
+    "id": "supply-boundary-direct",
+    "worldCount": 6,
+    "mapSeed": 41,
+    "campaignSeed": 101,
+    "mirrored": false,
+    "schedule": "current-ai",
+    "kind": "supply-boundary",
+    "maxTurns": 8
+  },
+  "status": "timeout",
+  "turnsExecuted": 8,
+  "outcome": {
+    "status": "ongoing"
+  },
+  "battles": 8,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 12700,
+  "file": "supply-boundary-direct.run.json.gz",
+  "sha256": "f0585bdecdc6e36dfd8b17421570bebda20f3bc81333e5f1df30d960106978d3"
+}

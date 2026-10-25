@@ -1,0 +1,36 @@
+{
+  "selection": "extra",
+  "input": {
+    "id": "extra-6-17-mirror",
+    "worldCount": 6,
+    "mapSeed": 17,
+    "campaignSeed": 2027,
+    "mirrored": true,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 139,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "battles": 36,
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed"
+  },
+  "versions": {
+    "baseline": 12,
+    "save": 16,
+    "rules": 13,
+    "battlePolicy": "campaign-v2",
+    "tree": 10,
+    "tacticalRules": "design-combat-v1"
+  },
+  "elapsedMs": 44334,
+  "file": "extra-6-17-mirror.run.json.gz",
+  "sha256": "5bc223f7ebdabc883d27c3bf7e7f518d645f95350dcebb728c7a2dac8099c6ca"
+}

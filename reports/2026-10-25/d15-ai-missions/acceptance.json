@@ -1,0 +1,396 @@
+{
+  "format": "orion-ai-missions-acceptance",
+  "schemaVersion": 1,
+  "sourceSha256": "4a6554a8c2c81294dd0c73d0e090729e4bdc03da358ecac866963f1d85e04a56",
+  "primary": {
+    "counts": {
+      "completed": 18
+    },
+    "originalTimeoutsResolved": 14,
+    "d14TimeoutsResolved": 7,
+    "controlsPreserved": 4,
+    "turns": [
+      75,
+      113
+    ],
+    "acceptedCommands": 9698,
+    "createFleetCommands": 110,
+    "disbandFleetCommands": 66
+  },
+  "full58": {
+    "counts": {
+      "completed": 18,
+      "timeout": 40
+    },
+    "paid6": {
+      "completed": 18
+    },
+    "paid40": {
+      "timeout": 18
+    },
+    "paid256": {
+      "timeout": 18
+    },
+    "boundary": {
+      "timeout": 4
+    }
+  },
+  "extra": {
+    "counts": {
+      "timeout": 8,
+      "completed": 4
+    },
+    "cases": [
+      {
+        "id": "extra-256-17-direct",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-256-17-mirror",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-256-314159-direct",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-256-314159-mirror",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-40-17-direct",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-40-17-mirror",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-40-314159-direct",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-40-314159-mirror",
+        "status": "timeout",
+        "turnsExecuted": 200
+      },
+      {
+        "id": "extra-6-17-direct",
+        "status": "completed",
+        "turnsExecuted": 85
+      },
+      {
+        "id": "extra-6-17-mirror",
+        "status": "completed",
+        "turnsExecuted": 139
+      },
+      {
+        "id": "extra-6-314159-direct",
+        "status": "completed",
+        "turnsExecuted": 88
+      },
+      {
+        "id": "extra-6-314159-mirror",
+        "status": "completed",
+        "turnsExecuted": 88
+      }
+    ]
+  },
+  "bounded": [
+    {
+      "id": "bounded-256-41",
+      "turnsExecuted": 16,
+      "status": "timeout"
+    },
+    {
+      "id": "bounded-40-41",
+      "turnsExecuted": 16,
+      "status": "timeout"
+    }
+  ],
+  "allRepeatAndSaveChecksPassed": true,
+  "browser": {
+    "cases": 2,
+    "pageErrors": 0,
+    "storageRestored": true
+  },
+  "rows": [
+    {
+      "id": "6-41-current-ai-direct",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 21,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-41-current-ai-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 17,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-41-research-first-direct",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 76,
+      "winner": "red",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-41-research-first-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 75,
+      "winner": "blue",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-41-production-first-direct",
+      "originalStatus": "completed",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 19,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-41-production-first-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 102,
+      "winner": "red",
+      "battles": 30,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-current-ai-direct",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 113,
+      "winner": "blue",
+      "battles": 23,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-current-ai-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 17,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-research-first-direct",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 76,
+      "winner": "red",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-research-first-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 75,
+      "winner": "blue",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-production-first-direct",
+      "originalStatus": "completed",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 19,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-12345-production-first-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 17,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-current-ai-direct",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 113,
+      "winner": "blue",
+      "battles": 23,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-current-ai-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "timeout",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 17,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-research-first-direct",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 76,
+      "winner": "red",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-research-first-mirror",
+      "originalStatus": "timeout",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 75,
+      "winner": "blue",
+      "battles": 0,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-production-first-direct",
+      "originalStatus": "completed",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 88,
+      "winner": "red",
+      "battles": 19,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    },
+    {
+      "id": "6-98765-production-first-mirror",
+      "originalStatus": "completed",
+      "d14Status": "completed",
+      "d15Status": "completed",
+      "turnsExecuted": 102,
+      "winner": "red",
+      "battles": 30,
+      "verification": {
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "lateRoundTrip": "passed",
+        "checkpointAt": 60
+      }
+    }
+  ]
+}

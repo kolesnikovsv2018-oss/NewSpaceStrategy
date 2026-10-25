@@ -1,0 +1,32 @@
+{
+  "input": {
+    "id": "6-41-production-first-mirror",
+    "mapSeed": 41,
+    "campaignSeed": 101,
+    "worldCount": 6,
+    "mirrored": true,
+    "schedule": "production-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 117,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "traceSha256": "57358a67e975183f00efb057f115cfc56e1b552888f59f65bf288bfedc1c9a88",
+  "checkpointSha256": "e78796ead92fe4763b937dec7e5ffc435232779eecb1264c5e3c3f3c4bf48899",
+  "finalStateSha256": "96c68a753fe7b8da08daea4c905021d16d7dc80cbe8cf85d6a4a2a549274494b",
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "lateRoundTrip": "passed",
+    "checkpointAt": 60,
+    "provenance": "original CLI published files only after repeat/early/late guards passed",
+    "recoveredTraceReplay": "passed",
+    "repeatedLateAiAfterDeadline": "passed"
+  }
+}

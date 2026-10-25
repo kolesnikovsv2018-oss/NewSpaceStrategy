@@ -1,0 +1,6579 @@
+{
+  "format": "orion-development-comparison-matrix",
+  "schemaVersion": 1,
+  "sourceSha256": "3d33ed9063d143f948e40e47d8199288e054c79ecb3a49233d2d640ec4be3bc6",
+  "fromWindow": 160,
+  "throughWindow": 200,
+  "cases": [
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "4fe729b61a0ad0ccc0fec8dc0e142d48e33edc84a6d976ae2aa90235160ca6dc",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 31,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 147,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 32,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 652,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 655,
+            "sendShip": 223,
+            "refuelShip": 30,
+            "endTurn": 40,
+            "survey": 2,
+            "colonize": 3,
+            "enqueueProduction": 1,
+            "deployProduction": 1,
+            "createFleet": 1,
+            "sendFleet": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 24,
+              "surveys": 34,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 416,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "sendShip": 238,
+            "refuelShip": 36,
+            "colonize": 18,
+            "assignWorkers": 34,
+            "enqueueProduction": 18,
+            "endTurn": 40,
+            "deployProduction": 18,
+            "survey": 9,
+            "createFleet": 1,
+            "sendFleet": 3,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "8ba607d621362ea7a3990597044f3fab96183f7e002a043aee115097aae96856",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 31,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 147,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 32,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 652,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 655,
+            "sendShip": 223,
+            "refuelShip": 30,
+            "endTurn": 40,
+            "colonize": 3,
+            "survey": 2,
+            "enqueueProduction": 1,
+            "deployProduction": 1,
+            "createFleet": 1,
+            "sendFleet": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 24,
+              "surveys": 34,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 416,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "sendShip": 238,
+            "refuelShip": 36,
+            "colonize": 18,
+            "assignWorkers": 34,
+            "enqueueProduction": 18,
+            "endTurn": 40,
+            "deployProduction": 18,
+            "survey": 9,
+            "createFleet": 1,
+            "sendFleet": 3,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "51a37109347bf08fa98937ea08c98931b0d9beb57045da661dae743e7d6f5374",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 17,
+            "surveys": 25,
+            "research": 21,
+            "ships": 4
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 19,
+              "surveys": 27,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 705,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "deployProduction": 2,
+            "assignWorkers": 708,
+            "sendShip": 184,
+            "endTurn": 40,
+            "refuelShip": 18,
+            "colonize": 3,
+            "enqueueProduction": 1,
+            "survey": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 24,
+              "surveys": 33,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 377,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "deployProduction": 17,
+            "sendShip": 220,
+            "endTurn": 40,
+            "refuelShip": 24,
+            "colonize": 16,
+            "assignWorkers": 30,
+            "enqueueProduction": 16,
+            "survey": 14
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "762f8d9ab484551d6f53a8c6ea91bf6b9344900342b990f51222b50ef894835b",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 17,
+            "surveys": 25,
+            "research": 21,
+            "ships": 4
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 19,
+              "surveys": 27,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 705,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 708,
+            "sendShip": 184,
+            "refuelShip": 18,
+            "endTurn": 40,
+            "deployProduction": 2,
+            "colonize": 3,
+            "survey": 3,
+            "enqueueProduction": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 24,
+              "surveys": 33,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 377,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "sendShip": 220,
+            "refuelShip": 24,
+            "colonize": 16,
+            "assignWorkers": 30,
+            "enqueueProduction": 16,
+            "endTurn": 40,
+            "deployProduction": 17,
+            "survey": 14
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "188fcf43a478709050f735e60ace1b7338aa3527fb3cbdd7c5fc6fa26860b549",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 17,
+            "surveys": 34,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 37,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 689,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 2,
+          "commandKinds": {
+            "assignWorkers": 691,
+            "sendShip": 193,
+            "enqueueProduction": 1,
+            "endTurn": 40,
+            "refuelShip": 27,
+            "deployProduction": 1,
+            "survey": 4,
+            "colonize": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 131,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 43,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 406,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "sendShip": 227,
+            "enqueueProduction": 18,
+            "assignWorkers": 33,
+            "endTurn": 40,
+            "refuelShip": 38,
+            "colonize": 17,
+            "deployProduction": 18,
+            "survey": 15
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-41-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "42f3f39c0b456e3c75606a3e30313aeab6dbfaecf2206d5bb03181e0b616e0e5",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 47,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 17,
+            "surveys": 34,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 37,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 959,
+          "idleIndustryAssignments": 689,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 2,
+          "commandKinds": {
+            "assignWorkers": 691,
+            "sendShip": 193,
+            "refuelShip": 27,
+            "endTurn": 40,
+            "enqueueProduction": 1,
+            "colonize": 2,
+            "deployProduction": 1,
+            "survey": 4
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 131,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 53,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 43,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 406,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "sendShip": 227,
+            "refuelShip": 38,
+            "colonize": 17,
+            "assignWorkers": 33,
+            "enqueueProduction": 18,
+            "endTurn": 40,
+            "deployProduction": 18,
+            "survey": 15
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "0b2e693b852841bbfd62522be447db79f9a46a07c513b2b78d3e16345f00cc04",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 38,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 956,
+          "idleIndustryAssignments": 656,
+          "fullBudgetWindows": 38,
+          "ownershipChanges": 4,
+          "commandKinds": {
+            "assignWorkers": 660,
+            "sendShip": 194,
+            "endTurn": 40,
+            "refuelShip": 44,
+            "colonize": 4,
+            "survey": 4,
+            "enqueueProduction": 2,
+            "deployProduction": 2,
+            "createFleet": 2,
+            "sendFleet": 2,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 430,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "sendShip": 241,
+            "colonize": 18,
+            "assignWorkers": 35,
+            "enqueueProduction": 18,
+            "endTurn": 40,
+            "refuelShip": 40,
+            "deployProduction": 17,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "survey": 18,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "d4269d824a165e861d304fd88e3e7823a1a19722674aad9884109bee872bca05",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 38,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 956,
+          "idleIndustryAssignments": 656,
+          "fullBudgetWindows": 38,
+          "ownershipChanges": 4,
+          "commandKinds": {
+            "assignWorkers": 660,
+            "refuelShip": 44,
+            "sendShip": 194,
+            "endTurn": 40,
+            "colonize": 4,
+            "survey": 4,
+            "enqueueProduction": 2,
+            "deployProduction": 2,
+            "createFleet": 2,
+            "sendFleet": 2,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 430,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "refuelShip": 40,
+            "sendShip": 241,
+            "endTurn": 40,
+            "colonize": 18,
+            "assignWorkers": 35,
+            "enqueueProduction": 18,
+            "deployProduction": 17,
+            "survey": 18,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "0c3db22b3d9308687f2df84cae97a53cce34f69e9511a5bb31d2d18cf3e8b705",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 149,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 27,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 144,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 19,
+              "surveys": 32,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 955,
+          "idleIndustryAssignments": 699,
+          "fullBudgetWindows": 37,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 704,
+            "sendShip": 157,
+            "endTurn": 40,
+            "refuelShip": 26,
+            "survey": 9,
+            "colonize": 5,
+            "enqueueProduction": 4,
+            "deployProduction": 4,
+            "createFleet": 2,
+            "sendFleet": 2,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 37,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 359,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "sendShip": 191,
+            "endTurn": 40,
+            "refuelShip": 23,
+            "colonize": 17,
+            "assignWorkers": 33,
+            "enqueueProduction": 17,
+            "deployProduction": 16,
+            "survey": 22
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "f26a2bab85076b16bc35269741788ae0e6d4920489aa8a4c6ab861c7dd56bf16",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 149,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 27,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 144,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 19,
+              "surveys": 32,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 955,
+          "idleIndustryAssignments": 699,
+          "fullBudgetWindows": 37,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 704,
+            "refuelShip": 26,
+            "sendShip": 157,
+            "endTurn": 40,
+            "survey": 9,
+            "colonize": 5,
+            "enqueueProduction": 4,
+            "deployProduction": 4,
+            "createFleet": 2,
+            "sendFleet": 2,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 37,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 359,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "refuelShip": 23,
+            "sendShip": 191,
+            "endTurn": 40,
+            "colonize": 17,
+            "assignWorkers": 33,
+            "enqueueProduction": 17,
+            "deployProduction": 16,
+            "survey": 22
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "98fc51b95d647565b40a0b93045e335e1a40bb311c88959e1f363d87667433ca",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 149,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 34,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 37,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 958,
+          "idleIndustryAssignments": 674,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 677,
+            "refuelShip": 40,
+            "sendShip": 177,
+            "endTurn": 40,
+            "survey": 7,
+            "colonize": 3,
+            "enqueueProduction": 2,
+            "deployProduction": 2,
+            "createFleet": 3,
+            "sendFleet": 4,
+            "disbandFleet": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 416,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "refuelShip": 40,
+            "sendShip": 231,
+            "endTurn": 40,
+            "colonize": 17,
+            "assignWorkers": 33,
+            "enqueueProduction": 17,
+            "deployProduction": 16,
+            "survey": 22
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-12345-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "b5b2cd97be76804aacfd24f8402627a57acef0670a68580dda94c2f6390536d6",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 149,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 36,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 34,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 37,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 958,
+          "idleIndustryAssignments": 674,
+          "fullBudgetWindows": 39,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 677,
+            "refuelShip": 40,
+            "sendShip": 177,
+            "endTurn": 40,
+            "colonize": 3,
+            "survey": 7,
+            "enqueueProduction": 2,
+            "deployProduction": 2,
+            "createFleet": 3,
+            "sendFleet": 4,
+            "disbandFleet": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 26,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 416,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "refuelShip": 40,
+            "sendShip": 231,
+            "endTurn": 40,
+            "colonize": 17,
+            "assignWorkers": 33,
+            "enqueueProduction": 17,
+            "deployProduction": 16,
+            "survey": 22
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "f06800844694df43219a3b12d40283686aab94d689af0b43a1bc490f93bf50fb",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 38,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 147,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 960,
+          "idleIndustryAssignments": 656,
+          "fullBudgetWindows": 40,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 659,
+            "refuelShip": 29,
+            "disbandFleet": 1,
+            "sendShip": 218,
+            "endTurn": 40,
+            "enqueueProduction": 3,
+            "deployProduction": 3,
+            "survey": 4,
+            "colonize": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 43,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 406,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 15,
+          "commandKinds": {
+            "refuelShip": 34,
+            "disbandFleet": 4,
+            "sendShip": 227,
+            "endTurn": 40,
+            "enqueueProduction": 16,
+            "assignWorkers": 31,
+            "colonize": 15,
+            "deployProduction": 15,
+            "survey": 13,
+            "createFleet": 3,
+            "sendFleet": 8
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "943ea26dd6e632a978d9964446b739e4d4754f7bb556f87de996c0fad7433198",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 38,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 147,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 40,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 960,
+          "idleIndustryAssignments": 656,
+          "fullBudgetWindows": 40,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 659,
+            "sendShip": 218,
+            "enqueueProduction": 3,
+            "endTurn": 40,
+            "refuelShip": 29,
+            "disbandFleet": 1,
+            "deployProduction": 3,
+            "survey": 4,
+            "colonize": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 43,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 406,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 15,
+          "commandKinds": {
+            "sendShip": 227,
+            "enqueueProduction": 16,
+            "assignWorkers": 31,
+            "endTurn": 40,
+            "refuelShip": 34,
+            "disbandFleet": 4,
+            "deployProduction": 15,
+            "colonize": 15,
+            "survey": 13,
+            "createFleet": 3,
+            "sendFleet": 8
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "40aab6ba7dc14b11e8ad69ea2e5cd92b508d37ebb80aaf99934e8223e921881a",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 29,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 19,
+              "surveys": 38,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 956,
+          "idleIndustryAssignments": 687,
+          "fullBudgetWindows": 36,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 692,
+            "survey": 11,
+            "sendShip": 175,
+            "colonize": 5,
+            "enqueueProduction": 6,
+            "endTurn": 40,
+            "deployProduction": 6,
+            "refuelShip": 21
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 39,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 371,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 15,
+          "commandKinds": {
+            "survey": 18,
+            "sendShip": 217,
+            "colonize": 15,
+            "assignWorkers": 30,
+            "enqueueProduction": 16,
+            "endTurn": 40,
+            "deployProduction": 15,
+            "refuelShip": 20
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "146b9e76b99d2c13056b5a3a8b5039e86292f8de9b1a8519217b3fbbd8cd3fcf",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 29,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 19,
+              "surveys": 38,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 956,
+          "idleIndustryAssignments": 687,
+          "fullBudgetWindows": 36,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 692,
+            "sendShip": 175,
+            "enqueueProduction": 6,
+            "endTurn": 40,
+            "survey": 11,
+            "colonize": 5,
+            "deployProduction": 6,
+            "refuelShip": 21
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 39,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 371,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 15,
+          "commandKinds": {
+            "sendShip": 217,
+            "enqueueProduction": 16,
+            "assignWorkers": 30,
+            "endTurn": 40,
+            "survey": 18,
+            "colonize": 15,
+            "deployProduction": 15,
+            "refuelShip": 20
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "b1a1845c67897e4d71eb66c75aa0170902398a548324e8e8ce99f96c19675da8",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 151,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 34,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 958,
+          "idleIndustryAssignments": 663,
+          "fullBudgetWindows": 38,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 668,
+            "sendShip": 185,
+            "createFleet": 2,
+            "sendFleet": 8,
+            "endTurn": 40,
+            "enqueueProduction": 6,
+            "refuelShip": 30,
+            "colonize": 5,
+            "deployProduction": 6,
+            "survey": 6,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 412,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "sendShip": 225,
+            "createFleet": 2,
+            "sendFleet": 8,
+            "endTurn": 40,
+            "enqueueProduction": 17,
+            "assignWorkers": 33,
+            "refuelShip": 35,
+            "colonize": 16,
+            "deployProduction": 16,
+            "survey": 18,
+            "disbandFleet": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "256-98765-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "b316fbb2addb4afd424c4664842613bba4eb00614966a2a3abeb039530631cfb",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 151,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 36,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 34,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 146,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 38,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 958,
+          "idleIndustryAssignments": 663,
+          "fullBudgetWindows": 38,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "assignWorkers": 668,
+            "sendShip": 185,
+            "enqueueProduction": 6,
+            "endTurn": 40,
+            "createFleet": 2,
+            "sendFleet": 8,
+            "deployProduction": 6,
+            "refuelShip": 30,
+            "colonize": 5,
+            "survey": 6,
+            "disbandFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 135,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 412,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "sendShip": 225,
+            "enqueueProduction": 17,
+            "assignWorkers": 33,
+            "endTurn": 40,
+            "createFleet": 2,
+            "sendFleet": 8,
+            "deployProduction": 16,
+            "refuelShip": 35,
+            "colonize": 16,
+            "survey": 18,
+            "disbandFleet": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-256-17-direct",
+        "worldCount": 256,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "cf5b2243f700ad637d6b1b1bda39308f05e8dd887a58f60326fccc2db8d72e5e",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 37,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 40,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 148,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 41,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 40,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 955,
+          "idleIndustryAssignments": 634,
+          "fullBudgetWindows": 36,
+          "ownershipChanges": 2,
+          "commandKinds": {
+            "assignWorkers": 636,
+            "survey": 4,
+            "refuelShip": 27,
+            "sendShip": 240,
+            "endTurn": 40,
+            "enqueueProduction": 3,
+            "deployProduction": 3,
+            "colonize": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 131,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 432,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 19,
+          "commandKinds": {
+            "survey": 15,
+            "refuelShip": 43,
+            "sendShip": 232,
+            "enqueueProduction": 20,
+            "assignWorkers": 37,
+            "endTurn": 40,
+            "deployProduction": 19,
+            "colonize": 19,
+            "createFleet": 2,
+            "sendFleet": 3,
+            "disbandFleet": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-256-17-mirror",
+        "worldCount": 256,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "af68b70543b3ed00c8a163fa4ec99866d8ceee03336dd340cdbf39e694c25911",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 150,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 40,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 37,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 148,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 16,
+              "surveys": 40,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 41,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 955,
+          "idleIndustryAssignments": 634,
+          "fullBudgetWindows": 36,
+          "ownershipChanges": 2,
+          "commandKinds": {
+            "assignWorkers": 636,
+            "sendShip": 240,
+            "endTurn": 40,
+            "survey": 4,
+            "refuelShip": 27,
+            "enqueueProduction": 3,
+            "deployProduction": 3,
+            "colonize": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 131,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 25,
+              "surveys": 48,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 25,
+              "surveys": 44,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 432,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 19,
+          "commandKinds": {
+            "sendShip": 232,
+            "endTurn": 40,
+            "survey": 15,
+            "refuelShip": 43,
+            "enqueueProduction": 20,
+            "assignWorkers": 37,
+            "colonize": 19,
+            "deployProduction": 19,
+            "createFleet": 2,
+            "sendFleet": 3,
+            "disbandFleet": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-256-314159-direct",
+        "worldCount": 256,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "2c4f8f78984652f708002f552459b6e406bbc612d56d20950ed11556b18fd216",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 17,
+            "surveys": 32,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 16,
+            "surveys": 37,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 19,
+              "surveys": 33,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 40,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 951,
+          "idleIndustryAssignments": 704,
+          "fullBudgetWindows": 35,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "assignWorkers": 707,
+            "survey": 4,
+            "sendShip": 154,
+            "endTurn": 40,
+            "deployProduction": 4,
+            "refuelShip": 32,
+            "createFleet": 1,
+            "sendFleet": 2,
+            "colonize": 3,
+            "enqueueProduction": 3,
+            "disbandFleet": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 26,
+              "surveys": 41,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 23,
+              "surveys": 43,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 381,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "survey": 15,
+            "sendShip": 208,
+            "endTurn": 40,
+            "deployProduction": 15,
+            "refuelShip": 36,
+            "createFleet": 1,
+            "sendFleet": 2,
+            "colonize": 16,
+            "assignWorkers": 31,
+            "enqueueProduction": 16,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-256-314159-mirror",
+        "worldCount": 256,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "0ed0214d51af99aa0e94cfa6c471f032c0aa9e5a9c756f1a6080c6bfb0eb1066",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 181,
+        "neutralGoals": 148,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 37,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 17,
+            "surveys": 32,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 145,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 40,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 19,
+              "surveys": 33,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 951,
+          "idleIndustryAssignments": 704,
+          "fullBudgetWindows": 35,
+          "ownershipChanges": 3,
+          "commandKinds": {
+            "deployProduction": 4,
+            "assignWorkers": 707,
+            "sendShip": 154,
+            "refuelShip": 32,
+            "endTurn": 40,
+            "survey": 4,
+            "colonize": 3,
+            "createFleet": 1,
+            "sendFleet": 2,
+            "enqueueProduction": 3,
+            "disbandFleet": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 181,
+          "neutralGoals": 132,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 23,
+              "surveys": 43,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 26,
+              "surveys": 41,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 381,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "deployProduction": 15,
+            "sendShip": 208,
+            "refuelShip": 36,
+            "endTurn": 40,
+            "survey": 15,
+            "createFleet": 1,
+            "sendFleet": 2,
+            "colonize": 16,
+            "assignWorkers": 31,
+            "enqueueProduction": 16,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "bb61f26fb1a6c0593bdb1923f1d62e8a6fbecbe4806df4bf970003f32f368fb0",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 23,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 11,
+            "surveys": 22,
+            "research": 21,
+            "ships": 7
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 15,
+              "surveys": 23,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 11,
+              "surveys": 22,
+              "research": 21,
+              "ships": 7
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 643,
+          "idleIndustryAssignments": 520,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 0,
+          "commandKinds": {
+            "assignWorkers": 520,
+            "refuelShip": 24,
+            "disbandFleet": 5,
+            "sendShip": 41,
+            "endTurn": 40,
+            "sendFleet": 3,
+            "createFleet": 2,
+            "enqueueProduction": 4,
+            "deployProduction": 4
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 24,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 12,
+              "surveys": 22,
+              "research": 21,
+              "ships": 7
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 124,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 1,
+          "commandKinds": {
+            "refuelShip": 27,
+            "disbandFleet": 3,
+            "sendShip": 33,
+            "endTurn": 40,
+            "sendFleet": 6,
+            "enqueueProduction": 4,
+            "assignWorkers": 5,
+            "deployProduction": 4,
+            "createFleet": 1,
+            "survey": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "2993e63e0e63068cc2009d3cc4034d8bee08a60daa2c8cf9249d6e45ed0ab86f",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 2,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 16,
+            "surveys": 27,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 11,
+            "surveys": 23,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 29,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 716,
+          "idleIndustryAssignments": 532,
+          "fullBudgetWindows": 2,
+          "ownershipChanges": 8,
+          "commandKinds": {
+            "assignWorkers": 542,
+            "refuelShip": 44,
+            "createFleet": 4,
+            "sendFleet": 6,
+            "sendShip": 49,
+            "endTurn": 40,
+            "enqueueProduction": 11,
+            "deployProduction": 11,
+            "disbandFleet": 4,
+            "survey": 1,
+            "repairShip": 3,
+            "colonize": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 16,
+              "surveys": 28,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 12,
+              "surveys": 23,
+              "research": 21,
+              "ships": 2
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 168,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 8,
+          "commandKinds": {
+            "refuelShip": 40,
+            "createFleet": 4,
+            "sendFleet": 6,
+            "sendShip": 35,
+            "endTurn": 40,
+            "enqueueProduction": 11,
+            "assignWorkers": 16,
+            "deployProduction": 8,
+            "disbandFleet": 5,
+            "repairShip": 2,
+            "colonize": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "2e49aca12e7deaa5a63eed13b63b73d178c0832015ead5dc562a2ab2df40f92d",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 17,
+            "surveys": 29,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 9,
+            "surveys": 23,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 19,
+              "surveys": 33,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 7,
+              "surveys": 23,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 668,
+          "idleIndustryAssignments": 472,
+          "fullBudgetWindows": 7,
+          "ownershipChanges": 20,
+          "commandKinds": {
+            "assignWorkers": 491,
+            "refuelShip": 43,
+            "sendShip": 67,
+            "endTurn": 40,
+            "enqueueProduction": 14,
+            "deployProduction": 12,
+            "repairShip": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 21,
+              "surveys": 33,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 7,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 204,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 23,
+          "commandKinds": {
+            "assignWorkers": 31,
+            "refuelShip": 43,
+            "sendShip": 62,
+            "endTurn": 40,
+            "enqueueProduction": 11,
+            "deployProduction": 10,
+            "repairShip": 5,
+            "colonize": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "539881713547551cd6084b82226904fabc97a226f90ca60681659e2a25970023",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 8,
+            "surveys": 23,
+            "research": 21,
+            "ships": 2
+          },
+          {
+            "side": "red",
+            "colonies": 18,
+            "surveys": 27,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 9,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 30,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 695,
+          "idleIndustryAssignments": 497,
+          "fullBudgetWindows": 12,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "deployProduction": 10,
+            "assignWorkers": 515,
+            "sendShip": 66,
+            "refuelShip": 46,
+            "enqueueProduction": 10,
+            "endTurn": 40,
+            "colonize": 1,
+            "repairShip": 7
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 23,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 35,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 224,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 19,
+          "commandKinds": {
+            "deployProduction": 11,
+            "sendShip": 77,
+            "refuelShip": 48,
+            "enqueueProduction": 12,
+            "assignWorkers": 26,
+            "endTurn": 40,
+            "colonize": 1,
+            "repairShip": 8,
+            "survey": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "3ae65345d15fcc3bd8282b5040f861a4e3761436201fa55ebee7379d64891422",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 2,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 14,
+            "surveys": 21,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 13,
+            "surveys": 19,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 21,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 13,
+              "surveys": 19,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 676,
+          "idleIndustryAssignments": 540,
+          "fullBudgetWindows": 2,
+          "ownershipChanges": 0,
+          "commandKinds": {
+            "deployProduction": 4,
+            "assignWorkers": 540,
+            "sendShip": 40,
+            "endTurn": 40,
+            "refuelShip": 36,
+            "sendFleet": 8,
+            "enqueueProduction": 4,
+            "disbandFleet": 2,
+            "createFleet": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 0,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 21,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 18,
+              "surveys": 24,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 153,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 9,
+          "commandKinds": {
+            "deployProduction": 4,
+            "sendShip": 26,
+            "endTurn": 40,
+            "refuelShip": 44,
+            "sendFleet": 9,
+            "survey": 2,
+            "assignWorkers": 13,
+            "createFleet": 4,
+            "disbandFleet": 5,
+            "enqueueProduction": 4,
+            "colonize": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-41-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "2fe09cf139bb988db7d84b721a1859e270bfdcb2e6f12310d9378de5e10ac2be",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 1,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 19,
+            "surveys": 25,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 9,
+            "surveys": 20,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 20,
+              "surveys": 30,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 8,
+              "surveys": 20,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 731,
+          "idleIndustryAssignments": 541,
+          "fullBudgetWindows": 9,
+          "ownershipChanges": 13,
+          "commandKinds": {
+            "assignWorkers": 553,
+            "refuelShip": 43,
+            "sendShip": 57,
+            "endTurn": 40,
+            "deployProduction": 11,
+            "enqueueProduction": 12,
+            "createFleet": 2,
+            "sendFleet": 5,
+            "disbandFleet": 1,
+            "repairShip": 3,
+            "survey": 4
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 28,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 11,
+              "surveys": 20,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 234,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "refuelShip": 50,
+            "sendShip": 59,
+            "endTurn": 40,
+            "deployProduction": 17,
+            "assignWorkers": 35,
+            "enqueueProduction": 21,
+            "createFleet": 2,
+            "sendFleet": 5,
+            "disbandFleet": 1,
+            "survey": 2,
+            "repairShip": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "e1052258591b4e1db9083c2e6b3c9e033c13e3638823ac701aeb6fb771cc5fff",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 12,
+            "surveys": 18,
+            "research": 21,
+            "ships": 4
+          },
+          {
+            "side": "red",
+            "colonies": 13,
+            "surveys": 28,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 9,
+              "surveys": 18,
+              "research": 21,
+              "ships": 3
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 28,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 718,
+          "idleIndustryAssignments": 462,
+          "fullBudgetWindows": 5,
+          "ownershipChanges": 23,
+          "commandKinds": {
+            "assignWorkers": 490,
+            "refuelShip": 56,
+            "sendShip": 86,
+            "enqueueProduction": 22,
+            "endTurn": 40,
+            "deployProduction": 18,
+            "repairShip": 6
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 18,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 28,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 242,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 18,
+          "commandKinds": {
+            "assignWorkers": 31,
+            "refuelShip": 52,
+            "sendShip": 84,
+            "enqueueProduction": 16,
+            "endTurn": 40,
+            "deployProduction": 15,
+            "repairShip": 4
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "0c8e1846a71d7baccc63247a729495a5a0f13243e629a05e22ffd2663bf53c9e",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 27,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 11,
+            "surveys": 22,
+            "research": 21,
+            "ships": 4
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 13,
+              "surveys": 27,
+              "research": 21,
+              "ships": 3
+            },
+            {
+              "side": "red",
+              "colonies": 13,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 739,
+          "idleIndustryAssignments": 504,
+          "fullBudgetWindows": 1,
+          "ownershipChanges": 10,
+          "commandKinds": {
+            "assignWorkers": 516,
+            "repairShip": 13,
+            "sendShip": 87,
+            "refuelShip": 58,
+            "endTurn": 40,
+            "enqueueProduction": 13,
+            "deployProduction": 12
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 27,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 251,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "repairShip": 9,
+            "sendShip": 80,
+            "refuelShip": 52,
+            "endTurn": 40,
+            "assignWorkers": 33,
+            "enqueueProduction": 17,
+            "deployProduction": 17,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "disbandFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "f5cebc68782807dec49928cdacb1e4df5d77f13112afc9c7644001a5548a00bd",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 12,
+            "surveys": 20,
+            "research": 21,
+            "ships": 5
+          },
+          {
+            "side": "red",
+            "colonies": 13,
+            "surveys": 24,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 9,
+              "surveys": 20,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 27,
+              "research": 21,
+              "ships": 3
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 691,
+          "idleIndustryAssignments": 445,
+          "fullBudgetWindows": 3,
+          "ownershipChanges": 27,
+          "commandKinds": {
+            "assignWorkers": 470,
+            "repairShip": 4,
+            "sendShip": 87,
+            "refuelShip": 62,
+            "endTurn": 40,
+            "enqueueProduction": 14,
+            "deployProduction": 13,
+            "survey": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 20,
+              "research": 21,
+              "ships": 3
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 26,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 269,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 27,
+          "commandKinds": {
+            "repairShip": 12,
+            "sendShip": 81,
+            "refuelShip": 56,
+            "endTurn": 40,
+            "enqueueProduction": 22,
+            "assignWorkers": 36,
+            "deployProduction": 21,
+            "colonize": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "aec9c12cf3db552ba1d69dde622090f62ea3e342a00e79a310cccea810817829",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 5,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 14,
+            "surveys": 27,
+            "research": 21,
+            "ships": 4
+          },
+          {
+            "side": "red",
+            "colonies": 10,
+            "surveys": 15,
+            "research": 21,
+            "ships": 3
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 16,
+              "surveys": 30,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 9,
+              "surveys": 16,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 706,
+          "idleIndustryAssignments": 425,
+          "fullBudgetWindows": 8,
+          "ownershipChanges": 32,
+          "commandKinds": {
+            "deployProduction": 23,
+            "assignWorkers": 459,
+            "refuelShip": 57,
+            "sendShip": 87,
+            "endTurn": 40,
+            "enqueueProduction": 22,
+            "repairShip": 14,
+            "survey": 3,
+            "colonize": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 5,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 16,
+              "surveys": 32,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 8,
+              "surveys": 15,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 288,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 26,
+          "commandKinds": {
+            "deployProduction": 16,
+            "refuelShip": 71,
+            "sendShip": 99,
+            "endTurn": 40,
+            "enqueueProduction": 21,
+            "assignWorkers": 35,
+            "repairShip": 6
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "7fb7ca222fdfe14d408bc03b9d35e1293091d99f2710b6ea08aba8d7d791a002",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 13,
+            "surveys": 21,
+            "research": 21,
+            "ships": 4
+          },
+          {
+            "side": "red",
+            "colonies": 12,
+            "surveys": 24,
+            "research": 21,
+            "ships": 3
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 12,
+              "surveys": 22,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 27,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 723,
+          "idleIndustryAssignments": 487,
+          "fullBudgetWindows": 1,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "deployProduction": 17,
+            "assignWorkers": 508,
+            "refuelShip": 47,
+            "sendShip": 77,
+            "endTurn": 40,
+            "enqueueProduction": 14,
+            "repairShip": 16,
+            "colonize": 1,
+            "survey": 3
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 9,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 26,
+              "research": 21,
+              "ships": 3
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 231,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 16,
+          "commandKinds": {
+            "deployProduction": 16,
+            "refuelShip": 45,
+            "sendShip": 74,
+            "endTurn": 40,
+            "assignWorkers": 30,
+            "enqueueProduction": 15,
+            "repairShip": 9,
+            "colonize": 1,
+            "survey": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-12345-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "f7957860e365f03c73927c3f2ee13e0f543b2615ee57819d3801fd0c61cd2847",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 13,
+            "surveys": 25,
+            "research": 21,
+            "ships": 3
+          },
+          {
+            "side": "red",
+            "colonies": 12,
+            "surveys": 22,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 25,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 720,
+          "idleIndustryAssignments": 466,
+          "fullBudgetWindows": 1,
+          "ownershipChanges": 20,
+          "commandKinds": {
+            "deployProduction": 18,
+            "assignWorkers": 495,
+            "refuelShip": 51,
+            "sendShip": 89,
+            "enqueueProduction": 19,
+            "endTurn": 40,
+            "repairShip": 7,
+            "colonize": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 25,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 266,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 20,
+          "commandKinds": {
+            "deployProduction": 18,
+            "assignWorkers": 41,
+            "refuelShip": 51,
+            "sendShip": 89,
+            "enqueueProduction": 19,
+            "endTurn": 40,
+            "repairShip": 7,
+            "colonize": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "89c3aa0a024f50c850c8bb8741ab294a77630cfacec49dd925aa1c3e74e66e4e",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 12,
+            "surveys": 20,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 14,
+            "surveys": 25,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 15,
+              "surveys": 22,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 13,
+              "surveys": 25,
+              "research": 21,
+              "ships": 7
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 652,
+          "idleIndustryAssignments": 519,
+          "fullBudgetWindows": 1,
+          "ownershipChanges": 4,
+          "commandKinds": {
+            "assignWorkers": 523,
+            "sendFleet": 7,
+            "refuelShip": 26,
+            "sendShip": 38,
+            "endTurn": 40,
+            "enqueueProduction": 6,
+            "deployProduction": 5,
+            "createFleet": 2,
+            "disbandFleet": 1,
+            "survey": 1,
+            "repairShip": 1,
+            "colonize": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 0,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 22,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 27,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 128,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 10,
+          "commandKinds": {
+            "sendFleet": 5,
+            "refuelShip": 23,
+            "sendShip": 31,
+            "endTurn": 40,
+            "assignWorkers": 14,
+            "colonize": 3,
+            "disbandFleet": 1,
+            "enqueueProduction": 5,
+            "deployProduction": 5,
+            "createFleet": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "fcbf98a0894aa67e7cb7e94fd901a862e787ffeaf4f5aa109781396eb4a0550d",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 11,
+            "surveys": 23,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 14,
+            "surveys": 22,
+            "research": 21,
+            "ships": 8
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 13,
+              "surveys": 23,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 29,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 672,
+          "idleIndustryAssignments": 515,
+          "fullBudgetWindows": 1,
+          "ownershipChanges": 8,
+          "commandKinds": {
+            "assignWorkers": 523,
+            "refuelShip": 29,
+            "sendShip": 46,
+            "endTurn": 40,
+            "deployProduction": 8,
+            "sendFleet": 6,
+            "createFleet": 2,
+            "enqueueProduction": 8,
+            "survey": 5,
+            "colonize": 2,
+            "disbandFleet": 1,
+            "repairShip": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 0,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 24,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 26,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 154,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 12,
+          "commandKinds": {
+            "refuelShip": 35,
+            "sendShip": 32,
+            "endTurn": 40,
+            "deployProduction": 5,
+            "sendFleet": 11,
+            "createFleet": 1,
+            "colonize": 4,
+            "assignWorkers": 17,
+            "enqueueProduction": 5,
+            "disbandFleet": 1,
+            "survey": 3
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "e7fb24d1d5c633da7e0a38c6827cb5c38b01949a6b670fc047964b59c8afdda7",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 6,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 11,
+            "surveys": 20,
+            "research": 21,
+            "ships": 4
+          },
+          {
+            "side": "red",
+            "colonies": 12,
+            "surveys": 22,
+            "research": 21,
+            "ships": 7
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 5,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 22,
+              "research": 21,
+              "ships": 5
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 622,
+          "idleIndustryAssignments": 438,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 4,
+          "commandKinds": {
+            "assignWorkers": 443,
+            "refuelShip": 29,
+            "sendShip": 75,
+            "enqueueProduction": 12,
+            "endTurn": 40,
+            "deployProduction": 12,
+            "repairShip": 8,
+            "colonize": 1,
+            "survey": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 14,
+              "surveys": 23,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 13,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 212,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 20,
+          "commandKinds": {
+            "refuelShip": 37,
+            "sendShip": 70,
+            "enqueueProduction": 14,
+            "endTurn": 40,
+            "deployProduction": 13,
+            "assignWorkers": 24,
+            "colonize": 4,
+            "repairShip": 10
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "77816f3b909f36ba130094930b9033d4e85110cf0b560ce5635e09e5ad51ab4a",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 7,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 12,
+            "surveys": 22,
+            "research": 21,
+            "ships": 7
+          },
+          {
+            "side": "red",
+            "colonies": 10,
+            "surveys": 20,
+            "research": 21,
+            "ships": 5
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 26,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 26,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 590,
+          "idleIndustryAssignments": 434,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 9,
+          "commandKinds": {
+            "assignWorkers": 443,
+            "refuelShip": 25,
+            "sendShip": 58,
+            "endTurn": 40,
+            "survey": 6,
+            "enqueueProduction": 6,
+            "deployProduction": 6,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "colonize": 3,
+            "disbandFleet": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 3,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 22,
+              "research": 21,
+              "ships": 4
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 26,
+              "research": 21,
+              "ships": 5
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 182,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 17,
+          "commandKinds": {
+            "refuelShip": 35,
+            "sendShip": 58,
+            "endTurn": 40,
+            "colonize": 4,
+            "assignWorkers": 22,
+            "enqueueProduction": 9,
+            "deployProduction": 8,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "repairShip": 2,
+            "disbandFleet": 1,
+            "survey": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "be266a7444fb956da25a30c776e355227c531e909ab2fd087e4126328e337498",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 6,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 12,
+            "surveys": 21,
+            "research": 21,
+            "ships": 7
+          },
+          {
+            "side": "red",
+            "colonies": 11,
+            "surveys": 20,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 13,
+              "surveys": 27,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 21,
+              "research": 21,
+              "ships": 7
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 615,
+          "idleIndustryAssignments": 480,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 9,
+          "commandKinds": {
+            "assignWorkers": 488,
+            "enqueueProduction": 7,
+            "endTurn": 40,
+            "sendShip": 40,
+            "deployProduction": 7,
+            "refuelShip": 16,
+            "survey": 6,
+            "repairShip": 4,
+            "createFleet": 1,
+            "sendFleet": 1,
+            "disbandFleet": 1,
+            "colonize": 4
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 0,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 15,
+              "surveys": 23,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 20,
+              "research": 21,
+              "ships": 7
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 142,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 12,
+          "commandKinds": {
+            "enqueueProduction": 8,
+            "assignWorkers": 20,
+            "endTurn": 40,
+            "sendShip": 41,
+            "deployProduction": 7,
+            "refuelShip": 17,
+            "survey": 2,
+            "colonize": 6,
+            "repairShip": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "40-98765-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "09cae66e0167922b4ab1fa3e6498ee751708183bd6870e6e19b8908d34bc41f4",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 5,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 9,
+            "surveys": 19,
+            "research": 21,
+            "ships": 7
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 24,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 15,
+              "surveys": 23,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 12,
+              "surveys": 28,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 659,
+          "idleIndustryAssignments": 511,
+          "fullBudgetWindows": 2,
+          "ownershipChanges": 7,
+          "commandKinds": {
+            "assignWorkers": 518,
+            "sendShip": 44,
+            "endTurn": 40,
+            "colonize": 3,
+            "enqueueProduction": 6,
+            "deployProduction": 6,
+            "refuelShip": 27,
+            "survey": 7,
+            "createFleet": 2,
+            "sendFleet": 3,
+            "disbandFleet": 2,
+            "repairShip": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 10,
+              "surveys": 20,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 17,
+              "surveys": 25,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 148,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 10,
+          "commandKinds": {
+            "sendShip": 34,
+            "endTurn": 40,
+            "colonize": 3,
+            "assignWorkers": 15,
+            "enqueueProduction": 5,
+            "deployProduction": 5,
+            "refuelShip": 34,
+            "repairShip": 1,
+            "createFleet": 4,
+            "sendFleet": 5,
+            "disbandFleet": 2
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-40-17-direct",
+        "worldCount": 40,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "7b7577cd80c70d9c6abbbe25152a5f704b840bef38ff521bc92002fb6a546120",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 15,
+            "surveys": 23,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 11,
+            "surveys": 21,
+            "research": 21,
+            "ships": 7
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 17,
+              "surveys": 24,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 10,
+              "surveys": 22,
+              "research": 21,
+              "ships": 6
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 666,
+          "idleIndustryAssignments": 532,
+          "fullBudgetWindows": 7,
+          "ownershipChanges": 4,
+          "commandKinds": {
+            "assignWorkers": 536,
+            "endTurn": 40,
+            "survey": 2,
+            "sendShip": 33,
+            "createFleet": 3,
+            "sendFleet": 8,
+            "refuelShip": 37,
+            "disbandFleet": 2,
+            "colonize": 1,
+            "enqueueProduction": 2,
+            "deployProduction": 2
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 18,
+              "surveys": 27,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 10,
+              "surveys": 22,
+              "research": 21,
+              "ships": 6
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 118,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "endTurn": 40,
+            "survey": 5,
+            "sendShip": 35,
+            "refuelShip": 17,
+            "disbandFleet": 1,
+            "colonize": 2,
+            "assignWorkers": 8,
+            "enqueueProduction": 3,
+            "deployProduction": 3,
+            "createFleet": 1,
+            "sendFleet": 3
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-40-17-mirror",
+        "worldCount": 40,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "14ec4c8a55a8ac3e1fdd028ee9f981b88a5e66ddfcca8eee07ab0f19e41fed0b",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 3,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 11,
+            "surveys": 22,
+            "research": 21,
+            "ships": 7
+          },
+          {
+            "side": "red",
+            "colonies": 15,
+            "surveys": 24,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 12,
+              "surveys": 22,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 28,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 674,
+          "idleIndustryAssignments": 534,
+          "fullBudgetWindows": 2,
+          "ownershipChanges": 7,
+          "commandKinds": {
+            "deployProduction": 5,
+            "assignWorkers": 541,
+            "sendShip": 42,
+            "endTurn": 40,
+            "refuelShip": 30,
+            "disbandFleet": 2,
+            "sendFleet": 5,
+            "survey": 2,
+            "colonize": 2,
+            "enqueueProduction": 4,
+            "createFleet": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 22,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 16,
+              "surveys": 27,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 148,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 7,
+          "commandKinds": {
+            "deployProduction": 4,
+            "sendShip": 44,
+            "endTurn": 40,
+            "refuelShip": 36,
+            "disbandFleet": 1,
+            "sendFleet": 7,
+            "assignWorkers": 11,
+            "colonize": 1,
+            "enqueueProduction": 4
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-40-314159-direct",
+        "worldCount": 40,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "eed44afac1c428e30c6f16efe897761970ff0d2b4d8679b7f5a13d46c88f32c3",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 2,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 13,
+            "surveys": 22,
+            "research": 21,
+            "ships": 8
+          },
+          {
+            "side": "red",
+            "colonies": 14,
+            "surveys": 22,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 0,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 15,
+              "surveys": 22,
+              "research": 21,
+              "ships": 7
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 27,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 690,
+          "idleIndustryAssignments": 547,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 6,
+          "commandKinds": {
+            "assignWorkers": 552,
+            "sendShip": 38,
+            "endTurn": 40,
+            "survey": 5,
+            "refuelShip": 30,
+            "createFleet": 2,
+            "sendFleet": 8,
+            "enqueueProduction": 5,
+            "deployProduction": 5,
+            "disbandFleet": 2,
+            "colonize": 2,
+            "repairShip": 1
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 1,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 13,
+              "surveys": 22,
+              "research": 21,
+              "ships": 8
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 25,
+              "research": 21,
+              "ships": 9
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 134,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 8,
+          "commandKinds": {
+            "sendShip": 35,
+            "endTurn": 40,
+            "survey": 2,
+            "refuelShip": 29,
+            "sendFleet": 5,
+            "createFleet": 1,
+            "enqueueProduction": 4,
+            "assignWorkers": 12,
+            "deployProduction": 4,
+            "disbandFleet": 1,
+            "colonize": 1
+          }
+        }
+      }
+    },
+    {
+      "format": "orion-ai-development-comparison",
+      "schemaVersion": 1,
+      "input": {
+        "id": "extra-40-314159-mirror",
+        "worldCount": 40,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "archivedSha256": "8aa30b1de3aa47faf04b4954b202502b204152a0f5dc6811f847c476c0119078",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "observer": "full-state-diagnostic-only",
+      "before": {
+        "turn": 161,
+        "outcome": {
+          "status": "ongoing"
+        },
+        "victory": "all-planets-v1",
+        "totalGoals": 29,
+        "neutralGoals": 4,
+        "sides": [
+          {
+            "side": "blue",
+            "colonies": 11,
+            "surveys": 21,
+            "research": 21,
+            "ships": 9
+          },
+          {
+            "side": "red",
+            "colonies": 14,
+            "surveys": 21,
+            "research": 21,
+            "ships": 9
+          }
+        ]
+      },
+      "archived": {
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 4,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 11,
+              "surveys": 21,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 14,
+              "surveys": 21,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 637,
+          "idleIndustryAssignments": 500,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 0,
+          "commandKinds": {
+            "assignWorkers": 500,
+            "refuelShip": 40,
+            "sendFleet": 10,
+            "sendShip": 39,
+            "endTurn": 40,
+            "enqueueProduction": 4,
+            "deployProduction": 4
+          }
+        }
+      },
+      "current": {
+        "status": "timeout",
+        "position": {
+          "turn": 201,
+          "outcome": {
+            "status": "ongoing"
+          },
+          "victory": "all-planets-v1",
+          "totalGoals": 29,
+          "neutralGoals": 2,
+          "sides": [
+            {
+              "side": "blue",
+              "colonies": 12,
+              "surveys": 21,
+              "research": 21,
+              "ships": 9
+            },
+            {
+              "side": "red",
+              "colonies": 15,
+              "surveys": 23,
+              "research": 21,
+              "ships": 8
+            }
+          ]
+        },
+        "activity": {
+          "windows": 40,
+          "ownEnds": {
+            "blue": 20,
+            "red": 20
+          },
+          "commands": 164,
+          "idleIndustryAssignments": 0,
+          "fullBudgetWindows": 0,
+          "ownershipChanges": 5,
+          "commandKinds": {
+            "refuelShip": 46,
+            "sendFleet": 10,
+            "sendShip": 41,
+            "endTurn": 40,
+            "colonize": 2,
+            "assignWorkers": 9,
+            "enqueueProduction": 5,
+            "deployProduction": 5,
+            "survey": 2,
+            "repairShip": 1,
+            "disbandFleet": 2,
+            "createFleet": 1
+          }
+        }
+      }
+    }
+  ]
+}

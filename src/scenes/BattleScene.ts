@@ -3,7 +3,7 @@ import { BattleManager } from '../entities/BattleManager';
 import { IFaction, IBattleConfig, IBattlePosition } from '../entities/interfaces/CombatSystem';
 import { ShipSprite } from '../entities/visuals/ShipSprite';
 import { createDesign, designSchema, type ShipDesign } from '../domain/shipDesign';
-import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_STEP } from '../domain/combatSimulation';
+import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from '../domain/combatSimulation';
 import { createSeededRandomStream } from '../domain/seededRandom';
 
 /**
@@ -275,11 +275,16 @@ export class BattleScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (this.isPaused) return;
 
-    const deltaSeconds = Number.isFinite(delta) && delta > 0 ? delta / 1000 : 0;
+    const frameSeconds = Number.isFinite(delta) && delta > 0 ? delta / 1000 : 0;
+    const deltaSeconds = Math.min(frameSeconds, COMBAT_SIMULATION_MAX_SECONDS);
     const manager = this.battleManager;
-    this.simulationAccumulator += deltaSeconds * this.simulationSpeed;
-    while (manager && !this.battleEnded &&
-      this.simulationAccumulator + 1e-10 >= COMBAT_SIMULATION_STEP) {
+    const accumulated = this.simulationAccumulator + frameSeconds * this.simulationSpeed;
+    if (manager && !this.battleEnded && accumulated > COMBAT_SIMULATION_MAX_SECONDS) {
+      console.warn('Избыточный догоняющий расчёт боя ограничен', { maxSeconds: COMBAT_SIMULATION_MAX_SECONDS });
+    }
+    this.simulationAccumulator = Math.min(COMBAT_SIMULATION_MAX_SECONDS, accumulated);
+    for (let step = 0; manager && !this.battleEnded && step < COMBAT_SIMULATION_MAX_STEPS &&
+      this.simulationAccumulator + 1e-10 >= COMBAT_SIMULATION_STEP; step++) {
       manager.update(COMBAT_SIMULATION_STEP);
       this.simulationAccumulator -= COMBAT_SIMULATION_STEP;
       // Trial can stalemate (armor, shields, exhausted ammo); keep its limit simulation-based.

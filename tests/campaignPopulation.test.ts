@@ -7,6 +7,7 @@ import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { type CampaignFactionId } from '../src/domain/campaign';
 import { buildConquestDesigns, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
+import { getWorldDistance } from '../src/domain/campaignTravel';
 
 const rules = createDefaultRulesSnapshot().population;
 function placeColonizer(state: Conquest, systemId: 'eden' | 'nexus', armed = false): number {
@@ -296,6 +297,9 @@ describe('campaign demographic boundary', () => {
     state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
     ship(state, 'sol'); ship(state, 'sol');
     const view = getConquestView(state, 'blue');
+    const nexus = view.galaxy.systems.find(system => system.id === 'nexus')!;
+    nexus.x = -1; nexus.y = 1;
+    expect(getWorldDistance(view.galaxy.systems, 'sol', 'eden')).toBe(getWorldDistance(view.galaxy.systems, 'sol', 'nexus'));
     view.production.orders = [];
     const first = planConquestAction(view);
     expect(first).toMatchObject({ kind: 'sendShip', shipId: 1 });

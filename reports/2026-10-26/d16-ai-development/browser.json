@@ -1,0 +1,69 @@
+{
+  "format": "orion-ai-missions-browser-check",
+  "schemaVersion": 1,
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "scenario": "Диагностические paid checkpoints40/256 Д15, controller переключён явно, не новое paid E2E",
+  "cases": [
+    {
+      "id": "40-41-current-ai-direct",
+      "viewport": [
+        1280,
+        720
+      ],
+      "sourceTurn": 200,
+      "resultTurn": 201,
+      "pausedLoad": "passed",
+      "pointerResume": "passed",
+      "pointerSave": "passed",
+      "actualReload": "passed",
+      "fullNextStateOracle": "passed",
+      "nextCommand": "endTurn",
+      "geometry": {
+        "css": [
+          1280,
+          720
+        ],
+        "canvas": [
+          1280,
+          720
+        ],
+        "canvasCount": 1,
+        "actualCanvas": true,
+        "minText": 14,
+        "minButton": 44
+      }
+    },
+    {
+      "id": "256-41-current-ai-direct",
+      "viewport": [
+        390,
+        844
+      ],
+      "sourceTurn": 200,
+      "resultTurn": 201,
+      "pausedLoad": "passed",
+      "pointerResume": "passed",
+      "pointerSave": "passed",
+      "actualReload": "passed",
+      "fullNextStateOracle": "passed",
+      "nextCommand": "deployProduction",
+      "geometry": {
+        "css": [
+          390,
+          844
+        ],
+        "canvas": [
+          390,
+          844
+        ],
+        "canvasCount": 1,
+        "actualCanvas": true,
+        "minText": 14,
+        "minButton": 44
+      }
+    }
+  ],
+  "pageErrors": 0,
+  "storageRestored": true,
+  "limitations": "No FPS, quota, physical touch or new paid walkthrough"
+}

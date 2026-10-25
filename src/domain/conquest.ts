@@ -6,7 +6,7 @@ import { conquestSessionSchema, createCampaignSession, executeConquestSessionCom
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { researchTreeSchema, researchStateSchema, researchIdSchema, createResearchState, getDefaultResearchTree,
   isResearchStateValid, isCampaignDesignAvailable, isCampaignDraftAvailable, calculateResearchTurn,
-  getStrategicRange, type ResearchTurnReceipt } from './campaignResearch';
+  getStrategicRange, hasColonizationAccess, type ResearchTurnReceipt } from './campaignResearch';
 import { operationalStateSchema, createOperationalState, readOperationalState, getRepairQuote, getAmmunitionQuote,
   getRefitQuote, getRefitOperationalState } from './campaignOperations';
 import { designSchema } from './shipDesign';
@@ -23,6 +23,7 @@ import { advanceColonyOutput, calculateColonyEndTurnBudget, colonyOutputStateSch
   type ColonyProductionOrder, type Workforce } from './campaignOutput';
 import { MAX_ORDER_ID } from './production';
 import { MAX_CAMPAIGN_SHIPS } from './campaignShips';
+import { MAX_CAMPAIGN_FLEETS, MAX_FLEET_ID } from './campaignFleets';
 import { getColonyWorldType, getCompletedColonyEffects, isColonyEffect } from './campaignColonyEffects';
 import { isWorldInRange, getTravelCapabilities, STRATEGIC_TRAVEL_POLICY } from './campaignTravel';
 import { createColonizerDesign } from './civilianPresets';
@@ -277,8 +278,7 @@ function colonizationAvailability(state: Conquest, faction: CampaignFactionId, s
     !ship.transit && ship.design.hullId === 'colonizer' && (shipId === undefined || ship.id === shipId))
     .sort((a, b) => a.id - b.id)[0];
   if (!colonizer) return fail('COLONIZER_REQUIRED', 'Нужен свой стоящий корабль-колонизатор');
-  if (type === 'toxic' && !state.researchTree.nodes.some(node => state.research[faction].completed.includes(node.id) &&
-    node.effects.some(effect => effect.kind === 'colonization-unlock' && effect.worldType === type))) {
+  if (!hasColonizationAccess(type, state.research[faction], state.researchTree)) {
     return fail('ADAPTATION_REQUIRED', 'Нужна технология адаптации к токсичной среде');
   }
   const quote = quoteFounding(state.session.galaxy, state.population, faction, systemId,
@@ -350,6 +350,7 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
     })).sort((a, b) => a.turn - b.turn || (a.technologyId < b.technologyId ? -1 : a.technologyId > b.technologyId ? 1 : 0)),
     researchForecast: { timing: researchForecast.timing, receipt: researchForecast.receipt },
     operations: Object.fromEntries(view.ships.map(ship => [String(ship.id), state.operations[String(ship.id)]])),
+    canCreateFleet: state.session.fleets.lastFleetId < MAX_FLEET_ID && view.fleets.length < MAX_CAMPAIGN_FLEETS,
     enemies: state.session.ships.filter(ship => ship.factionId !== side && !ship.transit && visible.has(ship.systemId))
       .map(ship => ({ id: ship.id, systemId: ship.systemId, factionId: ship.factionId, hullId: ship.design.hullId })),
     battles: state.battles.filter(battle => battle.participants.some(ship => ship.factionId === side)),

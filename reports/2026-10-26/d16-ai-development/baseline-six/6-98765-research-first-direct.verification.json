@@ -1,0 +1,32 @@
+{
+  "input": {
+    "id": "6-98765-research-first-direct",
+    "mapSeed": 98765,
+    "campaignSeed": 43210,
+    "worldCount": 6,
+    "mirrored": false,
+    "schedule": "research-first",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 54,
+  "outcome": {
+    "status": "completed",
+    "winner": "red",
+    "reason": "all-planets"
+  },
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "traceSha256": "d18fe828df76b47220fa3468101d7985028b1473e3cbf21434f0b232d8bafaf3",
+  "checkpointSha256": "7980b540d99f3a628853af48dd4f4021be758d846bd16dff4b3ccaffb1246dc8",
+  "finalStateSha256": "8aa6ae0e22a2b84b998728f29bbdf0393d0e225c8ad3e9ffda50d81129e8bce7",
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "lateRoundTrip": "passed",
+    "checkpointAt": 53,
+    "provenance": "original CLI published files only after repeat/early/late guards passed",
+    "recoveredTraceReplay": "passed",
+    "repeatedLateAiAfterDeadline": "passed"
+  }
+}

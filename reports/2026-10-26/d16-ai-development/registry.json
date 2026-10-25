@@ -1,0 +1,1986 @@
+{
+  "format": "orion-ai-development-registry",
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "256-41-current-ai-direct",
+      "input": {
+        "id": "256-41-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/256-41-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 652,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 438,
+      "oldNeutralGoals": 147,
+      "newNeutralGoals": 136,
+      "oldColonizations": 3,
+      "newColonizations": 14,
+      "oldSurveys": 80,
+      "newSurveys": 96,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 14,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-41-current-ai-mirror",
+      "input": {
+        "id": "256-41-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-41-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 652,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 438,
+      "oldNeutralGoals": 147,
+      "newNeutralGoals": 136,
+      "oldColonizations": 3,
+      "newColonizations": 14,
+      "oldSurveys": 80,
+      "newSurveys": 96,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 14,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-41-research-first-direct",
+      "input": {
+        "id": "256-41-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-41-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 705,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 361,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 134,
+      "oldColonizations": 3,
+      "newColonizations": 14,
+      "oldSurveys": 75,
+      "newSurveys": 89,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 14,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-41-research-first-mirror",
+      "input": {
+        "id": "256-41-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-41-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 705,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 361,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 134,
+      "oldColonizations": 3,
+      "newColonizations": 14,
+      "oldSurveys": 75,
+      "newSurveys": 89,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 14,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-41-production-first-direct",
+      "input": {
+        "id": "256-41-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-41-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 689,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 382,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 2,
+      "newColonizations": 11,
+      "oldSurveys": 85,
+      "newSurveys": 99,
+      "oldOwnershipChanges": 2,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-41-production-first-mirror",
+      "input": {
+        "id": "256-41-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-41-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-41-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 689,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 959,
+      "newCommands": 382,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 2,
+      "newColonizations": 11,
+      "oldSurveys": 85,
+      "newSurveys": 99,
+      "oldOwnershipChanges": 2,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-current-ai-direct",
+      "input": {
+        "id": "256-12345-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/256-12345-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 656,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 956,
+      "newCommands": 416,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 4,
+      "newColonizations": 13,
+      "oldSurveys": 78,
+      "newSurveys": 97,
+      "oldOwnershipChanges": 4,
+      "newOwnershipChanges": 13,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-current-ai-mirror",
+      "input": {
+        "id": "256-12345-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-12345-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 656,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 956,
+      "newCommands": 416,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 4,
+      "newColonizations": 13,
+      "oldSurveys": 78,
+      "newSurveys": 97,
+      "oldOwnershipChanges": 4,
+      "newOwnershipChanges": 13,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-research-first-direct",
+      "input": {
+        "id": "256-12345-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-12345-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 699,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 955,
+      "newCommands": 351,
+      "oldNeutralGoals": 144,
+      "newNeutralGoals": 137,
+      "oldColonizations": 5,
+      "newColonizations": 12,
+      "oldSurveys": 72,
+      "newSurveys": 89,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-research-first-mirror",
+      "input": {
+        "id": "256-12345-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-12345-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 699,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 955,
+      "newCommands": 351,
+      "oldNeutralGoals": 144,
+      "newNeutralGoals": 137,
+      "oldColonizations": 5,
+      "newColonizations": 12,
+      "oldSurveys": 72,
+      "newSurveys": 89,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-production-first-direct",
+      "input": {
+        "id": "256-12345-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-12345-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 674,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 958,
+      "newCommands": 395,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 3,
+      "newColonizations": 12,
+      "oldSurveys": 77,
+      "newSurveys": 94,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-12345-production-first-mirror",
+      "input": {
+        "id": "256-12345-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-12345-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-12345-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 674,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 958,
+      "newCommands": 395,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 137,
+      "oldColonizations": 3,
+      "newColonizations": 12,
+      "oldSurveys": 77,
+      "newSurveys": 94,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-current-ai-direct",
+      "input": {
+        "id": "256-98765-current-ai-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/256-98765-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 656,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 960,
+      "newCommands": 442,
+      "oldNeutralGoals": 147,
+      "newNeutralGoals": 139,
+      "oldColonizations": 3,
+      "newColonizations": 11,
+      "oldSurveys": 78,
+      "newSurveys": 96,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-current-ai-mirror",
+      "input": {
+        "id": "256-98765-current-ai-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-98765-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 656,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 960,
+      "newCommands": 442,
+      "oldNeutralGoals": 147,
+      "newNeutralGoals": 139,
+      "oldColonizations": 3,
+      "newColonizations": 11,
+      "oldSurveys": 78,
+      "newSurveys": 96,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-research-first-direct",
+      "input": {
+        "id": "256-98765-research-first-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-98765-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 687,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 956,
+      "newCommands": 348,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 139,
+      "oldColonizations": 5,
+      "newColonizations": 11,
+      "oldSurveys": 76,
+      "newSurveys": 84,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-research-first-mirror",
+      "input": {
+        "id": "256-98765-research-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-98765-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 687,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 956,
+      "newCommands": 348,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 139,
+      "oldColonizations": 5,
+      "newColonizations": 11,
+      "oldSurveys": 76,
+      "newSurveys": 84,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-production-first-direct",
+      "input": {
+        "id": "256-98765-production-first-direct",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/256-98765-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 663,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 958,
+      "newCommands": 424,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 140,
+      "oldColonizations": 5,
+      "newColonizations": 11,
+      "oldSurveys": 76,
+      "newSurveys": 90,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "256-98765-production-first-mirror",
+      "input": {
+        "id": "256-98765-production-first-mirror",
+        "worldCount": 256,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/256-98765-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/256-98765-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 663,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 958,
+      "newCommands": 424,
+      "oldNeutralGoals": 146,
+      "newNeutralGoals": 140,
+      "oldColonizations": 5,
+      "newColonizations": 11,
+      "oldSurveys": 76,
+      "newSurveys": 90,
+      "oldOwnershipChanges": 5,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-256-17-direct",
+      "input": {
+        "id": "extra-256-17-direct",
+        "worldCount": 256,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-256-17-direct.run.json.gz",
+      "comparison": "comparisons-final/extra-256-17-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 634,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 955,
+      "newCommands": 419,
+      "oldNeutralGoals": 148,
+      "newNeutralGoals": 139,
+      "oldColonizations": 2,
+      "newColonizations": 11,
+      "oldSurveys": 81,
+      "newSurveys": 95,
+      "oldOwnershipChanges": 2,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-256-17-mirror",
+      "input": {
+        "id": "extra-256-17-mirror",
+        "worldCount": 256,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-256-17-mirror.run.json.gz",
+      "comparison": "comparisons-final/extra-256-17-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 634,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 955,
+      "newCommands": 419,
+      "oldNeutralGoals": 148,
+      "newNeutralGoals": 139,
+      "oldColonizations": 2,
+      "newColonizations": 11,
+      "oldSurveys": 81,
+      "newSurveys": 95,
+      "oldOwnershipChanges": 2,
+      "newOwnershipChanges": 11,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-256-314159-direct",
+      "input": {
+        "id": "extra-256-314159-direct",
+        "worldCount": 256,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-256-314159-direct.run.json.gz",
+      "comparison": "comparisons-final/extra-256-314159-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 704,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 951,
+      "newCommands": 397,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 135,
+      "oldColonizations": 3,
+      "newColonizations": 13,
+      "oldSurveys": 73,
+      "newSurveys": 85,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 13,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-256-314159-mirror",
+      "input": {
+        "id": "extra-256-314159-mirror",
+        "worldCount": 256,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-256-314159-mirror.run.json.gz",
+      "comparison": "comparisons-final/extra-256-314159-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 704,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 951,
+      "newCommands": 397,
+      "oldNeutralGoals": 145,
+      "newNeutralGoals": 135,
+      "oldColonizations": 3,
+      "newColonizations": 13,
+      "oldSurveys": 73,
+      "newSurveys": 85,
+      "oldOwnershipChanges": 3,
+      "newOwnershipChanges": 13,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-current-ai-direct",
+      "input": {
+        "id": "40-41-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/40-41-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "territory-and-surveys-unchanged-other-state-may-change",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 520,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 643,
+      "newCommands": 173,
+      "oldNeutralGoals": 3,
+      "newNeutralGoals": 0,
+      "oldColonizations": 0,
+      "newColonizations": 3,
+      "oldSurveys": 45,
+      "newSurveys": 54,
+      "oldOwnershipChanges": 0,
+      "newOwnershipChanges": 8,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-current-ai-mirror",
+      "input": {
+        "id": "40-41-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-41-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 532,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 716,
+      "newCommands": 183,
+      "oldNeutralGoals": 1,
+      "newNeutralGoals": 2,
+      "oldColonizations": 1,
+      "newColonizations": 0,
+      "oldSurveys": 52,
+      "newSurveys": 57,
+      "oldOwnershipChanges": 8,
+      "newOwnershipChanges": 8,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-research-first-direct",
+      "input": {
+        "id": "40-41-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-41-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 472,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 668,
+      "newCommands": 210,
+      "oldNeutralGoals": 3,
+      "newNeutralGoals": 0,
+      "oldColonizations": 0,
+      "newColonizations": 3,
+      "oldSurveys": 56,
+      "newSurveys": 69,
+      "oldOwnershipChanges": 20,
+      "newOwnershipChanges": 25,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-research-first-mirror",
+      "input": {
+        "id": "40-41-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-41-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 497,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 695,
+      "newCommands": 205,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 0,
+      "oldColonizations": 1,
+      "newColonizations": 3,
+      "oldSurveys": 53,
+      "newSurveys": 66,
+      "oldOwnershipChanges": 16,
+      "newOwnershipChanges": 21,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-production-first-direct",
+      "input": {
+        "id": "40-41-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-41-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "territory-and-surveys-unchanged-other-state-may-change",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 540,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 676,
+      "newCommands": 161,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 0,
+      "oldColonizations": 0,
+      "newColonizations": 2,
+      "oldSurveys": 40,
+      "newSurveys": 50,
+      "oldOwnershipChanges": 0,
+      "newOwnershipChanges": 7,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-41-production-first-mirror",
+      "input": {
+        "id": "40-41-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 41,
+        "campaignSeed": 101,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-41-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-41-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 541,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 731,
+      "newCommands": 212,
+      "oldNeutralGoals": 1,
+      "newNeutralGoals": 0,
+      "oldColonizations": 0,
+      "newColonizations": 1,
+      "oldSurveys": 50,
+      "newSurveys": 57,
+      "oldOwnershipChanges": 13,
+      "newOwnershipChanges": 17,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-current-ai-direct",
+      "input": {
+        "id": "40-12345-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/40-12345-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "military-ownership-changes-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 462,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 718,
+      "newCommands": 217,
+      "oldNeutralGoals": 4,
+      "newNeutralGoals": 2,
+      "oldColonizations": 0,
+      "newColonizations": 2,
+      "oldSurveys": 46,
+      "newSurveys": 57,
+      "oldOwnershipChanges": 23,
+      "newOwnershipChanges": 18,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-current-ai-mirror",
+      "input": {
+        "id": "40-12345-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-12345-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 504,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 739,
+      "newCommands": 246,
+      "oldNeutralGoals": 3,
+      "newNeutralGoals": 1,
+      "oldColonizations": 0,
+      "newColonizations": 2,
+      "oldSurveys": 50,
+      "newSurveys": 54,
+      "oldOwnershipChanges": 10,
+      "newOwnershipChanges": 21,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-research-first-direct",
+      "input": {
+        "id": "40-12345-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-12345-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 445,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 691,
+      "newCommands": 242,
+      "oldNeutralGoals": 4,
+      "newNeutralGoals": 1,
+      "oldColonizations": 0,
+      "newColonizations": 3,
+      "oldSurveys": 47,
+      "newSurveys": 56,
+      "oldOwnershipChanges": 27,
+      "newOwnershipChanges": 28,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-research-first-mirror",
+      "input": {
+        "id": "40-12345-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-12345-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 425,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 706,
+      "newCommands": 257,
+      "oldNeutralGoals": 4,
+      "newNeutralGoals": 1,
+      "oldColonizations": 1,
+      "newColonizations": 4,
+      "oldSurveys": 46,
+      "newSurveys": 59,
+      "oldOwnershipChanges": 32,
+      "newOwnershipChanges": 29,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-production-first-direct",
+      "input": {
+        "id": "40-12345-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-12345-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 487,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 723,
+      "newCommands": 217,
+      "oldNeutralGoals": 3,
+      "newNeutralGoals": 0,
+      "oldColonizations": 1,
+      "newColonizations": 4,
+      "oldSurveys": 49,
+      "newSurveys": 52,
+      "oldOwnershipChanges": 17,
+      "newOwnershipChanges": 17,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-12345-production-first-mirror",
+      "input": {
+        "id": "40-12345-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 12345,
+        "campaignSeed": 67890,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-12345-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-12345-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 466,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 720,
+      "newCommands": 245,
+      "oldNeutralGoals": 3,
+      "newNeutralGoals": 1,
+      "oldColonizations": 1,
+      "newColonizations": 3,
+      "oldSurveys": 47,
+      "newSurveys": 61,
+      "oldOwnershipChanges": 20,
+      "newOwnershipChanges": 18,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-current-ai-direct",
+      "input": {
+        "id": "40-98765-current-ai-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-current-ai-direct.run.json.gz",
+      "comparison": "comparisons-final/40-98765-current-ai-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 519,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 652,
+      "newCommands": 167,
+      "oldNeutralGoals": 1,
+      "newNeutralGoals": 1,
+      "oldColonizations": 2,
+      "newColonizations": 2,
+      "oldSurveys": 47,
+      "newSurveys": 53,
+      "oldOwnershipChanges": 4,
+      "newOwnershipChanges": 6,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-current-ai-mirror",
+      "input": {
+        "id": "40-98765-current-ai-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-current-ai-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-98765-current-ai-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 515,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 672,
+      "newCommands": 167,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 3,
+      "oldColonizations": 2,
+      "newColonizations": 1,
+      "oldSurveys": 52,
+      "newSurveys": 51,
+      "oldOwnershipChanges": 8,
+      "newOwnershipChanges": 5,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-research-first-direct",
+      "input": {
+        "id": "40-98765-research-first-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-research-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-98765-research-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 438,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 622,
+      "newCommands": 197,
+      "oldNeutralGoals": 5,
+      "newNeutralGoals": 3,
+      "oldColonizations": 1,
+      "newColonizations": 3,
+      "oldSurveys": 44,
+      "newSurveys": 51,
+      "oldOwnershipChanges": 4,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-research-first-mirror",
+      "input": {
+        "id": "40-98765-research-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "research-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-research-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-98765-research-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 434,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 590,
+      "newCommands": 189,
+      "oldNeutralGoals": 4,
+      "newNeutralGoals": 3,
+      "oldColonizations": 3,
+      "newColonizations": 4,
+      "oldSurveys": 52,
+      "newSurveys": 58,
+      "oldOwnershipChanges": 9,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-production-first-direct",
+      "input": {
+        "id": "40-98765-production-first-direct",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": false,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-production-first-direct.run.json.gz",
+      "comparison": "comparisons-final/40-98765-production-first-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 480,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 615,
+      "newCommands": 132,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 2,
+      "oldColonizations": 4,
+      "newColonizations": 4,
+      "oldSurveys": 48,
+      "newSurveys": 50,
+      "oldOwnershipChanges": 9,
+      "newOwnershipChanges": 10,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "40-98765-production-first-mirror",
+      "input": {
+        "id": "40-98765-production-first-mirror",
+        "worldCount": 40,
+        "mapSeed": 98765,
+        "campaignSeed": 43210,
+        "mirrored": true,
+        "schedule": "production-first",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/40-98765-production-first-mirror.run.json.gz",
+      "comparison": "comparisons-final/40-98765-production-first-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 511,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 659,
+      "newCommands": 134,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 3,
+      "oldColonizations": 3,
+      "newColonizations": 2,
+      "oldSurveys": 51,
+      "newSurveys": 52,
+      "oldOwnershipChanges": 7,
+      "newOwnershipChanges": 7,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-40-17-direct",
+      "input": {
+        "id": "extra-40-17-direct",
+        "worldCount": 40,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-40-17-direct.run.json.gz",
+      "comparison": "comparisons-final/extra-40-17-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 532,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 666,
+      "newCommands": 151,
+      "oldNeutralGoals": 2,
+      "newNeutralGoals": 0,
+      "oldColonizations": 1,
+      "newColonizations": 3,
+      "oldSurveys": 46,
+      "newSurveys": 55,
+      "oldOwnershipChanges": 4,
+      "newOwnershipChanges": 9,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-40-17-mirror",
+      "input": {
+        "id": "extra-40-17-mirror",
+        "worldCount": 40,
+        "mapSeed": 17,
+        "campaignSeed": 2027,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-40-17-mirror.run.json.gz",
+      "comparison": "comparisons-final/extra-40-17-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 534,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 674,
+      "newCommands": 148,
+      "oldNeutralGoals": 1,
+      "newNeutralGoals": 1,
+      "oldColonizations": 2,
+      "newColonizations": 2,
+      "oldSurveys": 50,
+      "newSurveys": 55,
+      "oldOwnershipChanges": 7,
+      "newOwnershipChanges": 12,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-40-314159-direct",
+      "input": {
+        "id": "extra-40-314159-direct",
+        "worldCount": 40,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": false,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-40-314159-direct.run.json.gz",
+      "comparison": "comparisons-final/extra-40-314159-direct/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "expansion-or-new-surveys-observed",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 547,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 690,
+      "newCommands": 148,
+      "oldNeutralGoals": 0,
+      "newNeutralGoals": 1,
+      "oldColonizations": 2,
+      "newColonizations": 1,
+      "oldSurveys": 49,
+      "newSurveys": 52,
+      "oldOwnershipChanges": 6,
+      "newOwnershipChanges": 7,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    },
+    {
+      "id": "extra-40-314159-mirror",
+      "input": {
+        "id": "extra-40-314159-mirror",
+        "worldCount": 40,
+        "mapSeed": 314159,
+        "campaignSeed": 271828,
+        "mirrored": true,
+        "schedule": "current-ai",
+        "kind": "paid",
+        "maxTurns": 200
+      },
+      "sourceArchive": "reports/2026-10-25/d15-ai-missions/extended/extra-40-314159-mirror.run.json.gz",
+      "comparison": "comparisons-final/extra-40-314159-mirror/summary.json",
+      "fromWindow": 160,
+      "throughWindow": 200,
+      "oldClass": "territory-and-surveys-unchanged-other-state-may-change",
+      "newClass": "expansion-or-new-surveys-observed",
+      "oldIdleIndustryAssignments": 500,
+      "newIdleIndustryAssignments": 0,
+      "oldCommands": 637,
+      "newCommands": 184,
+      "oldNeutralGoals": 4,
+      "newNeutralGoals": 1,
+      "oldColonizations": 0,
+      "newColonizations": 3,
+      "oldSurveys": 42,
+      "newSurveys": 54,
+      "oldOwnershipChanges": 0,
+      "newOwnershipChanges": 14,
+      "status": "timeout",
+      "outcome": {
+        "status": "ongoing"
+      },
+      "verification": {
+        "archivedReplay": "passed",
+        "repeat": "passed",
+        "roundTrip": "passed",
+        "middleRoundTrip": "passed"
+      },
+      "limits": [
+        "finite window only; not proof of infinite stagnation or approved campaign tempo",
+        "new policy applied only after old prefix160; not a fresh large opening"
+      ]
+    }
+  ]
+}

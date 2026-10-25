@@ -1,0 +1,32 @@
+{
+  "input": {
+    "id": "6-98765-current-ai-direct",
+    "mapSeed": 98765,
+    "campaignSeed": 43210,
+    "worldCount": 6,
+    "mirrored": false,
+    "schedule": "current-ai",
+    "kind": "paid",
+    "maxTurns": 200
+  },
+  "status": "completed",
+  "turnsExecuted": 117,
+  "outcome": {
+    "status": "completed",
+    "winner": "blue",
+    "reason": "all-planets"
+  },
+  "sourceSha256": "8d6bf88dc99e196c1a33434621897034200d8a8d1efbcd5f74761068982dada5",
+  "traceSha256": "5473b6b260491c059c8a77287e30115589f0b82ded7de20f928c1099372e22b7",
+  "checkpointSha256": "af8de988338ab1a7bb46d475efca7660c2159c748cd99722a94edb1db7033ef6",
+  "finalStateSha256": "7a11a8347f7167e32cc14bc4c0c5c0b3c69e9fe2ad339e44bf3eb1a4032960b6",
+  "verification": {
+    "repeat": "passed",
+    "roundTrip": "passed",
+    "lateRoundTrip": "passed",
+    "checkpointAt": 60,
+    "provenance": "original CLI published files only after repeat/early/late guards passed",
+    "recoveredTraceReplay": "passed",
+    "repeatedLateAiAfterDeadline": "passed"
+  }
+}
