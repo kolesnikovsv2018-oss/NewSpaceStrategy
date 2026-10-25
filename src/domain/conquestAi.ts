@@ -11,7 +11,7 @@ import { factionIdSchema } from './campaign';
 import type { BattleFrame } from './conquestBattle';
 import { calculateColonyValue } from './campaignColonyEffects';
 import { getWorldDistance, isWorldInRange, createStrategicEquipment, getTravelCapabilities,
-  getTravelQuote, getStrategicRefuelQuote, type StrategicEquipment } from './campaignTravel';
+  getTravelQuote, getStrategicRefuelQuote, type StrategicEquipment, type TravelCapabilities } from './campaignTravel';
 import { createColonizerDesign } from './civilianPresets';
 import { MAX_CAMPAIGN_SHIPS } from './campaignShips';
 
@@ -204,6 +204,12 @@ export function calculateConquestDesignScore(design: ShipDesign, available: Trea
 export function planConquestAction(view: ConquestView): ConquestCommand {
   const factionId = view.galaxy.factionId, expectedTurn = view.turn, fields = { factionId, expectedTurn };
   const colonies = view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === factionId);
+  const potentialUnknownTarget = (id: string) => !view.knownSystems.includes(id) || view.knownHabitableSystems.includes(id);
+  const hasReturnReserve = (from: string, to: string, caps: TravelCapabilities, fuel: number) => {
+    const outgoing = getTravelQuote(getWorldDistance(view.galaxy.systems, from, to), caps, fuel);
+    return outgoing.ok && colonies.some(colony =>
+      getTravelQuote(getWorldDistance(view.galaxy.systems, to, colony.id), caps, fuel - outgoing.fuelCost).ok);
+  };
   const afford = (credits: number, minerals = 0) => view.treasury.credits >= credits && view.treasury.minerals >= minerals;
   const completed = view.production.completed[0];
   if (completed && view.ships.length < MAX_CAMPAIGN_SHIPS) return { ...fields, kind: 'deployProduction', orderId: completed.id, systemId: completed.systemId };
@@ -272,15 +278,17 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
     const reachable = view.galaxy.systems.filter(system =>
       getTravelQuote(distance(system.id), capabilities, ship.fuel).ok);
-    const targets = reachable.filter(system => system.visibility === 'unknown'
-      ? !view.knownSystems.includes(system.id) || view.knownHabitableSystems.includes(system.id)
-      : system.habitable && (colonizer ? !system.ownerId && !view.enemies.some(enemy => enemy.systemId === system.id)
-        : !!system.ownerId && system.ownerId !== factionId)).sort(compare);
+    const targets = reachable.filter(system => {
+      const mission = system.visibility === 'unknown' ? potentialUnknownTarget(system.id)
+        : system.habitable && (colonizer ? !system.ownerId && !view.enemies.some(enemy => enemy.systemId === system.id)
+          : !!system.ownerId && system.ownerId !== factionId);
+      return mission && (home || system.visibility !== 'unknown' ||
+        hasReturnReserve(ship.systemId, system.id, capabilities, ship.fuel));
+    }).sort(compare);
     const nearest = targets.filter(target => distance(target.id) === distance(targets[0].id));
     const rank = view.ships.filter(other => other.id < ship.id).length;
     let destination = nearest.length ? nearest[rank % nearest.length] : undefined;
-    if (!home && (!destination || destination.visibility === 'unknown' &&
-      !getTravelQuote(distance(destination.id), capabilities, Math.max(0, ship.fuel - Math.ceil(distance(destination.id) * capabilities.fuelConsumptionPerDistance))).ok)) {
+    if (!home && !destination) {
       destination = reachable.filter(system => colonies.some(colony => colony.id === system.id)).sort(compare)[0];
     }
     if (destination) {
@@ -290,13 +298,31 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
   const orders = view.production.orders, completedRecords = view.production.completed;
   const allRecords = [...view.ships, ...orders, ...completedRecords];
   const source = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
-  const colonizationTargets = view.galaxy.systems.filter(system => system.visibility === 'unknown' || system.habitable && system.ownerId === null);
+  const colonizationTargets = view.galaxy.systems.filter(system => system.visibility === 'unknown'
+    ? potentialUnknownTarget(system.id) : system.habitable && system.ownerId === null);
   const fullReach = (design: ShipDesign, from: string, to: string) => {
     const caps = getTravelCapabilities(design.strategicEquipment);
     return getTravelQuote(getWorldDistance(view.galaxy.systems, from, to), caps, caps.fuelCapacity).ok;
   };
-  if (source && colonizationTargets.length && !allRecords.some(record => record.design.hullId === 'colonizer' &&
-    colonizationTargets.some(target => fullReach(record.design, record.systemId, target.id)))) {
+  const hasActiveColonizer = view.ships.some(ship => {
+    if (ship.design.hullId !== 'colonizer') return false;
+    const caps = getTravelCapabilities(ship.design.strategicEquipment);
+    const position = ship.transit?.destinationId ?? ship.systemId;
+    const atColony = colonies.some(colony => colony.id === position);
+    const arrival = ship.transit && view.galaxy.systems.find(world => world.id === position);
+    // Arrival restores observation and permits survey of a previously detected, unstudied world.
+    if (arrival?.visibility === 'unknown' && view.environmentKnowledge[position] !== 'barren') return true;
+    const reachable = (from: string, to: string, availableFuel: number) =>
+      getTravelQuote(getWorldDistance(view.galaxy.systems, from, to), caps, availableFuel).ok;
+    return colonizationTargets.some(target => target.id === position ||
+      reachable(position, target.id, ship.fuel) && (atColony || target.visibility !== 'unknown' ||
+        hasReturnReserve(position, target.id, caps, ship.fuel)) ||
+      colonies.some(colony => (colony.id === position || reachable(position, colony.id, ship.fuel)) &&
+        reachable(colony.id, target.id, caps.fuelCapacity)));
+  });
+  const hasProductionColonizer = [...orders, ...completedRecords].some(record => record.design.hullId === 'colonizer' &&
+    colonizationTargets.some(target => fullReach(record.design, record.systemId, target.id)));
+  if (source && colonizationTargets.length && !hasActiveColonizer && !hasProductionColonizer) {
     const design = { ...createColonizerDesign(), strategicEquipment: getAiStrategicEquipment(view.research, view.researchTree, true) },
       quote = getColonyProductionQuote(design, view.colonyOutput.rules);
     if (colonizationTargets.some(target => fullReach(design, source.id, target.id)) && afford(quote.cost.credits + 5, quote.cost.minerals)) {

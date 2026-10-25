@@ -1,0 +1,1178 @@
+{
+  "format": "orion-conquest-timeout-secondary",
+  "schemaVersion": 1,
+  "sourceSha256": "aceac7242f5e27f4b63dd5b955e26dd2cc11aa2c0df3d0a642d1489addc52bfe",
+  "results": [
+    {
+      "id": "6-41-current-ai-direct",
+      "intervention": "one-early-endTurn-instead-of-first-sendShip",
+      "turn": 105,
+      "original": {
+        "factionId": "blue",
+        "expectedTurn": 105,
+        "kind": "sendShip",
+        "systemId": "world-006",
+        "shipId": 35,
+        "destinationId": "world-005"
+      },
+      "alternative": {
+        "kind": "endTurn",
+        "factionId": "blue",
+        "expectedTurn": 105
+      },
+      "paidPrefixCommands": 3,
+      "accepted": true,
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "repeatAndRoundTrip": "passed",
+      "originalBattlesAfter94": 0,
+      "actualBattlesAfter94": 0,
+      "firstNewBattle": null,
+      "events": [
+        {
+          "turn": 107,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 112,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 114,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 115,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 117,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 122,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 124,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 125,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 127,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 132,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 134,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 135,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 137,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 142,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 144,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 145,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 147,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 152,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 154,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 155,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 157,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 162,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 164,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 165,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 167,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 172,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 174,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 175,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 177,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 182,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 184,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 185,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 187,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 192,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-006",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 194,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-005",
+              "from": "blue",
+              "to": "red"
+            }
+          ]
+        },
+        {
+          "turn": 195,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-003",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        },
+        {
+          "turn": 197,
+          "battles": [],
+          "ownershipChanges": [
+            {
+              "systemId": "world-002",
+              "from": "red",
+              "to": "blue"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6-41-current-ai-direct",
+      "intervention": "one-priority-hold-frontier-for-four-own-ends",
+      "turn": 105,
+      "end": 112,
+      "ownCommands": [
+        {
+          "kind": "endTurn",
+          "factionId": "blue",
+          "expectedTurn": 105
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 107,
+          "kind": "assignWorkers",
+          "systemId": "world-001",
+          "workers": {
+            "industry": 9175,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 107,
+          "kind": "assignWorkers",
+          "systemId": "world-006",
+          "workers": {
+            "industry": 2636,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "kind": "endTurn",
+          "factionId": "blue",
+          "expectedTurn": 107
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 109,
+          "kind": "assignWorkers",
+          "systemId": "world-001",
+          "workers": {
+            "industry": 9395,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 109,
+          "kind": "assignWorkers",
+          "systemId": "world-006",
+          "workers": {
+            "industry": 2700,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "kind": "endTurn",
+          "factionId": "blue",
+          "expectedTurn": 109
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 111,
+          "kind": "assignWorkers",
+          "systemId": "world-001",
+          "workers": {
+            "industry": 9621,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "factionId": "blue",
+          "expectedTurn": 111,
+          "kind": "assignWorkers",
+          "systemId": "world-006",
+          "workers": {
+            "industry": 2765,
+            "research": 0,
+            "culture": 0
+          }
+        },
+        {
+          "kind": "endTurn",
+          "factionId": "blue",
+          "expectedTurn": 111
+        }
+      ],
+      "accepted": true,
+      "status": "timeout",
+      "turnsExecuted": 200,
+      "repeatAndRoundTrip": "passed",
+      "firstNewBattle": 112,
+      "actualBattlesAfter94": 63,
+      "events": [
+        {
+          "turn": 106,
+          "battles": [],
+          "ownershipChanges": []
+        },
+        {
+          "turn": 108,
+          "battles": [],
+          "ownershipChanges": []
+        },
+        {
+          "turn": 110,
+          "battles": [],
+          "ownershipChanges": []
+        },
+        {
+          "turn": 112,
+          "battles": [
+            {
+              "id": 29,
+              "turn": 112,
+              "tacticalRules": "design-combat-v1",
+              "systemId": "world-006",
+              "winner": null,
+              "timedOut": true,
+              "participants": [
+                {
+                  "id": 31,
+                  "factionId": "red"
+                },
+                {
+                  "id": 36,
+                  "factionId": "red"
+                },
+                {
+                  "id": 35,
+                  "factionId": "blue"
+                },
+                {
+                  "id": 37,
+                  "factionId": "red"
+                },
+                {
+                  "id": 38,
+                  "factionId": "blue"
+                },
+                {
+                  "id": 42,
+                  "factionId": "red"
+                },
+                {
+                  "id": 41,
+                  "factionId": "blue"
+                },
+                {
+                  "id": 43,
+                  "factionId": "blue"
+                },
+                {
+                  "id": 44,
+                  "factionId": "blue"
+                },
+                {
+                  "id": 45,
+                  "factionId": "red"
+                }
+              ],
+              "destroyed": [
+                37,
+                42,
+                44
+              ]
+            }
+          ],
+          "ownershipChanges": []
+        }
+      ]
+    },
+    {
+      "id": "6-41-current-ai-mirror",
+      "intervention": "isolated-same-seed-encounters-with-persisted-hp-no-intermediate-service",
+      "turn": 120,
+      "systemId": "world-003",
+      "seed": 704711329,
+      "tacticalRules": "design-combat-v1",
+      "policy": "campaign-v2",
+      "actualEndTurnFramesAndRepeat": "passed",
+      "ships": [
+        {
+          "id": 38,
+          "factionId": "blue",
+          "systemId": "world-003",
+          "design": {
+            "id": "conquest-battleship-4",
+            "name": "Линкор 5",
+            "hullId": "battleship",
+            "createdAt": "2000-01-01T00:00:00.000Z",
+            "updatedAt": "2000-01-01T00:00:00.000Z",
+            "schemaVersion": 5,
+            "tacticalRules": "design-combat-v1",
+            "hullVariant": "standard",
+            "strategicEquipment": {
+              "policy": "project-travel-v1",
+              "drive": "fast",
+              "jump": "galactic",
+              "tank": "extended"
+            },
+            "slots": [
+              {
+                "id": "beam_1",
+                "component": {
+                  "id": "conquest-beam-v1",
+                  "name": "Лазер",
+                  "technologyVariant": "standard",
+                  "kind": "beam",
+                  "tacticalVariant": "focused",
+                  "damage": 32.5,
+                  "range": 650,
+                  "fireRate": 2.6,
+                  "accuracy": 0.9500000000000001
+                }
+              },
+              {
+                "id": "beam_2",
+                "component": null
+              },
+              {
+                "id": "projectile_1",
+                "component": null
+              },
+              {
+                "id": "engine_1",
+                "component": {
+                  "id": "conquest-engine-v1",
+                  "name": "Двигатель",
+                  "technologyVariant": "standard",
+                  "kind": "engine",
+                  "tacticalVariant": "high-thrust",
+                  "thrust": 1300,
+                  "maxSpeed": 260,
+                  "maneuverability": 0.85,
+                  "powerGeneration": 780
+                }
+              },
+              {
+                "id": "shield_1",
+                "component": null
+              },
+              {
+                "id": "armor_1",
+                "component": {
+                  "id": "conquest-armor-v1",
+                  "name": "Броня",
+                  "technologyVariant": "standard",
+                  "kind": "armor",
+                  "tacticalVariant": "composite",
+                  "armorPoints": 195,
+                  "beamResistance": 0.35,
+                  "projectileResistance": 0.44999999999999996
+                }
+              },
+              {
+                "id": "service_1",
+                "component": null
+              },
+              {
+                "id": "service_2",
+                "component": null
+              }
+            ]
+          },
+          "fuel": 8872
+        },
+        {
+          "id": 39,
+          "factionId": "blue",
+          "systemId": "world-003",
+          "design": {
+            "id": "conquest-battleship-4",
+            "name": "Линкор 5",
+            "hullId": "battleship",
+            "createdAt": "2000-01-01T00:00:00.000Z",
+            "updatedAt": "2000-01-01T00:00:00.000Z",
+            "schemaVersion": 5,
+            "tacticalRules": "design-combat-v1",
+            "hullVariant": "standard",
+            "strategicEquipment": {
+              "policy": "project-travel-v1",
+              "drive": "fast",
+              "jump": "galactic",
+              "tank": "extended"
+            },
+            "slots": [
+              {
+                "id": "beam_1",
+                "component": {
+                  "id": "conquest-beam-v1",
+                  "name": "Лазер",
+                  "technologyVariant": "standard",
+                  "kind": "beam",
+                  "tacticalVariant": "focused",
+                  "damage": 32.5,
+                  "range": 650,
+                  "fireRate": 2.6,
+                  "accuracy": 0.9500000000000001
+                }
+              },
+              {
+                "id": "beam_2",
+                "component": null
+              },
+              {
+                "id": "projectile_1",
+                "component": null
+              },
+              {
+                "id": "engine_1",
+                "component": {
+                  "id": "conquest-engine-v1",
+                  "name": "Двигатель",
+                  "technologyVariant": "standard",
+                  "kind": "engine",
+                  "tacticalVariant": "high-thrust",
+                  "thrust": 1300,
+                  "maxSpeed": 260,
+                  "maneuverability": 0.85,
+                  "powerGeneration": 780
+                }
+              },
+              {
+                "id": "shield_1",
+                "component": null
+              },
+              {
+                "id": "armor_1",
+                "component": {
+                  "id": "conquest-armor-v1",
+                  "name": "Броня",
+                  "technologyVariant": "standard",
+                  "kind": "armor",
+                  "tacticalVariant": "composite",
+                  "armorPoints": 195,
+                  "beamResistance": 0.35,
+                  "projectileResistance": 0.44999999999999996
+                }
+              },
+              {
+                "id": "service_1",
+                "component": null
+              },
+              {
+                "id": "service_2",
+                "component": null
+              }
+            ]
+          },
+          "fuel": 8872
+        },
+        {
+          "id": 44,
+          "factionId": "red",
+          "systemId": "world-003",
+          "design": {
+            "id": "conquest-battleship-4",
+            "name": "Линкор 5",
+            "hullId": "battleship",
+            "createdAt": "2000-01-01T00:00:00.000Z",
+            "updatedAt": "2000-01-01T00:00:00.000Z",
+            "schemaVersion": 5,
+            "tacticalRules": "design-combat-v1",
+            "hullVariant": "standard",
+            "strategicEquipment": {
+              "policy": "project-travel-v1",
+              "drive": "fast",
+              "jump": "galactic",
+              "tank": "extended"
+            },
+            "slots": [
+              {
+                "id": "beam_1",
+                "component": {
+                  "id": "conquest-beam-v1",
+                  "name": "Лазер",
+                  "technologyVariant": "standard",
+                  "kind": "beam",
+                  "tacticalVariant": "focused",
+                  "damage": 32.5,
+                  "range": 650,
+                  "fireRate": 2.6,
+                  "accuracy": 0.9500000000000001
+                }
+              },
+              {
+                "id": "beam_2",
+                "component": null
+              },
+              {
+                "id": "projectile_1",
+                "component": null
+              },
+              {
+                "id": "engine_1",
+                "component": {
+                  "id": "conquest-engine-v1",
+                  "name": "Двигатель",
+                  "technologyVariant": "standard",
+                  "kind": "engine",
+                  "tacticalVariant": "high-thrust",
+                  "thrust": 1300,
+                  "maxSpeed": 260,
+                  "maneuverability": 0.85,
+                  "powerGeneration": 780
+                }
+              },
+              {
+                "id": "shield_1",
+                "component": null
+              },
+              {
+                "id": "armor_1",
+                "component": {
+                  "id": "conquest-armor-v1",
+                  "name": "Броня",
+                  "technologyVariant": "standard",
+                  "kind": "armor",
+                  "tacticalVariant": "composite",
+                  "armorPoints": 195,
+                  "beamResistance": 0.35,
+                  "projectileResistance": 0.44999999999999996
+                }
+              },
+              {
+                "id": "service_1",
+                "component": null
+              },
+              {
+                "id": "service_2",
+                "component": null
+              }
+            ]
+          },
+          "fuel": 8872
+        },
+        {
+          "id": 45,
+          "factionId": "red",
+          "systemId": "world-003",
+          "design": {
+            "id": "conquest-battleship-4",
+            "name": "Линкор 5",
+            "hullId": "battleship",
+            "createdAt": "2000-01-01T00:00:00.000Z",
+            "updatedAt": "2000-01-01T00:00:00.000Z",
+            "schemaVersion": 5,
+            "tacticalRules": "design-combat-v1",
+            "hullVariant": "standard",
+            "strategicEquipment": {
+              "policy": "project-travel-v1",
+              "drive": "fast",
+              "jump": "galactic",
+              "tank": "extended"
+            },
+            "slots": [
+              {
+                "id": "beam_1",
+                "component": {
+                  "id": "conquest-beam-v1",
+                  "name": "Лазер",
+                  "technologyVariant": "standard",
+                  "kind": "beam",
+                  "tacticalVariant": "focused",
+                  "damage": 32.5,
+                  "range": 650,
+                  "fireRate": 2.6,
+                  "accuracy": 0.9500000000000001
+                }
+              },
+              {
+                "id": "beam_2",
+                "component": null
+              },
+              {
+                "id": "projectile_1",
+                "component": null
+              },
+              {
+                "id": "engine_1",
+                "component": {
+                  "id": "conquest-engine-v1",
+                  "name": "Двигатель",
+                  "technologyVariant": "standard",
+                  "kind": "engine",
+                  "tacticalVariant": "high-thrust",
+                  "thrust": 1300,
+                  "maxSpeed": 260,
+                  "maneuverability": 0.85,
+                  "powerGeneration": 780
+                }
+              },
+              {
+                "id": "shield_1",
+                "component": null
+              },
+              {
+                "id": "armor_1",
+                "component": {
+                  "id": "conquest-armor-v1",
+                  "name": "Броня",
+                  "technologyVariant": "standard",
+                  "kind": "armor",
+                  "tacticalVariant": "composite",
+                  "armorPoints": 195,
+                  "beamResistance": 0.35,
+                  "projectileResistance": 0.44999999999999996
+                }
+              },
+              {
+                "id": "service_1",
+                "component": null
+              },
+              {
+                "id": "service_2",
+                "component": null
+              }
+            ]
+          },
+          "fuel": 8872
+        },
+        {
+          "id": 49,
+          "factionId": "red",
+          "systemId": "world-003",
+          "design": {
+            "id": "colonizer-preset-v1",
+            "name": "Колонизатор",
+            "hullId": "colonizer",
+            "createdAt": "2000-01-01T00:00:00.000Z",
+            "updatedAt": "2000-01-01T00:00:00.000Z",
+            "schemaVersion": 5,
+            "tacticalRules": "design-combat-v1",
+            "hullVariant": "standard",
+            "strategicEquipment": {
+              "policy": "project-travel-v1",
+              "drive": "fast",
+              "jump": "galactic",
+              "tank": "extended"
+            },
+            "slots": [
+              {
+                "id": "beam_1",
+                "component": null
+              },
+              {
+                "id": "beam_2",
+                "component": null
+              },
+              {
+                "id": "projectile_1",
+                "component": null
+              },
+              {
+                "id": "engine_1",
+                "component": {
+                  "id": "colonizer-engine-v1",
+                  "name": "Двигатель",
+                  "technologyVariant": "standard",
+                  "kind": "engine",
+                  "tacticalVariant": "standard",
+                  "thrust": 1000,
+                  "maxSpeed": 200,
+                  "maneuverability": 0.7,
+                  "powerGeneration": 600
+                }
+              },
+              {
+                "id": "shield_1",
+                "component": null
+              },
+              {
+                "id": "armor_1",
+                "component": null
+              },
+              {
+                "id": "service_1",
+                "component": null
+              },
+              {
+                "id": "service_2",
+                "component": null
+              }
+            ]
+          },
+          "fuel": 8872
+        }
+      ],
+      "initialOperations": {
+        "38": {
+          "hull": 3500,
+          "ammunition": []
+        },
+        "39": {
+          "hull": 3500,
+          "ammunition": []
+        },
+        "44": {
+          "hull": 3500,
+          "ammunition": []
+        },
+        "45": {
+          "hull": 3500,
+          "ammunition": []
+        },
+        "49": {
+          "hull": 500,
+          "ammunition": []
+        }
+      },
+      "encounters": [
+        {
+          "winner": null,
+          "timedOut": true,
+          "destroyed": [],
+          "survivors": [
+            {
+              "id": 38,
+              "operational": {
+                "hull": 1927.5199999999895,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 39,
+              "operational": {
+                "hull": 1975.170909090899,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 44,
+              "operational": {
+                "hull": 2014.87999999999,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 45,
+              "operational": {
+                "hull": 2030.7636363636266,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 49,
+              "operational": {
+                "hull": 500,
+                "ammunition": []
+              }
+            }
+          ]
+        },
+        {
+          "winner": null,
+          "timedOut": true,
+          "destroyed": [],
+          "survivors": [
+            {
+              "id": 38,
+              "operational": {
+                "hull": 355.03999999998103,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 39,
+              "operational": {
+                "hull": 450.3418181817993,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 44,
+              "operational": {
+                "hull": 529.7599999999809,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 45,
+              "operational": {
+                "hull": 561.527272727254,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 49,
+              "operational": {
+                "hull": 500,
+                "ammunition": []
+              }
+            }
+          ]
+        },
+        {
+          "winner": "red",
+          "timedOut": false,
+          "destroyed": [
+            38,
+            39
+          ],
+          "survivors": [
+            {
+              "id": 44,
+              "operational": {
+                "hull": 172.37818181816277,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 45,
+              "operational": {
+                "hull": 212.0872727272539,
+                "ammunition": []
+              }
+            },
+            {
+              "id": 49,
+              "operational": {
+                "hull": 500,
+                "ammunition": []
+              }
+            }
+          ]
+        }
+      ],
+      "scope": "isolated-tactical-diagnostic-not-a-strategic-continuation"
+    }
+  ]
+}

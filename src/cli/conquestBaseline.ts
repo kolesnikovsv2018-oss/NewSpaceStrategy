@@ -3,7 +3,7 @@ import { baselineMatrix, runBaseline, summarizeBaseline, verifyBaseline, BASELIN
 
 export async function main(args: string[]): Promise<number> {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('yarn baseline:conquest --output <new-file.json>\n54 оплаченные партии до 200 ходов + 4 boundary до 8; файл не перезаписывается.');
+    console.log('yarn baseline:conquest --output <new-file.json>\n54 оплаченные партии до 200 ходов + 4 boundary до 8; файл не перезаписывается.\nДиагностика18 paid6: --trace-timeouts --output-dir <new-directory>');
     return 0;
   }
   if (args.length !== 2 || args[0] !== '--output' || !args[1].endsWith('.json')) {

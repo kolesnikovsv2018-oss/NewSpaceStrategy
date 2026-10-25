@@ -8,8 +8,11 @@ import { getGalaxyDefinition, type CampaignFactionId } from '../domain/campaign'
 import { createOperationalState } from '../domain/campaignOperations';
 import { getColonyProductionQuote } from '../domain/campaignOutput';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
+import { calculateShipStats } from '../domain/shipDesign';
+import { getTravelCapabilities } from '../domain/campaignTravel';
 
 export const BASELINE_VERSION = 12;
+export const BASELINE_TRACE_VERSION = 1;
 export const BASELINE_SEEDS = [
   { mapSeed: 41, campaignSeed: 101 },
   { mapSeed: 12345, campaignSeed: 67890 },
@@ -74,6 +77,66 @@ export interface BaselineRun {
   population: Record<CampaignFactionId, { total: number; capacity: number }>;
   finalState: Conquest;
   checkpoint: { turnsExecuted: number; json: string } | null;
+}
+
+function tracePosition(state: Conquest) {
+  return {
+    worlds: state.session.galaxy.systems.map(world => ({
+      id: world.id, ownerId: world.ownerId, environment: state.environment[world.id],
+      population: state.population[world.id] ? { ...state.population[world.id] } : null,
+      workers: state.colonyOutput.assignments[world.id] ? { ...state.colonyOutput.assignments[world.id] } : null
+    })),
+    factions: (['blue', 'red'] as const).map(side => {
+      const view = getConquestView(state, side);
+      return { side, treasury: { ...view.treasury }, budget: structuredClone(view.economyForecast),
+        research: structuredClone(view.research), reserves: { ...view.colonyOutput.reserves },
+        knowledge: { known: [...view.knownSystems], habitable: [...view.knownHabitableSystems],
+          surveys: { ...view.environmentKnowledge },
+          visible: view.galaxy.systems.filter(world => world.visibility === 'explored').map(world => world.id),
+          enemies: structuredClone(view.enemies), colonization: structuredClone(view.colonization) },
+        orders: view.production.orders.map(order => ({ id: order.id, systemId: order.systemId,
+          designId: order.design.id, hullId: order.design.hullId, cost: { ...order.cost },
+          progress: order.productionProgress, required: order.productionCost })),
+        completed: view.production.completed.map(order => ({ id: order.id, systemId: order.systemId,
+          designId: order.design.id, hullId: order.design.hullId })),
+        projects: view.workProjects.map(project => ({ id: project.id, kind: project.kind,
+          systemId: project.systemId, progress: project.productionProgress, required: project.productionCost }))
+      };
+    }),
+    ships: state.session.ships.map(ship => {
+      const stats = calculateShipStats(ship.design);
+      return { id: ship.id, side: ship.factionId, systemId: ship.systemId,
+        transit: ship.transit ? { ...ship.transit } : null, fuel: ship.fuel,
+        capabilities: getTravelCapabilities(ship.design.strategicEquipment),
+        designId: ship.design.id, hullId: ship.design.hullId,
+        operational: structuredClone(state.operations[String(ship.id)]),
+        tactical: { hull: stats.hitPoints, shield: stats.shield, regen: stats.shieldRegen,
+          armor: stats.armor, power: stats.powerGeneration, energy: stats.energyCapacity,
+          movementPower: stats.movementPower, speed: stats.speed, thrust: stats.thrust, mass: stats.mass,
+          weapons: stats.weapons.map(weapon => ({ slotId: weapon.slotId, kind: weapon.definition.kind,
+            range: weapon.definition.range, damage: weapon.definition.damage, rate: weapon.definition.fireRate,
+            energyPerShot: weapon.energyPerShot,
+            ammunition: weapon.definition.kind === 'projectile' ? weapon.definition.ammoCapacity : null })) }
+      };
+    }),
+    counters: { order: state.session.production.lastOrderId, battle: state.lastBattleId }
+  };
+}
+
+function traceWindow(before: Conquest, after: Conquest, commands: CommandRecord[], turnsExecuted: number) {
+  return { turnsExecuted, turn: before.session.turn, commands: structuredClone(commands),
+    ownershipChanges: after.session.galaxy.systems.flatMap(world => {
+      const previous = before.session.galaxy.systems.find(item => item.id === world.id)!;
+      return previous.ownerId === world.ownerId ? [] : [{ systemId: world.id, from: previous.ownerId, to: world.ownerId }];
+    }),
+    battles: structuredClone(after.battles.filter(battle => battle.id > before.lastBattleId)),
+    position: tracePosition(after) };
+}
+
+export type BaselineWindowTrace = ReturnType<typeof traceWindow>;
+export interface BaselineDiagnostics {
+  onWindow: (window: BaselineWindowTrace, checkpointJson?: string) => void;
+  checkpointAt?: number;
 }
 
 export function baselineMatrix(): BaselineInput[] {
@@ -267,8 +330,13 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
   }
 }
 
-export function runBaseline(input: BaselineInput, resume?: { state: unknown; turnsExecuted: number }): BaselineRun {
+export function runBaseline(input: BaselineInput, resume?: { state: unknown; turnsExecuted: number },
+  diagnostics?: BaselineDiagnostics): BaselineRun {
   const options = inputSchema.parse(input), start = createBaselineStart(options);
+  if (diagnostics && (typeof diagnostics.onWindow !== 'function' || diagnostics.checkpointAt !== undefined &&
+    (!Number.isInteger(diagnostics.checkpointAt) || diagnostics.checkpointAt < 1 || diagnostics.checkpointAt > options.maxTurns))) {
+    throw new Error('Недопустимые параметры трассы baseline');
+  }
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
   const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
   const result: BaselineRun = {
@@ -311,6 +379,9 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
     if (result.status === 'executor-error') break;
     for (const step of steps) measure(step.before, step.after, step.command, step.turnReceipt, result.metrics, result.battles);
     result.turnsExecuted += candidate.session.turn - state.session.turn;
+    if (diagnostics) diagnostics.onWindow(traceWindow(state, candidate, records, result.turnsExecuted),
+      diagnostics.checkpointAt === result.turnsExecuted && candidate.session.turn > state.session.turn
+        ? encodeConquestSave(candidate) : undefined);
     state = candidate;
     if (!resume && result.turnsExecuted === Math.min(4, options.maxTurns)) {
       result.checkpoint = { turnsExecuted: result.turnsExecuted, json: encodeConquestSave(state) };

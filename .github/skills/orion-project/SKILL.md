@@ -9,7 +9,8 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 **Н14 принят2026-10-25:** [travel-контракт](../../../docs/CAMPAIGN_TRAVEL.md),
 [аудит17](../../../reports/2026-10-25/17-n14-readiness.md),
-[приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md).
+[исходная приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md),
+[доработка Д12/21](../../../reports/2026-10-25/21-n14-ai-fuel-fixes.md).
 ShipDesign5/library5/key orion_shipyard_v5, Conquest16/rules13,
 snapshot11/rules11/tree10/baseline12, map4/rules4/generator-v4/
 balanced-start-v4; мирные codecs6/7/8 rules4. Current-only, без миграций.
@@ -27,15 +28,38 @@ Forecast mining считает только arriving этим own-end; факт 
 UI/AI/generator/checker используют campaignTravel; CLI не импортирует
 корабли/Phaser. AI48 candidates/24 commands, заказывает дальние замены
 без auto-refit; deploy уважает100 ships, не старый скрытый предел8.
-3835/71, strict/build173;24 baseline repeat/checkpoint:18 paid6 дают
+Д12: существующий колонизатор учитывается по настоящему fuel, месту
+прибытия и достижимой своей заправке; queued/completed имеют стартовый бак.
+Из поля неизвестная цель требует реальный резерв от цели до своей колонии,
+включая jump; тот же predicate используется для готовности колонизатора.
+Прибытие к ранее обнаруженной, но неизученной цели не дублирует корабль.
+Новые18 регрессий в conquestAiFuel, без изменения форматов/чисел.
+3853/72, strict/build173; повтор24 baseline/checkpoint после Д12:18 paid6 дают
 4 completed65–66 и14 timeout200,4 boundary и bounded40/25616 окон.
 Это существенное ограничение AI/баланса, не все партии завершены.
 Actual headless Chromium CSS1280×720/390×844: paid editor/refit/build/
 single/fleet/refuel/real battle, actual reload/full next oracle,
 latest-map256 не меняет saved40; pointer/ESC/14px/44px/1canvas.
 AI-red paused/load/Resume oracle, free library5 и мирный paid save8/reload
-проверены. Полные58/quota/FPS/physical touch не измерены.
-Далее Н15/Н16. Нижние версии/«далее» — история своих приёмок.
+проверены при Н14. Д12 отдельно проверил3 диагностических strict-save
+в настоящем Chromium, pointer AI/Resume/save/reload/full next oracle,
+CSS1280×720/390×844,1canvas/14px/44px; это не новое paid E2E.
+Полные58/quota/FPS/physical touch не измерены.
+Д13 разобрал14 timeout: [доказательства23](../../../reports/2026-10-25/23-d13-timeout-analysis.md).
+Игровой AI/баланс не исправлялись. Подтверждён фильтр, ошибочно исключающий
+known, но unsurveyed цель; visible hostile colony без среды тоже
+отвергается по habitable. Ни одно из этих состояний не означает barren.
+Current/direct имеет20-оконную операционную проекцию при росте экономики;
+зеркала — продолжающуюся войну/ремонт, не доказанный полный цикл.
+15 однокомандных контрфактов:7 исходных таймаутов завершились к105/106;
+это вмешательства, не18/18 новой policy. Основные18 всё ещё4/14.
+Opt-in `yarn baseline:conquest --trace-timeouts --output-dir <new-dir>`
+даёт18 paid6, repeat/early4/late60, gzip trace1 и fingerprint runtime.
+`conquestBaselineTrace.test.ts` проверяет отделённость/ошибки/границы,
+в том числе null population у barren.3863/73, strict/build173.
+Далее отдельное исправление разведки по рекомендациям23 и повтор матрицы,
+потом решение о миссиях/Н15; Н15 не начинался. Формальные Н-зависимости
+прежние. Нижние версии/«далее» — история своих приёмок.
 
 ## История отправной точки Н13
 

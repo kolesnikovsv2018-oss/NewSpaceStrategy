@@ -9,6 +9,8 @@ description: 'Модель кораблей, оборудование, верф�
 
 **Текущий Н14:** [контракт](../../../docs/CAMPAIGN_TRAVEL.md),
 [приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md).
+Д12: [находки20](../../../reports/2026-10-25/20-n14-ai-fuel-findings.md),
+[исправления21](../../../reports/2026-10-25/21-n14-ai-fuel-fixes.md).
 ShipDesign5/library5, Conquest16/13, snapshot11/tree10/baseline12/map4,
 мирные6/7/8 rules4. strategicEquipment обязателен, отдельные drive/jump/
 tank без слотов. campaignTravel даёт возможности/quote; общая цена
@@ -21,8 +23,13 @@ Research разрешает выбор, не мутирует экземпляр
 в мирной кампании не заменяются военными тысячными.
 Новые9 campaignStrategicTravel regressions: цифры/caps/группы/платные
 research/build/refit/оба стартовых мира/in-flight science/mining/
-real arrival-battle save oracle.3835/71, strict/build173, actual
-CSS desktop/mobile paid cycle/reload, free5 и мирный save8 проверены.
+real arrival-battle save oracle. После Д12:3853/72, strict/build173;
+новые18 conquestAiFuel проверяют настоящий запас/обратный leg/заправку/
+замену/queued/completed/incoming без лишних кораблей и с codec replay.
+Физика, цены и форматы прежние.3 настоящих browser diagnostic-save
+AI/Resume/reload/full next oracle прошли отдельно от прежней приёмки.
+Исходная Н14 проверила CSS desktop/mobile paid cycle/reload, free5 и
+мирный save8; это не новые paid-прогоны Д12.
 Baseline18:4 completed65–66/14 timeout200, repeat/checkpoint совпали;
 не универсальный баланс. Полные58/quota/FPS не измерены.
 Нижние записи Н13/Н12 — история; актуальная матрица здесь.
