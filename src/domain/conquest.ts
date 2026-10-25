@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import type { GalaxyMap } from './galaxyMap';
-import { factionIdSchema, systemIdSchema, getGalaxyDefinition, areSystemsAdjacent, type CampaignFactionId, type SystemId } from './campaign';
+import { factionIdSchema, systemIdSchema, getGalaxyDefinition, type CampaignFactionId, type SystemId } from './campaign';
 import { conquestSessionSchema, createCampaignSession, executeConquestSessionCommand, getConquestSessionView,
   sessionCommandSchema, MAX_TURN, type CampaignSessionView, type SessionErrorCode } from './campaignSession';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { researchTreeSchema, researchStateSchema, researchIdSchema, createResearchState, getDefaultResearchTree,
   isResearchStateValid, isCampaignDesignAvailable, isCampaignDraftAvailable, calculateResearchTurn,
-  type ResearchTurnReceipt } from './campaignResearch';
+  getStrategicRange, type ResearchTurnReceipt } from './campaignResearch';
 import { operationalStateSchema, createOperationalState, readOperationalState, getRepairQuote, getAmmunitionQuote } from './campaignOperations';
 import { resolveConquestBattle, type BattleFrame } from './conquestBattle';
 import type { CampaignShip } from './campaignShips';
@@ -22,6 +22,9 @@ import { advanceColonyOutput, calculateColonyEndTurnBudget, colonyOutputStateSch
 import { MAX_ORDER_ID } from './production';
 import { CAMPAIGN_FUEL_CAPACITY, MAX_CAMPAIGN_SHIPS } from './campaignShips';
 import { getColonyWorldType, getCompletedColonyEffects, isColonyEffect } from './campaignColonyEffects';
+import { isWorldInRange } from './campaignTravel';
+import { createColonizerDesign } from './civilianPresets';
+import { environmentStateSchema, getEnvironmentType, type EnvironmentState } from './worldEnvironment';
 
 export const conquestControlSchema = z.union([
   z.object({ mode: z.literal('local') }).strict(),
@@ -64,6 +67,8 @@ export const conquestSchema = z.object({
   session: conquestSessionSchema, projects: campaignProjectsSchema, researchTree: researchTreeSchema,
   rules: rulesSnapshotSchema.refine(rules => rules.effects.every(isColonyEffect), 'Нет игрового исполнителя эффекта'),
   population: populationStateSchema,
+  environment: environmentStateSchema,
+  surveys: z.object({ blue: environmentStateSchema, red: environmentStateSchema }).strict(),
   colonyOutput: colonyOutputStateSchema,
   research: z.object({ blue: researchStateSchema, red: researchStateSchema }).strict(),
   researchJournal: z.object({
@@ -74,7 +79,15 @@ export const conquestSchema = z.object({
   lastBattleId: z.number().int().min(0).max(MAX_TURN), battles: z.array(battleReportSchema).max(12)
 }).strict().superRefine((state, context) => {
   const fail = () => context.addIssue({ code: z.ZodIssueCode.custom, message: 'Нарушена целостность военной кампании' });
-  const inhabited = getGalaxyDefinition(state.session.galaxy).systems.filter(system => system.habitable);
+  const worlds = state.session.galaxy.systems;
+  if (Object.keys(state.environment).length !== worlds.length ||
+    worlds.some(world => !Object.prototype.hasOwnProperty.call(state.environment, world.id))) { fail(); return; }
+  for (const faction of factionIdSchema.options) {
+    if (Object.keys(state.surveys[faction]).some(id => !worlds.some(world => world.id === id))) fail();
+  }
+  if (worlds.some(world => world.ownerId !== null && (getEnvironmentType(state.environment, world.id) === 'barren' ||
+    !Object.prototype.hasOwnProperty.call(state.surveys[world.ownerId], world.id)))) fail();
+  const inhabited = worlds.filter(system => getEnvironmentType(state.environment, system.id) !== 'barren');
   if (Object.keys(state.population).length !== inhabited.length ||
     inhabited.some(system => !Object.prototype.hasOwnProperty.call(state.population, system.id))) { fail(); return; }
   if (state.rules.treeId !== state.researchTree.id) fail();
@@ -116,13 +129,19 @@ export const conquestSchema = z.object({
     battle.destroyed.some(id => !battle.participants.some(ship => ship.id === id)))) fail();
 });
 export type Conquest = z.infer<typeof conquestSchema>;
-export type ConquestErrorCode = SessionErrorCode | ProjectErrorCode | FoundingErrorCode | 'CONTROLLER_FORBIDDEN' | 'CAMPAIGN_COMPLETED' | 'RULE_REJECTED';
+export type ConquestErrorCode = SessionErrorCode | ProjectErrorCode | FoundingErrorCode | 'CONTROLLER_FORBIDDEN' | 'CAMPAIGN_COMPLETED' | 'RULE_REJECTED' | 'COLONIZER_REQUIRED' |
+  'NOT_SURVEYED' | 'ALREADY_SURVEYED' | 'ADAPTATION_REQUIRED';
 export type FoundingNotice = { factionId: CampaignFactionId; systemId: SystemId; code: FoundingErrorCode };
 export type ConquestResult = { ok: true; state: Conquest; frames?: BattleFrame[]; notices?: FoundingNotice[];
   workforceAdjustments?: WorkforceAdjustment[]; turnReceipt?: ConquestTurnReceipt } |
   { ok: false; code: ConquestErrorCode; message: string };
 const fields = { factionId: factionIdSchema, expectedTurn: z.number().int().min(1).max(MAX_TURN) };
-export const conquestCommandSchema = z.union([sessionCommandSchema, projectCommandSchema,
+export const conquestCommandSchema = z.union([
+  z.object({ ...fields, kind: z.literal('survey'), systemId: systemIdSchema }).strict(),
+  z.object({ ...fields, kind: z.literal('colonize'), systemId: systemIdSchema,
+    shipId: z.number().int().positive().max(MAX_ORDER_ID) }).strict(),
+  projectCommandSchema,
+  ...sessionCommandSchema.options.filter(command => command.shape.kind.value !== 'colonize'),
   z.object({ ...fields, kind: z.literal('assignWorkers'), systemId: systemIdSchema, workers: workforceSchema }).strict(),
   z.object({ ...fields, kind: z.literal('research'), technologyId: researchIdSchema }).strict(),
   z.object({ ...fields, kind: z.literal('pauseResearch') }).strict(),
@@ -136,16 +155,28 @@ class ConquestRuleError extends Error {
 export function createConquest(control: unknown = { mode: 'local' }, tree: unknown = getDefaultResearchTree(), seed = 1, map?: GalaxyMap): Conquest {
   const session = createCampaignSession(map), rules = createDefaultRulesSnapshot(), researchTree = researchTreeSchema.parse(tree);
   const population = createPopulation(session.galaxy, rules.population);
+  const snapshot = session.galaxy.map;
+  const environment: EnvironmentState = Object.fromEntries(getGalaxyDefinition(session.galaxy).systems.map(world => [
+    world.id, snapshot ? snapshot.worlds.find(item => item.id === world.id)!.type : world.habitable ? 'habitable' : 'barren'
+  ]));
+  const surveys: Record<CampaignFactionId, EnvironmentState> = { blue: {}, red: {} };
+  for (const world of session.galaxy.systems) if (world.ownerId) surveys[world.ownerId][world.id] = environment[world.id];
+  const operations: Record<string, ReturnType<typeof createOperationalState>> = {};
+  for (const faction of getGalaxyDefinition(session.galaxy).factions) {
+    const id = ++session.production.lastOrderId, design = createColonizerDesign();
+    session.ships.push({ id, factionId: faction.id, systemId: faction.homeSystemId, design, fuel: CAMPAIGN_FUEL_CAPACITY });
+    operations[String(id)] = createOperationalState(design);
+  }
   const references = new Set(researchTree.nodes.flatMap(node => node.effects.flatMap(effect =>
     effect.kind === 'colony-effect' ? [effect.effectId] : [])));
   rules.effects = rules.effects.filter(effect => isColonyEffect(effect) && references.has(effect.id));
   rules.treeId = researchTree.id;
   return conquestSchema.parse({ scenario: 'conquest-v1', victory: { kind: 'all-planets-v1' }, control,
     battlePolicy: 'campaign-v2',
-    session, rules, population, colonyOutput: createColonyOutputState(session.galaxy, population),
+    session, rules, population, environment, surveys, colonyOutput: createColonyOutputState(session.galaxy, population),
     projects: createCampaignProjects(), researchTree, research: { blue: createResearchState(), red: createResearchState() },
     researchJournal: { blue: {}, red: {} },
-    operations: {}, seed, lastBattleId: 0, battles: [] });
+    operations, seed, lastBattleId: 0, battles: [] });
 }
 
 export function getConquestOutcome(state: Conquest): ConquestOutcome {
@@ -164,11 +195,39 @@ export function visibleConquestSystems(state: Conquest, faction: CampaignFaction
     visible.add(ship.systemId);
     if (ship.design.slots.some(slot => slot.component?.kind === 'scanner' && slot.component.range > 0 && slot.component.accuracy > 0)) {
       for (const system of getGalaxyDefinition(state.session.galaxy).systems) {
-        if (areSystemsAdjacent(ship.systemId, system.id, state.session.galaxy)) visible.add(system.id);
+        if (isWorldInRange(getGalaxyDefinition(state.session.galaxy).systems, ship.systemId, system.id,
+          getStrategicRange(state.research[faction], state.researchTree, state.rules))) visible.add(system.id);
       }
     }
   }
   return visible;
+}
+
+function colonizationAvailability(state: Conquest, faction: CampaignFactionId, systemId: SystemId,
+  visible: ReadonlySet<SystemId>, shipId?: number) {
+  const fail = (code: ConquestErrorCode, message: string) => ({ ok: false as const, code, message });
+  if (!visible.has(systemId)) return fail('OUT_OF_REACH', 'Нет текущего наблюдения: нужен корабль или разрешённый сканер');
+  if (!Object.prototype.hasOwnProperty.call(state.surveys[faction], systemId)) return fail('NOT_SURVEYED', 'Сначала изучите среду мира');
+  const world = state.session.galaxy.systems.find(world => world.id === systemId)!;
+  if (world.ownerId) return fail('OCCUPIED', 'Мир уже занят колонией');
+  const type = getEnvironmentType(state.environment, systemId);
+  if (type === 'barren') return fail('UNINHABITABLE', 'Эта среда недоступна для основания колонии');
+  if (state.session.ships.some(ship => ship.systemId === systemId && !ship.transit && ship.factionId !== faction)) {
+    return fail('RULE_REJECTED', 'Основание блокируется вражеским присутствием');
+  }
+  const colonizer = state.session.ships.filter(ship => ship.factionId === faction && ship.systemId === systemId &&
+    !ship.transit && ship.design.hullId === 'colonizer' && (shipId === undefined || ship.id === shipId))
+    .sort((a, b) => a.id - b.id)[0];
+  if (!colonizer) return fail('COLONIZER_REQUIRED', 'Нужен свой стоящий корабль-колонизатор');
+  if (type === 'toxic' && !state.researchTree.nodes.some(node => state.research[faction].completed.includes(node.id) &&
+    node.effects.some(effect => effect.kind === 'colonization-unlock' && effect.worldType === type))) {
+    return fail('ADAPTATION_REQUIRED', 'Нужна технология адаптации к токсичной среде');
+  }
+  const quote = quoteFounding(state.session.galaxy, state.population, faction, systemId,
+    state.session.treasuries[faction], state.rules.population);
+  if (!quote.ok) return fail(quote.code, quote.code === 'NO_SETTLERS' ? 'Нет своей колонии с достаточным населением'
+    : 'Для основания не хватает кредитов или минералов');
+  return { ...quote, shipId: colonizer.id };
 }
 
 export function getConquestView(input: unknown, faction: CampaignFactionId) {
@@ -178,7 +237,7 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
   const mined = miningYield(state, side);
   const effects = getCompletedColonyEffects(state.researchTree, state.research[side], state.rules);
   const outputForecast = getColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, side,
-    state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === side).length, effects);
+    state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === side).length, effects, state.environment);
   const researchForecast = forecastResearch(state, side, outputForecast);
   view.income = { credits: outputForecast.income.credits, minerals: outputForecast.income.minerals + mined };
   const baseBudget = state.session.turn === MAX_TURN ? { ok: false as const, code: 'TURN_LIMIT' as const }
@@ -190,19 +249,27 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
       minerals: outputForecast.income.minerals + mined } };
   } else view.economyForecast = baseBudget;
   const visible = visibleConquestSystems(state, side);
-  view.galaxy.systems = view.galaxy.systems.map(system => !visible.has(system.id)
-    ? { id: system.id, name: system.name, x: system.x, y: system.y, visibility: 'unknown' as const } : system);
+  const environmentKnowledge = structuredClone(state.surveys[side]);
+  for (const id of visible) if (Object.prototype.hasOwnProperty.call(environmentKnowledge, id)) {
+    environmentKnowledge[id] = getEnvironmentType(state.environment, id);
+  }
+  view.galaxy.systems = view.galaxy.systems.map(system => {
+    if (!visible.has(system.id)) return { id: system.id, name: system.name, x: system.x, y: system.y, visibility: 'unknown' as const };
+    const ownerId = state.session.galaxy.systems.find(world => world.id === system.id)!.ownerId;
+    const known = environmentKnowledge[system.id];
+    return { ...system, visibility: 'explored' as const, ownerId, habitable: known !== undefined && known !== 'barren' };
+  });
   const population = view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === side).map(system => ({
     systemId: system.id, population: state.population[system.id].population, remainder: state.population[system.id].remainder,
-    worldType: getColonyWorldType(state.session.galaxy, system.id),
-    technology: getPopulationTechnologyForecast(state.rules.population, getColonyWorldType(state.session.galaxy, system.id), effects),
+    worldType: getColonyWorldType(state.session.galaxy, system.id, state.environment),
+    technology: getPopulationTechnologyForecast(state.rules.population, getColonyWorldType(state.session.galaxy, system.id, state.environment), effects),
     ...populationGrowth(state.population[system.id], state.rules.population,
-      getColonyWorldType(state.session.galaxy, system.id) === 'habitable', effects)
+      getColonyWorldType(state.session.galaxy, system.id, state.environment), effects)
   }));
-  const colonization = view.galaxy.systems.filter(system => system.visibility === 'explored' && !system.ownerId && system.habitable)
-    .map(system => ({ systemId: system.id, quote: quoteFounding(state.session.galaxy,
-      view.galaxy.lanes, state.population, side, system.id, view.treasury, state.rules.population) }));
-  return { ...view, production: {
+  const colonization = view.galaxy.systems.filter(system => system.visibility === 'explored' && !system.ownerId)
+    .map(system => ({ systemId: system.id, quote: colonizationAvailability(state, side, system.id, visible) }));
+  const { lanes: _lanes, ...galaxy } = view.galaxy;
+  return { ...view, galaxy, strategicRange: getStrategicRange(state.research[side], state.researchTree, state.rules), production: {
     orders: structuredClone(state.colonyOutput.production.orders.filter(record => record.factionId === side)),
     completed: structuredClone(state.colonyOutput.production.completed.filter(record => record.factionId === side))
   },
@@ -212,6 +279,10 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
       reserveCaps: { research: outputForecast.reserves.research.cap, culture: outputForecast.reserves.culture.cap },
       forecast: outputForecast, rules: state.rules.colonyOutput },
     population, colonization, foundingCost: { ...state.rules.population.foundingCost },
+    knownSystems: state.session.galaxy.systems.filter(system => system.exploredBy.includes(side)).map(system => system.id),
+    knownHabitableSystems: Object.entries(environmentKnowledge).filter(([, type]) => type !== 'barren').map(([id]) => id),
+    environmentKnowledge,
+    surveyCost: { ...state.rules.planetology.surveyCost },
     projects: structuredClone(state.projects[side].items), researchTree: state.researchTree, research: state.research[side],
     colonyTechnologyEffects: state.rules.effects,
     researchJournal: Object.entries(state.researchJournal[side]).map(([technologyId, turn]) => ({
@@ -245,6 +316,9 @@ function reveal(state: Conquest): void {
   for (const faction of factionIdSchema.options) for (const id of visibleConquestSystems(state, faction)) {
     const system = state.session.galaxy.systems.find(item => item.id === id)!;
     if (!system.exploredBy.includes(faction)) system.exploredBy.push(faction);
+    if (Object.prototype.hasOwnProperty.call(state.surveys[faction], id)) {
+      state.surveys[faction][id] = getEnvironmentType(state.environment, id);
+    }
   }
 }
 function debit(state: Conquest, faction: CampaignFactionId, credits: number, minerals: number): void {
@@ -253,9 +327,9 @@ function debit(state: Conquest, faction: CampaignFactionId, credits: number, min
   treasury.credits -= credits; treasury.minerals -= minerals;
 }
 function miningYield(state: Conquest, faction: CampaignFactionId): number {
-  const definition = getGalaxyDefinition(state.session.galaxy);
-  return state.session.ships.filter(ship => ship.factionId === faction && !definition.systems.find(system =>
-    system.id === (ship.transit?.destinationId ?? ship.systemId))!.habitable).reduce((total, ship) => total +
+  return state.session.ships.filter(ship => ship.factionId === faction &&
+    state.surveys[faction][ship.transit?.destinationId ?? ship.systemId] === 'barren' &&
+    getEnvironmentType(state.environment, ship.transit?.destinationId ?? ship.systemId) === 'barren').reduce((total, ship) => total +
       Math.floor(Math.min(10, ship.design.slots.reduce((sum, slot) => sum +
         (slot.component?.kind === 'mining' ? slot.component.miningSpeed * slot.component.efficiency : 0), 0))), 0);
 }
@@ -263,7 +337,7 @@ function foundColony(state: Conquest, faction: CampaignFactionId, target: System
   quote: ReturnType<typeof quoteFounding>;
   workforceAdjustment?: WorkforceAdjustment;
 } {
-  const quote = quoteFounding(state.session.galaxy, getGalaxyDefinition(state.session.galaxy).lanes,
+  const quote = quoteFounding(state.session.galaxy,
     state.population, faction, target, state.session.treasuries[faction], state.rules.population);
   let workforceAdjustment: WorkforceAdjustment | undefined;
   if (quote.ok) {
@@ -280,8 +354,7 @@ function foundColony(state: Conquest, faction: CampaignFactionId, target: System
   }
   return { quote, ...(workforceAdjustment ? { workforceAdjustment } : {}) };
 }
-function settleEncounters(state: Conquest, turn: number, notices: FoundingNotice[],
-  workforceAdjustments: WorkforceAdjustment[]): BattleFrame[] | undefined {
+function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefined {
   let frames: BattleFrame[] | undefined;
   for (const definition of getGalaxyDefinition(state.session.galaxy).systems) {
     let present = state.session.ships.filter(ship => !ship.transit && ship.systemId === definition.id);
@@ -301,16 +374,13 @@ function settleEncounters(state: Conquest, turn: number, notices: FoundingNotice
       present = state.session.ships.filter(ship => !ship.transit && ship.systemId === definition.id);
     }
     const sides = new Set(present.map(ship => ship.factionId));
-    if (definition.habitable && sides.size === 1 && present.some(armed)) {
+    if (getEnvironmentType(state.environment, definition.id) !== 'barren' && sides.size === 1 && present.some(armed) &&
+      state.session.galaxy.systems.find(system => system.id === definition.id)!.ownerId !== null) {
       const owner = present[0].factionId;
       const system = state.session.galaxy.systems.find(item => item.id === definition.id)!;
       const previousOwner = system.ownerId;
-      if (!system.ownerId) {
-        const founding = foundColony(state, owner, system.id);
-        if (!founding.quote.ok) { notices.push({ factionId: owner, systemId: system.id, code: founding.quote.code }); continue; }
-        if (founding.workforceAdjustment) workforceAdjustments.push(founding.workforceAdjustment);
-      }
       system.ownerId = owner;
+      state.surveys[owner][system.id] = getEnvironmentType(state.environment, system.id);
       if (!system.exploredBy.includes(owner)) system.exploredBy.push(owner);
       if (previousOwner !== owner) {
         state.colonyOutput.assignments[system.id] = emptyWorkforce();
@@ -443,18 +513,32 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
         debit(state, faction, quote.cost.credits, quote.cost.minerals);
         operation.ammunition = maximum.ammunition;
       }
+    } else if (command.kind === 'survey') {
+      if (!visibleConquestSystems(state, faction).has(command.systemId)) throw new ConquestRuleError('Нужно текущее наблюдение корабля или сканера', 'OUT_OF_REACH');
+      if (Object.prototype.hasOwnProperty.call(state.surveys[faction], command.systemId)) throw new ConquestRuleError('Среда уже изучена', 'ALREADY_SURVEYED');
+      if (state.session.ships.some(ship => !ship.transit && ship.systemId === command.systemId && ship.factionId !== faction)) {
+        throw new ConquestRuleError('Изучение блокируется вражеским присутствием');
+      }
+      const cost = state.rules.planetology.surveyCost, treasury = state.session.treasuries[faction];
+      if (treasury.credits < cost.credits || treasury.minerals < cost.minerals) throw new ConquestRuleError('Для изучения среды не хватает ресурсов', 'INSUFFICIENT_RESOURCES');
+      debit(state, faction, cost.credits, cost.minerals);
+      state.surveys[faction][command.systemId] = getEnvironmentType(state.environment, command.systemId);
     } else if (command.kind === 'explore' || command.kind === 'colonize') {
       if (!visibleConquestSystems(state, faction).has(command.systemId)) throw new ConquestRuleError('Нужен корабль или сканер в зоне системы');
       const system = state.session.galaxy.systems.find(item => item.id === command.systemId)!;
       if (command.kind === 'colonize') {
-        if (system.ownerId || !getGalaxyDefinition(state.session.galaxy).systems.find(item => item.id === system.id)!.habitable ||
-          !state.session.ships.some(ship => ship.factionId === faction && !ship.transit && ship.systemId === system.id) ||
-          state.session.ships.some(ship => ship.factionId !== faction && !ship.transit && ship.systemId === system.id)) throw new ConquestRuleError('Колонизация недоступна');
+        if (!('shipId' in command)) throw new ConquestRuleError('Выберите колонизатор', 'INVALID_COMMAND');
+        const availability = colonizationAvailability(state, faction, system.id, visibleConquestSystems(state, faction), command.shipId);
+        if (!availability.ok) throw new ConquestRuleError(availability.message, availability.code);
         const founding = foundColony(state, faction, system.id);
         if (!founding.quote.ok) throw new ConquestRuleError(founding.quote.code === 'NO_SETTLERS'
           ? 'Нет своей колонии с достаточным населением для переселения' : 'Для основания нужны кредиты и минералы', founding.quote.code);
         if (founding.workforceAdjustment) workforceAdjustments.push(founding.workforceAdjustment);
         system.ownerId = faction;
+        state.session.ships = state.session.ships.filter(ship => ship.id !== availability.shipId);
+        delete state.operations[String(availability.shipId)];
+        for (const fleet of state.session.fleets.items) fleet.shipIds = fleet.shipIds.filter(id => id !== availability.shipId);
+        state.session.fleets.items = state.session.fleets.items.filter(fleet => fleet.shipIds.length >= 2);
       }
       if (!system.exploredBy.includes(faction)) system.exploredBy.push(faction);
     } else if (command.kind === 'assignWorkers') {
@@ -478,28 +562,28 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
       const effects = getCompletedColonyEffects(state.researchTree, state.research[faction], state.rules);
       if (command.kind === 'endTurn' && state.session.turn !== MAX_TURN) {
         turnForecast = getColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, faction,
-          state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === faction).length, effects);
+          state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === faction).length, effects, state.environment);
         endTurnBudget = calculateColonyEndTurnBudget(state.session.treasuries[faction], turnForecast);
         if (!endTurnBudget.ok) throw new ConquestRuleError('Валовой доход превысит предел ресурсов; ход не завершён', 'RESOURCE_LIMIT');
       }
       const result = executeConquestSessionCommand(state.session, command,
-        endTurnBudget?.ok ? endTurnBudget : undefined);
+        endTurnBudget?.ok ? endTurnBudget : undefined, getStrategicRange(state.research[faction], state.researchTree, state.rules));
       if (!result.ok) return { ok: false, code: result.code, message: result.message };
       state.session = result.state;
       if (command.kind === 'endTurn') {
         const output = advanceColonyOutput(state.colonyOutput, parsedState.data.session.galaxy,
           parsedState.data.population, faction, state.rules.colonyOutput,
-          parsedState.data.session.ships.filter(ship => ship.factionId === faction).length, effects);
+          parsedState.data.session.ships.filter(ship => ship.factionId === faction).length, effects, state.environment);
         const research = forecastResearch(parsedState.data, faction, output.forecast);
         state.colonyOutput = output.state;
         state.colonyOutput.reserves[faction].research = research.receipt.reserveAfter;
         state.research[faction] = research.state;
         if (research.receipt.completedId) state.researchJournal[faction][research.receipt.completedId] = command.expectedTurn;
-        state.population = advancePopulation(parsedState.data.session.galaxy, state.population, faction, state.rules.population, effects);
+        state.population = advancePopulation(parsedState.data.session.galaxy, state.population, faction, state.rules.population, effects, state.environment);
         const miningMinerals = miningYield(state, faction);
         state.session.treasuries[faction].minerals += miningMinerals;
         treasurySchema.parse(state.session.treasuries[faction]);
-        frames = settleEncounters(state, command.expectedTurn, notices, workforceAdjustments);
+        frames = settleEncounters(state, command.expectedTurn);
         turnReceipt = {
           factionId: faction, turn: command.expectedTurn, population: output.forecast.population,
           populationIncome: output.forecast.income, miningMinerals,

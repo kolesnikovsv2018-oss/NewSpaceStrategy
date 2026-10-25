@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createSeededRandomStream } from './seededRandom.ts';
+import { INITIAL_STRATEGIC_RANGE } from './campaignTravel.ts';
 import {
   GALAXY_GENERATOR_VERSION,
   GALAXY_MAP_FORMAT,
@@ -13,7 +14,6 @@ import {
   MAX_GALAXY_WORLDS,
   MAX_PARTICIPANTS,
   MIN_PARTICIPANTS,
-  getNearestNeutralWorlds,
   validateGalaxyMap,
   type GalaxyMap,
   type GalaxyParticipant,
@@ -38,10 +38,6 @@ export type GalaxyGeneratorErrorCode =
 export type GalaxyGeneratorResult =
   | { ok: true; map: GalaxyMap }
   | { ok: false; code: GalaxyGeneratorErrorCode; message: string };
-
-function asciiCompare(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
 
 function roundCoordinate(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -71,25 +67,16 @@ function createMapProfile(participantCount: number): GalaxyMap['profile'] {
     participantCount,
     guaranteedNeutralWorldsPerParticipant: GUARANTEED_NEUTRAL_WORLDS,
     habitableExtraWorldPercent: 70,
+    toxicExtraWorldPercent: 20,
     minimumWorldCountMultiplier: GUARANTEED_NEUTRAL_WORLDS + 1,
     maxWorldCount: MAX_GALAXY_WORLDS,
     minimumCoordinate: MAP_MIN_COORDINATE,
     maximumCoordinate: MAP_MAX_COORDINATE,
     minimumSeparation: MAP_MINIMUM_SEPARATION,
     placementGridDivisions: 32,
-    topology: 'cycle-plus-starter-links-v1',
-    maxDegree: 4,
-    initialTravel: { policy: 'initial-lanes-v1', fuelCapacity: 3, fuelPerLane: 1 }
+    initialTravel: { policy: 'distance-only-v1', fuelCapacity: 3, fuelPerJump: 1,
+      maxJumpDistance: INITIAL_STRATEGIC_RANGE }
   };
-}
-
-function makeLane(from: string, to: string): [string, string] {
-  return asciiCompare(from, to) < 0 ? [from, to] : [to, from];
-}
-
-function addLane(lanes: Map<string, [string, string]>, from: string, to: string): void {
-  const lane = makeLane(from, to);
-  lanes.set(`${lane[0]}:${lane[1]}`, lane);
 }
 
 function createGridCandidates(): { x: number; y: number }[] {
@@ -160,7 +147,6 @@ function createStarterWorlds(participantCount: number, random: () => number): {
 
 function buildGalaxy(input: z.infer<typeof requestSchema>): GalaxyMap | null {
   const placementRandom = createSeededRandomStream(input.seed, 'galaxy-placement-v1');
-  const topologyRandom = createSeededRandomStream(input.seed, 'galaxy-topology-v1');
   const typeRandom = createSeededRandomStream(input.seed, 'galaxy-world-types-v1');
   const { participants, worlds } = createStarterWorlds(input.participantCount, placementRandom);
   const candidates = shuffle(createGridCandidates(), placementRandom);
@@ -191,8 +177,11 @@ function buildGalaxy(input: z.infer<typeof requestSchema>): GalaxyMap | null {
 
   const extraWorlds = worlds.slice(input.participantCount * (GUARANTEED_NEUTRAL_WORLDS + 1));
   const habitableExtraCount = Math.floor(extraWorlds.length * 70 / 100);
+  const toxicCount = extraWorlds.length < 2 ? 0 : Math.min(habitableExtraCount,
+    Math.max(1, Math.floor(extraWorlds.length * 20 / 100)));
   const extraTypes = shuffle([
-    ...Array.from({ length: habitableExtraCount }, () => 'habitable' as const),
+    ...Array.from({ length: habitableExtraCount - toxicCount }, () => 'habitable' as const),
+    ...Array.from({ length: toxicCount }, () => 'toxic' as const),
     ...Array.from({ length: extraWorlds.length - habitableExtraCount }, () => 'barren' as const)
   ], typeRandom);
   extraWorlds.forEach((world, index) => { world.type = extraTypes[index]; });
@@ -205,23 +194,8 @@ function buildGalaxy(input: z.infer<typeof requestSchema>): GalaxyMap | null {
     seed: input.seed,
     profile: createMapProfile(input.participantCount),
     participants,
-    worlds,
-    lanes: []
+    worlds
   };
-
-  const lanes = new Map<string, [string, string]>();
-  for (const participant of participants) {
-    for (const target of getNearestNeutralWorlds(starterMap, participant.homeWorldId)) {
-      addLane(lanes, participant.homeWorldId, target.id);
-    }
-  }
-
-  const ring = shuffle(worlds.map(world => world.id), topologyRandom);
-  for (let index = 0; index < ring.length; index++) {
-    addLane(lanes, ring[index], ring[(index + 1) % ring.length]);
-  }
-  starterMap.lanes = [...lanes.values()].sort((left, right) =>
-    asciiCompare(left[0], right[0]) || asciiCompare(left[1], right[1]));
   return starterMap;
 }
 

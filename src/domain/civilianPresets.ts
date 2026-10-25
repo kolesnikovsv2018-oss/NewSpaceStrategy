@@ -1,8 +1,17 @@
-import { componentSchema, createComponent, createComponentWithId, createDesign, installComponent, validateDesign,
+import { componentSchema, createComponent, createComponentWithId, createDesign, installComponent, validateDesign, HULLS,
   type ComponentDefinition, type ShipDesign } from './shipDesign';
 
-export const CIVILIAN_PRESET_NAMES = { scout: 'Разведчик', freighter: 'Грузовоз', miner: 'Добытчик' } as const;
+export const CIVILIAN_PRESET_NAMES = { scout: 'Разведчик', freighter: 'Грузовоз', miner: 'Добытчик', colonizer: 'Колонизатор' } as const;
 export type CivilianPresetId = keyof typeof CIVILIAN_PRESET_NAMES;
+
+export function createColonizerDesign(): ShipDesign {
+  return {
+    id: 'colonizer-preset-v1', name: CIVILIAN_PRESET_NAMES.colonizer, schemaVersion: 2, hullId: 'colonizer',
+    createdAt: '2000-01-01T00:00:00.000Z', updatedAt: '2000-01-01T00:00:00.000Z',
+    slots: HULLS.colonizer.slots.map(({ id }) =>
+      ({ id, component: id === 'engine_1' ? createComponentWithId('engine', 'colonizer-engine-v1') : null }))
+  };
+}
 
 function isSameComponent(actual: ComponentDefinition | null, expected: ComponentDefinition | null): boolean {
   if (!actual || !expected || actual.kind !== expected.kind) return actual === expected;
@@ -14,6 +23,9 @@ function isSameComponent(actual: ComponentDefinition | null, expected: Component
 
 export function isCivilianPresetDesign(design: ShipDesign): boolean {
   return (Object.keys(CIVILIAN_PRESET_NAMES) as CivilianPresetId[]).some(id => {
+    if (id === 'colonizer') return design.hullId === 'colonizer' &&
+      design.slots.every(slot => isSameComponent(slot.component,
+        createColonizerDesign().slots.find(expected => expected.id === slot.id)!.component));
     const hullId = id === 'scout' ? 'corvette' : id === 'miner' ? 'frigate' : 'cruiser';
     if (design.hullId !== hullId) return false;
     const expectedEngine = componentSchema.parse({ ...createComponentWithId('engine', 'campaign-preset-engine'),
@@ -30,10 +42,11 @@ export function isCivilianPresetDesign(design: ShipDesign): boolean {
 
 export function createCivilianDesign(id: CivilianPresetId): ShipDesign {
   if (!Object.prototype.hasOwnProperty.call(CIVILIAN_PRESET_NAMES, id)) throw new Error('Неизвестная гражданская комплектация');
-  let design = createDesign(id === 'scout' ? 'corvette' : id === 'miner' ? 'frigate' : 'cruiser');
+  let design = createDesign(id === 'colonizer' ? 'colonizer' : id === 'scout' ? 'corvette' : id === 'miner' ? 'frigate' : 'cruiser');
   design.name = CIVILIAN_PRESET_NAMES[id];
   const engine = componentSchema.parse({ ...createComponent('engine'),
-    maxSpeed: id === 'scout' ? 280 : 100, thrust: id === 'scout' ? 1000 : 1600 });
+    maxSpeed: id === 'colonizer' ? 200 : id === 'scout' ? 280 : 100,
+    thrust: id === 'scout' || id === 'colonizer' ? 1000 : 1600 });
   design = installComponent(design, 'engine_1', engine);
   if (id === 'miner') {
     design = installComponent(design, 'service_1', { ...createComponent('mining'), name: 'Добывающий модуль Mk1' });

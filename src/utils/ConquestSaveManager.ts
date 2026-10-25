@@ -4,10 +4,10 @@ import type { StoragePort } from './ShipDesignManager';
 import { z } from 'zod';
 
 const currentConquestSchema = conquestSchema;
-export const CONQUEST_SAVE_VERSION = 10;
-export const CONQUEST_RULES_VERSION = 7;
-const saveSchema = z.object({ format: z.literal('orion-campaign'), schemaVersion: z.literal(10),
-  rulesVersion: z.literal(7), conquest: currentConquestSchema }).strict();
+export const CONQUEST_SAVE_VERSION = 12;
+export const CONQUEST_RULES_VERSION = 9;
+const saveSchema = z.object({ format: z.literal('orion-campaign'), schemaVersion: z.literal(12),
+  rulesVersion: z.literal(9), conquest: currentConquestSchema }).strict();
 const byteLimit = 5_000_000;
 export function encodeConquestSave(input: unknown): string {
   const conquest = currentConquestSchema.parse(input);
@@ -26,7 +26,7 @@ export class ConquestSaveManager {
       const json = (this.providedStorage ?? globalThis.localStorage).getItem(CampaignSaveManager.STORAGE_KEY);
       if (json === null) return { ok: false, message: 'Сохранение отсутствует' };
       return { ok: true, state: decodeConquestSave(json) };
-    } catch { return { ok: false, message: 'Не удалось загрузить кампанию: требуется актуальный формат 10/7. Мирные сохранения открываются на мирной карте.' }; }
+    } catch { return { ok: false, message: 'Не удалось загрузить кампанию: требуется актуальный формат 12/9. Мирные сохранения открываются на мирной карте.' }; }
   }
   save(input: unknown): { ok: true } | { ok: false; message: string } {
     try {

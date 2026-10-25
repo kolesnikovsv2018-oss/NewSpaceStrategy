@@ -9,7 +9,7 @@ it('separates military presence from peaceful ownership while retaining identity
   state.ships.push({ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design: createDesign('fighter', true) });
   const command = { kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 1, destinationId: 'eden' };
   expect(executeSessionCommand(state, command).ok).toBe(false);
-  const sent = executeConquestSessionCommand(state, command);
+  const sent = executeConquestSessionCommand(state, command, undefined, 200);
   expect(sent.ok).toBe(true);
   if (!sent.ok) throw new Error(sent.message);
   expect(campaignSessionSchema.safeParse(sent.state).success).toBe(false);
@@ -32,4 +32,12 @@ it('does not weaken production ownership or group membership', () => {
   state.production.completed = [];
   state.fleets = { lastFleetId: 1, items: [{ id: 1, factionId: 'blue', systemId: 'vega', shipIds: [1, 2] }] };
   expect(conquestSessionSchema.safeParse(state).success).toBe(false);
+});
+
+it('cannot bypass military survey/adaptation through the old map-only colonization command', () => {
+  const state = createCampaignSession();
+  state.galaxy.systems.find(system => system.id === 'eden')!.exploredBy = ['blue'];
+  const payload = { kind: 'colonize', factionId: 'blue', expectedTurn: 1, systemId: 'eden' };
+  expect(executeConquestSessionCommand(state, payload)).toMatchObject({ ok: false, code: 'INVALID_COMMAND' });
+  expect(executeSessionCommand(state, payload).ok).toBe(true);
 });

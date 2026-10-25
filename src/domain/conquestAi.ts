@@ -8,9 +8,11 @@ import { getColonyProductionQuote } from './campaignOutput';
 import { getRefuelQuote } from './campaignShips';
 import { createOperationalState } from './campaignOperations';
 import { conquestSchema, executeConquestAction, getConquestOutcome, getConquestView, type ConquestCommand, type ConquestView, type ConquestResult } from './conquest';
-import { factionIdSchema, type SystemId } from './campaign';
+import { factionIdSchema } from './campaign';
 import type { BattleFrame } from './conquestBattle';
 import { calculateColonyValue } from './campaignColonyEffects';
+import { getWorldDistance, isWorldInRange } from './campaignTravel';
+import { createColonizerDesign } from './civilianPresets';
 
 export function getConquestResearchUtility(view: ConquestView, node: ResearchTree['nodes'][number]): number {
   const activeIds = new Set(view.researchTree.nodes.filter(item => view.research.completed.includes(item.id))
@@ -18,6 +20,10 @@ export function getConquestResearchUtility(view: ConquestView, node: ResearchTre
   const proposedIds = new Set([...activeIds, ...node.effects.flatMap(effect => effect.kind === 'colony-effect' ? [effect.effectId] : [])]);
   const proposed = view.colonyTechnologyEffects.filter(effect => proposedIds.has(effect.id));
   let score = node.effects.reduce((sum, effect) => sum + (effect.kind === 'variant-tier' ? 4 :
+    effect.kind === 'colonization-unlock' ? 5 * Object.values(view.environmentKnowledge).filter(type => type === effect.worldType).length :
+    effect.kind === 'strategic-range' ? Math.min(10, view.galaxy.systems.filter(system =>
+      view.ships.some(ship => !ship.transit && isWorldInRange(view.galaxy.systems, ship.systemId, system.id, effect.maxJumpDistance) &&
+        !isWorldInRange(view.galaxy.systems, ship.systemId, system.id, view.strategicRange))).length) :
     effect.kind === 'hull-unlock' ? 3 : effect.kind === 'component-unlock'
       ? (effect.component === 'projectile' || effect.component === 'armor' ? 3 : 1) : 0), 0);
   let scienceGain = 0, cultureGain = 0;
@@ -56,7 +62,7 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
     const component = createComponentWithId(kind, `conquest-${kind}-v1`);
     components.set(kind, component);
   }
-  for (const hullId of access.hulls) for (let variant = 0; variant < 8; variant++) {
+  for (const hullId of access.hulls.filter(id => id !== 'colonizer')) for (let variant = 0; variant < 8; variant++) {
     const profile = getCampaignVariantProfile(tree, Math.min(unlockedTier, 1 + Math.floor(variant / 2)));
     const variantComponents = new Map<string, ComponentDefinition>();
     for (const [kind, component] of components) {
@@ -103,7 +109,7 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
       signatures.add(signature); designs.push(design);
     }
   }
-  return designs;
+  return designs.slice(0, 47);
 }
 
 export interface ConquestDesignScore {
@@ -167,17 +173,6 @@ export function calculateConquestDesignScore(design: ShipDesign, available: Trea
     score: expectedDamage * effectiveDurability / resourcePressure };
 }
 
-function pathTo(view: ConquestView, start: SystemId, target: SystemId): SystemId[] | undefined {
-  const queue: SystemId[][] = [[start]], visited = new Set<SystemId>([start]);
-  for (let index = 0; index < queue.length; index++) {
-    const route = queue[index], here = route[route.length - 1];
-    if (here === target) return route;
-    const neighbours = view.galaxy.lanes.flatMap(([from, to]) => from === here ? [to] : to === here ? [from] : []).sort();
-    for (const neighbour of neighbours) if (!visited.has(neighbour)) { visited.add(neighbour); queue.push([...route, neighbour]); }
-  }
-  return undefined;
-}
-
 export function planConquestAction(view: ConquestView): ConquestCommand {
   const factionId = view.galaxy.factionId, expectedTurn = view.turn, fields = { factionId, expectedTurn };
   const colonies = view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === factionId);
@@ -204,6 +199,12 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       workers: { industry: 1, research: workforce.research - Number(sourceRole === 'research'),
         culture: workforce.culture - Number(sourceRole === 'culture') } };
   }
+  const survey = view.galaxy.systems.filter(system => system.visibility === 'explored' && !system.ownerId &&
+    !Object.prototype.hasOwnProperty.call(view.environmentKnowledge, system.id) &&
+    !view.enemies.some(enemy => enemy.systemId === system.id)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)[0];
+  if (survey && afford(view.surveyCost.credits, view.surveyCost.minerals)) {
+    return { ...fields, kind: 'survey', systemId: survey.id };
+  }
   if (!view.research.activeId && colonies.length) {
     const candidates = view.researchTree.nodes.filter(item => !view.research.completed.includes(item.id) &&
       item.prerequisites.every(id => view.research.completed.includes(id)));
@@ -220,8 +221,9 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
   for (const ship of view.ships) {
     if (ship.transit) continue;
     const founding = view.colonization.find(item => item.systemId === ship.systemId);
-    if (founding?.quote.ok && !view.enemies.some(enemy => enemy.systemId === ship.systemId)) {
-      return { ...fields, kind: 'colonize', systemId: ship.systemId };
+    const colonizer = ship.design.hullId === 'colonizer';
+    if (colonizer && founding?.quote.ok && !view.enemies.some(enemy => enemy.systemId === ship.systemId)) {
+      return { ...fields, kind: 'colonize', systemId: ship.systemId, shipId: ship.id };
     }
     const home = colonies.some(system => system.id === ship.systemId), maximum = createOperationalState(ship.design);
     const operation = view.operations[String(ship.id)];
@@ -236,28 +238,36 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       if (afford(quote.cost.credits, quote.cost.minerals)) return { ...fields, kind: 'refuelShip', systemId: ship.systemId, shipId: ship.id };
     }
     if (!ship.fuel) continue;
-    const homeRoutes = colonies.map(system => pathTo(view, ship.systemId, system.id))
-      .filter((route): route is SystemId[] => !!route && route.length > 1)
-      .sort((left, right) => left.length - right.length);
-    const targets = view.galaxy.systems.filter(system => system.id !== ship.systemId &&
-      (system.visibility === 'unknown' || (system.habitable && system.ownerId !== factionId)))
-      .map(system => pathTo(view, ship.systemId, system.id)).filter((route): route is SystemId[] => !!route)
-      .sort((left, right) => left.length - right.length || (left[left.length - 1] < right[right.length - 1] ? -1 : 1));
-    const nearest = targets.filter(route => route.length === targets[0]?.length);
-    // Split equally near targets without persistent or hidden exploration memory.
-    let route: SystemId[] | undefined = nearest.length ? nearest[(ship.id - 1) % nearest.length] : undefined;
-    if (route && route.length > 1) {
-      const destination = route[1];
-      const reachesColony = colonies.some(system => system.id === destination);
-      const returnRoutes = reachesColony ? [] : colonies.map(system => pathTo(view, destination, system.id))
-        .filter((candidate): candidate is SystemId[] => !!candidate);
-      const canReturnAfterHop = reachesColony || returnRoutes.some(candidate => candidate.length - 1 <= ship.fuel - 1);
-      if (!canReturnAfterHop) route = homeRoutes.find(candidate => candidate.length - 1 <= ship.fuel);
+    const distance = (id: string) => getWorldDistance(view.galaxy.systems, ship.systemId, id);
+    const compare = (left: { id: string }, right: { id: string }) => distance(left.id) - distance(right.id) ||
+      (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const reachable = view.galaxy.systems.filter(system =>
+      isWorldInRange(view.galaxy.systems, ship.systemId, system.id, view.strategicRange));
+    const targets = reachable.filter(system => system.visibility === 'unknown'
+      ? !view.knownSystems.includes(system.id) || view.knownHabitableSystems.includes(system.id)
+      : system.habitable && (colonizer ? !system.ownerId && !view.enemies.some(enemy => enemy.systemId === system.id)
+        : !!system.ownerId && system.ownerId !== factionId)).sort(compare);
+    const nearest = targets.filter(target => distance(target.id) === distance(targets[0].id));
+    const rank = view.ships.filter(other => other.id < ship.id).length;
+    let destination = nearest.length ? nearest[rank % nearest.length] : undefined;
+    if (!home && (ship.fuel === 1 && (!destination || destination.visibility === 'unknown') || !destination)) {
+      destination = reachable.filter(system => colonies.some(colony => colony.id === system.id)).sort(compare)[0];
     }
-    if (route && route.length > 1) return { ...fields, kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId: route[1] };
+    if (destination && (ship.fuel > 1 || destination.visibility === 'explored')) {
+      return { ...fields, kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId: destination.id };
+    }
   }
   const orders = view.production.orders, completedRecords = view.production.completed;
-  if (colonies.length && view.ships.length + orders.length + completedRecords.length < 4) {
+  const allRecords = [...view.ships, ...orders, ...completedRecords];
+  const source = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
+  if (source && !allRecords.some(record => record.design.hullId === 'colonizer') &&
+    view.galaxy.systems.some(system => system.visibility === 'unknown' || system.habitable && system.ownerId === null)) {
+    const design = createColonizerDesign(), quote = getColonyProductionQuote(design, view.colonyOutput.rules);
+    if (afford(quote.cost.credits + 5, quote.cost.minerals)) {
+      return { ...fields, kind: 'enqueueProduction', systemId: source.id, design };
+    }
+  }
+  if (colonies.length && allRecords.filter(record => record.design.hullId !== 'colonizer').length < 4) {
     const designs = buildConquestDesigns(view.research, view.researchTree).filter(design => {
       const quote = getColonyProductionQuote(design, view.colonyOutput.rules);
       return afford(quote.cost.credits + 5, quote.cost.minerals);
@@ -290,7 +300,7 @@ export function executeConquestAiTurn(input: unknown, factionInput: unknown, exp
       notices.push(...result.notices ?? []);
       workforceAdjustments.push(...result.workforceAdjustments ?? []);
       frames = result.frames ?? frames;
-      if (command.kind === 'endTurn') return { ...result, ...(frames ? { frames } : {}),
+      if (command.kind === 'endTurn' || getConquestOutcome(state).status === 'completed') return { ...result, ...(frames ? { frames } : {}),
         ...(notices.length ? { notices } : {}), ...(workforceAdjustments.length ? { workforceAdjustments } : {}) };
     }
     return { ok: false, code: 'RULE_REJECTED', message: 'Превышен бюджет AI-хода' };

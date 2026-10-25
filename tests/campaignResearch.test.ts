@@ -16,7 +16,7 @@ describe('campaign research points', () => {
     expect(parseResearchTreeYaml(readFileSync(new URL('../docs/research-default.yaml', import.meta.url), 'utf8'))).toEqual(tree);
     expect(parseResearchTreeYaml(JSON.stringify(tree))).toEqual(tree);
     expect(await loadResearchTree({ load: async () => tree })).toEqual(tree);
-    for (const version of [1, 2, 3, 5]) {
+    for (const version of [1, 2, 3, 4, 5, 7]) {
       const old = { ...tree, version };
       expect(researchTreeSchema.safeParse(old).success).toBe(false);
       expect(() => parseResearchTreeYaml(JSON.stringify(old))).toThrow();
@@ -54,10 +54,10 @@ describe('campaign research points', () => {
       expect(researchTreeSchema.safeParse(tree).success).toBe(false);
     });
 
-  it('keeps three real root alternatives and permits repeated capabilities across alternative nodes', () => {
+  it('keeps real root alternatives including adaptation and permits repeated capabilities across alternative nodes', () => {
     const tree = getDefaultResearchTree();
     expect(tree.nodes.filter(node => !node.prerequisites.length).map(node => node.id)).toEqual(
-      ['engineering', 'applied', 'support', 'biology', 'cultural-practices']);
+      ['engineering', 'applied', 'support', 'biology', 'cultural-practices', 'toxic-adaptation']);
     tree.nodes.push({ id: 'alternate-frigate', name: 'Другой путь', prerequisites: [], researchCost: 5000,
       effects: [{ kind: 'hull-unlock', hullId: 'frigate' }] });
     expect(researchTreeSchema.safeParse(tree).success).toBe(true);

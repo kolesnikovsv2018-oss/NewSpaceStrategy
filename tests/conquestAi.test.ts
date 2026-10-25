@@ -119,6 +119,7 @@ it('assigns a newly founded colony legally before AI production', () => {
   state.colonyOutput.assignments.sol = { industry: 4000, research: 1000, culture: 0 };
   const eden = state.session.galaxy.systems.find(system => system.id === 'eden')!;
   eden.ownerId = 'blue'; eden.exploredBy.push('blue');
+  state.surveys.blue.eden = state.environment.eden;
   state.population.eden = { population: 1000, remainder: 0 };
   state.colonyOutput.assignments.eden = { industry: 0, research: 0, culture: 0 };
   const checked = conquestSchema.parse(state);
@@ -141,17 +142,17 @@ it('plans from own observation and preserves paid production through save/load',
     const faction = state.session.turn % 2 ? 'blue' : 'red';
     const result = executeConquestAiTurn(state, faction, state.session.turn);
     if (!result.ok) throw new Error(`${state.session.turn}: ${result.message}`);
-    expect(result.state.session.turn).toBe(state.session.turn + 1);
+    expect(result.state.session.turn).toBe(state.session.turn + Number(result.turnReceipt !== undefined));
     expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), faction, state.session.turn)).toEqual(result);
     state = result.state;
-    produced ||= state.session.production.lastOrderId > 0;
-    deployed ||= state.session.ships.length > 0;
+    produced ||= state.session.production.lastOrderId > 2;
+    deployed ||= state.session.ships.some(ship => ship.id > 2);
     travelled ||= state.session.ships.some(ship => ship.systemId !== (ship.factionId === 'blue' ? 'sol' : 'vega'));
     battles ||= state.battles.length > 0;
   }
   expect({ produced, deployed, travelled, battles }).toEqual({ produced: true, deployed: true, travelled: true, battles: true });
   expect(getConquestOutcome(state)).toMatchObject({ status: 'completed' });
-  expect(source.session.production.lastOrderId).toBe(0);
+  expect(source.session.production.lastOrderId).toBe(2);
 }, 20000);
 
 it.each(['blue', 'red'] as const)('the real policy can win as %s against a passive opponent from a new start', winner => {

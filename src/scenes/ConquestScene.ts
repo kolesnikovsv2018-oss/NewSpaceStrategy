@@ -6,6 +6,8 @@ import { getColonyProductionQuote, getColonyProductionRefund, type Workforce } f
 import { getRefuelQuote } from '../domain/campaignShips';
 import { getRepairQuote, getAmmunitionQuote } from '../domain/campaignOperations';
 import { HULLS, type ShipDesign } from '../domain/shipDesign';
+import { createColonizerDesign } from '../domain/civilianPresets';
+import { getWorldDistance } from '../domain/campaignTravel';
 import type { BattleFrame } from '../domain/conquestBattle';
 import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
 import { MAX_GALAXY_WORLDS } from '../domain/galaxyMap';
@@ -455,23 +457,21 @@ export class ConquestScene extends Phaser.Scene {
     const budget = view.economyForecast;
     text(this, root, 740, 193, budget.ok ? `Содержание: ${budget.upkeep.dueCredits} · к оплате ${budget.upkeep.paidCredits} · дефицит ${budget.upkeep.shortfallCredits}` : `Бюджет: ${budget.code}`, 14);
     const selected = view.galaxy.systems.find(system => system.id === this.selected)!;
-    text(this, root, 740, 229, `${this.shorten(selected.name, 15)}: ${selected.visibility === 'unknown' ? 'нет наблюдения' : !selected.habitable ? 'непригодна для колонии' :
-      selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'колония противника' : 'свободная планета'}`, 17);
+    fitText(text(this, root, 740, 229, `${this.shorten(selected.name, 15)} · ${selected.visibility === 'unknown' ? 'нет наблюдения' :
+      selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'чужая колония' : 'свободный мир'} · ${this.environmentLabel(view)}`, 14), 510);
     text(this, root, 740, 261, this.populationLabel(view) ??
       `Свои корабли: ${view.ships.filter(ship => !ship.transit && ship.systemId === this.selected).length} · видимые чужие: ${view.enemies.filter(ship => ship.systemId === this.selected).length}`, 14).setName('conquest-population');
     text(this, root, 740, 290, this.isAiTurn() ? `Компьютер: ${this.phase}` : `Свои планеты: ${view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === this.observer).length} / ${view.totalHabitableWorlds}`, 14, '#8edfc1');
-    this.control(1080, 281, 'Колонизировать', () => this.command({ kind: 'colonize', systemId: this.selected }), 'conquest-colonize',
-      manual && selected.visibility === 'explored' && selected.habitable && !selected.ownerId &&
-      view.ships.some(ship => !ship.transit && ship.systemId === this.selected), 170);
+    this.control(1080, 281, 'Колонизировать', () => this.requestColonization(view), 'conquest-colonize',
+      manual && !!view.colonization.find(item => item.systemId === this.selected)?.quote.ok, 170);
+    this.control(890, 281, `Изучить ${view.surveyCost.credits}/${view.surveyCost.minerals}`,
+      () => this.command({ kind: 'survey', systemId: this.selected }), 'conquest-survey',
+      manual && selected.visibility === 'explored' && !Object.prototype.hasOwnProperty.call(view.environmentKnowledge, this.selected), 180);
     const generated = !!this.state.session.galaxy.map;
     if (generated) text(this, root, 24, 118, `Миров: ${view.galaxy.systems.length} · seed: ${this.state.session.galaxy.map!.seed}`, 12);
     const positions = new Map(view.galaxy.systems.map(system => [system.id, generated
       ? { x: 40 + system.x * 0.65, y: 135 + system.y * 0.16 }
       : { x: 85 + system.x * 160, y: 150 + (1 - system.y) * 48 }]));
-    for (const [from, to] of view.galaxy.lanes) {
-      const start = positions.get(from)!, end = positions.get(to)!;
-      background.lineStyle(2, 0x43525e).lineBetween(start.x, start.y, end.x, end.y);
-    }
     for (const system of view.galaxy.systems) {
       const position = positions.get(system.id)!;
       const color = system.visibility === 'unknown' ? 0x54606a : system.ownerId === 'blue' ? 0x55baff : system.ownerId === 'red' ? 0xf08070 : 0x8edfc1;
@@ -521,6 +521,7 @@ export class ConquestScene extends Phaser.Scene {
 
   private renderProduction(view: ConquestView, manual: boolean): void {
     const choices: { design: ShipDesign; source: string }[] = [
+      { design: createColonizerDesign(), source: 'Стартовый колонизатор' },
       ...view.projects.map(project => ({ design: project.design, source: `Проект #${project.id}` })),
       ...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' })),
     ];
@@ -606,11 +607,9 @@ export class ConquestScene extends Phaser.Scene {
     this.control(655, 427, costs ? `Топливо ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: this.selected, shipId: ship.id }), 'conquest-refuel', manual && stationary && ship!.fuel < 3, 180);
     this.control(845, 427, costs ? `Ремонт ${costs.repair}` : 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: this.selected, shipId: ship.id }), 'conquest-repair', manual && stationary, 165);
     this.control(1020, 427, costs ? `Снаряды ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: this.selected, shipId: ship.id }), 'conquest-resupply', manual && stationary, 175);
-    const destinations = view.galaxy.lanes.flatMap(([from, to]) => from === this.selected ? [to] : to === this.selected ? [from] : []);
-    destinations.forEach((destinationId, index) => this.control(655 + (index % 2) * 285, 478 + Math.floor(index / 2) * 48, `→ ${view.galaxy.systems.find(system => system.id === destinationId)!.name}`, () => {
-      if (group) this.command({ kind: 'sendFleet', fleetId: group.id, systemId: this.selected, destinationId });
-      else if (ship) this.command({ kind: 'sendShip', shipId: ship.id, systemId: this.selected, destinationId });
-    }, `conquest-send-${destinationId}`, manual && (!!group || stationary), 270));
+    this.control(655, 478, 'Выбрать цель перелёта', () => this.selectDestination(view, ship?.id, group?.id),
+      'conquest-select-destination', manual && (!!group || stationary), 540);
+    text(this, this.root!, 655, 536, `Прямой перелёт · дальность ${view.strategicRange} гал. ед.`, 14);
     this.control(655, 578, 'Создать группу', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }), 'conquest-create-fleet', manual && this.selectedShips.length >= 2, 180);
     this.control(845, 578, 'Выбрать группу', () => {
       this.pauseAi(); this.render();
@@ -695,14 +694,52 @@ export class ConquestScene extends Phaser.Scene {
     if (!record) {
       const founding = view.colonization.find(item => item.systemId === this.selected);
       if (!founding) return undefined;
-      return `Основание: 1 млн · ${view.foundingCost.credits}/${view.foundingCost.minerals} кр/мин · ${
-        founding.quote.ok ? `из ${founding.quote.sourceId}` :
-          founding.quote.code === 'NO_SETTLERS' ? 'нет колонистов' : 'не хватает ресурсов'}`;
+      if (!founding.quote.ok) return founding.quote.message;
+      const colonizer = view.ships.some(ship => !ship.transit && ship.systemId === this.selected && ship.design.hullId === 'colonizer');
+      return `Основание: ${colonizer ? 'колонизатор будет израсходован' : 'нужен колонизатор'} · 1 млн · ${view.foundingCost.credits}/${view.foundingCost.minerals} кр/мин · ${
+        `из ${founding.quote.sourceId}`}`;
     }
     const millions = (amount: number) => (amount / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 3 });
     const reason = record.reason === 'empty' ? 'нет жителей' : record.reason === 'at-capacity' ? 'достигнут предел' :
       record.reason === 'over-capacity' ? 'выше вместимости' : `+${millions(record.delta)} млн/свой ход`;
     return `Население ${millions(record.population)}/${millions(record.capacity)} млн · ${reason}`;
+  }
+
+  private environmentLabel(view: ConquestView): string {
+    const type = view.environmentKnowledge[this.selected];
+    return type === 'habitable' ? 'пригодная среда' : type === 'toxic' ? 'токсичная среда'
+      : type === 'barren' ? 'бесплодная среда' : 'среда не изучена';
+  }
+
+  private requestColonization(view: ConquestView): void {
+    const systemId = this.selected;
+    const ships = view.ships.filter(ship => ship.systemId === systemId && !ship.transit && ship.design.hullId === 'colonizer');
+    if (ships.length === 1) {
+      this.command({ kind: 'colonize', systemId, shipId: ships[0].id });
+      return;
+    }
+    this.pauseAi(); this.render();
+    const source = this.state;
+    chooseItem(this, 'Выберите расходуемый колонизатор', ships.map(ship =>
+      ({ label: `#${ship.id} · ${ship.design.name}`, value: ship.id })), shipId => {
+      if (this.disposed || this.state !== source) return;
+      this.command({ kind: 'colonize', systemId, shipId });
+    });
+  }
+
+  private selectDestination(view: ConquestView, shipId?: number, fleetId?: number): void {
+    this.pauseAi(); this.render();
+    const source = this.state, systemId = this.selected;
+    chooseItem(this, `Прямой перелёт · дальность ${view.strategicRange} гал. ед.`,
+      view.galaxy.systems.filter(system => system.id !== systemId).map(system => {
+        const distance = getWorldDistance(view.galaxy.systems, systemId, system.id);
+        return { label: `${system.name} · ${distance.toFixed(1)} гал. ед.${distance > view.strategicRange ? ' · вне дальности' : ''}`,
+          value: system.id };
+      }), destinationId => {
+        if (this.disposed || this.state !== source) return;
+        if (fleetId !== undefined) this.command({ kind: 'sendFleet', fleetId, systemId, destinationId });
+        else if (shipId !== undefined) this.command({ kind: 'sendShip', shipId, systemId, destinationId });
+      });
   }
 
   private renderNarrow(): void {
@@ -740,8 +777,8 @@ export class ConquestScene extends Phaser.Scene {
     }, `conquest-tab-${tab}`, true, third));
     const selected = view.galaxy.systems.find(system => system.id === this.selected)!;
     if (this.narrowSection === 'map') {
-      label(240, `${this.shorten(selected.name, 40)} · ${selected.visibility === 'unknown' ? 'нет наблюдения' :
-        !selected.habitable ? 'непригодный мир' : selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'чужая колония' : 'свободная планета'}`);
+      label(240, `${this.shorten(selected.name, 24)} · ${selected.visibility === 'unknown' ? 'нет наблюдения' :
+        selected.ownerId === this.observer ? 'своя колония' : selected.ownerId ? 'чужая колония' : 'свободный мир'} · ${this.environmentLabel(view)}`);
       control(294, `Выбрать мир · ${view.galaxy.systems.length} миров`, () => this.selectWorld(view), 'conquest-select-world');
       const index = view.galaxy.systems.findIndex(system => system.id === this.selected);
       this.control(12, 346, '← Мир', () => this.moveWorld(view, index - 1), 'conquest-world-prev', index > 0, half);
@@ -749,9 +786,12 @@ export class ConquestScene extends Phaser.Scene {
       label(402, this.populationLabel(view) ??
         `Свои корабли: ${view.ships.filter(ship => !ship.transit && ship.systemId === this.selected).length} · чужие: ${view.enemies.filter(ship => ship.systemId === this.selected).length}`, 'conquest-population');
       label(450, `Основание: 1 млн переселенцев · ${view.foundingCost.credits}/${view.foundingCost.minerals} кр/мин`);
-      control(486, 'Колонизировать', () => this.command({ kind: 'colonize', systemId: selected.id }), 'conquest-colonize',
-        manual && selected.visibility === 'explored' && selected.habitable && !selected.ownerId);
-      label(544, 'Источник: ближайшая по линиям своя колония с ≥2 млн жителей. При нехватке жителей/ресурсов автоматическое основание отложено. Захват сохраняет население.');
+      this.control(12, 486, `Изучить ${view.surveyCost.credits}/${view.surveyCost.minerals}`,
+        () => this.command({ kind: 'survey', systemId: selected.id }), 'conquest-survey',
+        manual && selected.visibility === 'explored' && !Object.prototype.hasOwnProperty.call(view.environmentKnowledge, selected.id), half);
+      this.control(20 + half, 486, 'Колонизировать', () => this.requestColonization(view), 'conquest-colonize',
+        manual && !!view.colonization.find(item => item.systemId === selected.id)?.quote.ok, half);
+      label(544, 'Колонизатор расходуется; 1 млн жителей из своей колонии. Захват сохраняет население.');
       control(620, 'Разбивка колонии', () => this.showColonyEffects(view), 'conquest-effects',
         view.population.some(colony => colony.systemId === this.selected));
     } else if (this.narrowSection === 'actions') {
@@ -796,7 +836,8 @@ export class ConquestScene extends Phaser.Scene {
         'conquest-research-forecast');
       control(682, 'Журнал открытий', () => this.showResearchJournal(view), 'conquest-research-journal');
     } else if (this.narrowSection === 'production') {
-      const choices = [...view.projects.map(project => ({ design: project.design, source: `Проект #${project.id}` })),
+      const choices = [{ design: createColonizerDesign(), source: 'Стартовый колонизатор' },
+        ...view.projects.map(project => ({ design: project.design, source: `Проект #${project.id}` })),
         ...buildConquestDesigns(view.research, view.researchTree).map(design => ({ design, source: 'Кампанийный конструктор' }))];
       this.choice = Math.max(0, Math.min(this.choice, choices.length - 1));
       const choice = choices[this.choice];
@@ -879,7 +920,7 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private renderNarrowFleet(view: ConquestView, manual: boolean): void {
-    const width = this.cameras.main.width - 24, half = (width - 8) / 2, third = (width - 16) / 3;
+    const width = this.cameras.main.width - 24, third = (width - 16) / 3;
     const label = (y: number, value: string) => text(this, this.root!, 12, y, value, 14).setWordWrapWidth(width, true);
     const ships = view.ships.filter(ship => ship.systemId === this.selected);
     this.normalizePage(ships.length, 1);
@@ -903,12 +944,9 @@ export class ConquestScene extends Phaser.Scene {
       'conquest-repair', manual && stationary, third);
     this.control(28 + third * 2, 344, costs ? `Снар. ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: ship.systemId, shipId: ship.id }),
       'conquest-resupply', manual && stationary, third);
-    const destinations = view.galaxy.lanes.flatMap(([from, to]) => from === this.selected ? [to] : to === this.selected ? [from] : []);
-    destinations.forEach((destinationId, index) => this.control(12 + index % 2 * (half + 8), 400 + Math.floor(index / 2) * 52,
-      `→ ${view.galaxy.systems.find(system => system.id === destinationId)!.name}`, () => {
-        if (group) this.command({ kind: 'sendFleet', systemId: group.systemId, fleetId: group.id, destinationId });
-        else if (ship) this.command({ kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId });
-      }, `conquest-send-${destinationId}`, manual && (!!group || stationary), half));
+    this.control(12, 400, 'Выбрать цель перелёта', () => this.selectDestination(view, ship?.id, group?.id),
+      'conquest-select-destination', manual && (!!group || stationary), width);
+    label(452, `Дальность: ${view.strategicRange} гал. ед. · прямой перелёт`);
     this.control(12, 510, 'Группа +', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }),
       'conquest-create-fleet', manual && this.selectedShips.length >= 2, third);
     this.control(20 + third, 510, 'Выбрать', () => {

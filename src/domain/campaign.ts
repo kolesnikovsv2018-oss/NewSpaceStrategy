@@ -46,9 +46,9 @@ export function getGalaxyDefinition(state?: { map?: GalaxyMap }): GalaxyDefiniti
         id: index === 0 ? 'blue' : 'red', name: participant.name, homeSystemId: participant.homeWorldId
       })),
       systems: map.worlds.map(world => ({
-        id: world.id, name: world.name, x: world.x, y: world.y, habitable: world.type === 'habitable'
+        id: world.id, name: world.name, x: world.x, y: world.y, habitable: world.type !== 'barren'
       })),
-      lanes: map.lanes.map(([from, to]) => [from, to])
+      lanes: []
     };
   }
   return {
@@ -73,7 +73,7 @@ const campaignMapSchema = z.unknown().transform((input, ctx) => {
   return checked.map;
 });
 
-export const campaignStateSchema = z.object({
+function makeCampaignStateSchema(dynamicEnvironment: boolean) { return z.object({
   map: campaignMapSchema.optional(),
   systems: z.array(systemStateSchema).min(1).max(256)
 }).strict().superRefine((state, ctx) => {
@@ -88,11 +88,13 @@ export const campaignStateSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Стороны разведки не должны повторяться' });
     }
     if (system.ownerId !== null && (!system.exploredBy.includes(system.ownerId) ||
-      !definition.systems.find(item => item.id === system.id)?.habitable)) {
+      !dynamicEnvironment && !definition.systems.find(item => item.id === system.id)?.habitable)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Колония требует пригодную систему, разведанную владельцем' });
     }
   }
-});
+}); }
+export const campaignStateSchema = makeCampaignStateSchema(false);
+export const conquestGalaxyStateSchema = makeCampaignStateSchema(true);
 export type CampaignState = z.infer<typeof campaignStateSchema>;
 
 export function createCampaignState(map?: GalaxyMap): CampaignState {
@@ -180,8 +182,8 @@ export interface CampaignView {
  * Exploration is permanent in S3.1, not a last-seen intelligence snapshot.
  * Invalid query arguments throw ZodError; commands instead return typed failures.
  */
-export function getCampaignView(inputState: CampaignState, factionId: CampaignFactionId): CampaignView {
-  const state = campaignStateSchema.parse(inputState);
+export function getCampaignView(inputState: CampaignState, factionId: CampaignFactionId, dynamicEnvironment = false): CampaignView {
+  const state = (dynamicEnvironment ? conquestGalaxyStateSchema : campaignStateSchema).parse(inputState);
   const faction = factionIdSchema.parse(factionId);
   const definition = getGalaxyDefinition(state);
   return {

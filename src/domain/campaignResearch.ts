@@ -3,18 +3,20 @@ import { componentSchema, createComponentWithId, hullIdSchema, designSchema, val
   type ComponentDefinition, type ComponentKind, type ShipDesign } from './shipDesign';
 import { isCombatPresetDesign } from './combatPresets';
 import { isCivilianPresetDesign } from './civilianPresets';
-import { createDefaultRulesSnapshot, COLONY_EFFECT_TARGETS, type RulesEffect } from './campaignRules';
+import { createDefaultRulesSnapshot, COLONY_EFFECT_TARGETS, type RulesEffect, type RulesSnapshot } from './campaignRules';
 
 export const researchIdSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
 const kindSchema = z.enum(['engine', 'beam', 'projectile', 'shield', 'armor', 'mining', 'repair', 'scanner', 'cargoExpansion']);
-const unlockSchema = z.object({ hulls: z.array(hullIdSchema).max(6), components: z.array(kindSchema).max(9) }).strict();
+const unlockSchema = z.object({ hulls: z.array(hullIdSchema).max(7), components: z.array(kindSchema).max(9) }).strict();
 export const MAX_RESEARCH_COST = 1_000_000_000;
 const pointsSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const researchEffectSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('hull-unlock'), hullId: hullIdSchema }).strict(),
   z.object({ kind: z.literal('component-unlock'), component: kindSchema }).strict(),
   z.object({ kind: z.literal('variant-tier'), tier: z.number().int().min(2).max(4) }).strict(),
-  z.object({ kind: z.literal('colony-effect'), effectId: researchIdSchema }).strict()
+  z.object({ kind: z.literal('colony-effect'), effectId: researchIdSchema }).strict(),
+  z.object({ kind: z.literal('colonization-unlock'), worldType: z.literal('toxic') }).strict(),
+  z.object({ kind: z.literal('strategic-range'), maxJumpDistance: z.union([z.literal(400), z.literal(800), z.literal(1500)]) }).strict()
 ]);
 export type ResearchEffect = z.infer<typeof researchEffectSchema>;
 const researchNodeSchema = z.object({
@@ -29,15 +31,18 @@ const variantTierSchema = z.object({
   ammo: z.number().finite().min(0).max(1), rechargeDelay: z.number().finite().min(0).max(60)
 }).strict();
 export const researchTreeSchema = z.object({
-  version: z.literal(4), id: researchIdSchema, initial: unlockSchema,
+  version: z.literal(6), id: researchIdSchema, initial: unlockSchema,
   nodes: z.array(researchNodeSchema).min(1).max(64),
   variantPolicy: z.object({ id: z.literal('component-bands-v1'), tiers: z.array(variantTierSchema).length(4) }).strict()
 }).strict().superRefine((tree, context) => {
   const nodes = new Map(tree.nodes.map(node => [node.id, node]));
   const fail = () => context.addIssue({ code: z.ZodIssueCode.custom, message: 'Недопустимое дерево исследований' });
-  if (nodes.size !== tree.nodes.length || !tree.initial.hulls.includes('fighter') ||
+  if (nodes.size !== tree.nodes.length || !tree.initial.hulls.includes('fighter') || !tree.initial.hulls.includes('colonizer') ||
     !tree.initial.components.includes('engine') || !tree.initial.components.includes('beam')) fail();
   const effects = tree.nodes.flatMap(node => node.effects);
+  if (!effects.some(effect => effect.kind === 'colonization-unlock' && effect.worldType === 'toxic')) fail();
+  const ranges = new Set<number>(effects.flatMap(effect => effect.kind === 'strategic-range' ? [effect.maxJumpDistance] : []));
+  if (![400, 800, 1500].every(range => ranges.has(range))) fail();
   const registeredIds = new Set(createDefaultRulesSnapshot().effects.filter(effect =>
     COLONY_EFFECT_TARGETS.some(target => target === effect.target)).map(effect => effect.id));
   if (effects.some(effect => effect.kind === 'colony-effect' && !registeredIds.has(effect.effectId))) fail();
@@ -70,11 +75,11 @@ export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree 
 }
 
 const defaultTree: ResearchTree = {
-  version: 4, id: 'orion-technologies-v4',
-  initial: { hulls: ['fighter', 'corvette'], components: ['engine', 'beam'] },
+  version: 6, id: 'orion-technologies-v6',
+  initial: { hulls: ['fighter', 'corvette', 'colonizer'], components: ['engine', 'beam'] },
   nodes: [
     { id: 'engineering', name: 'Инженерные методы', prerequisites: [], researchCost: 2000,
-      effects: [{ kind: 'variant-tier', tier: 2 }] },
+      effects: [{ kind: 'variant-tier', tier: 2 }, { kind: 'strategic-range', maxJumpDistance: 400 }] },
     { id: 'applied', name: 'Прикладные службы', prerequisites: [], researchCost: 2000,
       effects: ['mining', 'repair', 'scanner', 'cargoExpansion'].map(component =>
         ({ kind: 'component-unlock' as const, component: kindSchema.parse(component) })) },
@@ -83,9 +88,11 @@ const defaultTree: ResearchTree = {
         { kind: 'component-unlock', component: 'armor' }] },
     { id: 'ordnance', name: 'Тяжёлое вооружение', prerequisites: ['engineering', 'support'], researchCost: 6000,
       effects: [{ kind: 'hull-unlock', hullId: 'destroyer' }, { kind: 'hull-unlock', hullId: 'cruiser' },
-        { kind: 'component-unlock', component: 'projectile' }, { kind: 'variant-tier', tier: 3 }] },
+        { kind: 'component-unlock', component: 'projectile' }, { kind: 'variant-tier', tier: 3 },
+        { kind: 'strategic-range', maxJumpDistance: 800 }] },
     { id: 'capital', name: 'Линейные корабли', prerequisites: ['ordnance'], researchCost: 12000,
-      effects: [{ kind: 'hull-unlock', hullId: 'battleship' },       { kind: 'variant-tier', tier: 4 }] },
+      effects: [{ kind: 'hull-unlock', hullId: 'battleship' }, { kind: 'variant-tier', tier: 4 },
+        { kind: 'strategic-range', maxJumpDistance: 1500 }] },
     { id: 'biology', name: 'Биология', prerequisites: [], researchCost: 2000,
       effects: [{ kind: 'colony-effect', effectId: 'biology-growth' }] },
     { id: 'biosphere', name: 'Биосфера', prerequisites: ['biology'], researchCost: 4000,
@@ -95,7 +102,9 @@ const defaultTree: ResearchTree = {
     { id: 'scientific-method', name: 'Научные методы', prerequisites: ['applied'], researchCost: 3000,
       effects: [{ kind: 'colony-effect', effectId: 'scientific-output' }] },
     { id: 'cultural-practices', name: 'Культурные практики', prerequisites: [], researchCost: 2000,
-      effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }] }
+      effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }] },
+    { id: 'toxic-adaptation', name: 'Адаптация к токсичной среде', prerequisites: [], researchCost: 3000,
+      effects: [{ kind: 'colonization-unlock', worldType: 'toxic' }] }
   ],
   variantPolicy: { id: 'component-bands-v1', tiers: [
     { level: 1, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5 },
@@ -106,6 +115,11 @@ const defaultTree: ResearchTree = {
 };
 
 export function getDefaultResearchTree(): ResearchTree { return researchTreeSchema.parse(defaultTree); }
+
+export function getStrategicRange(state: ResearchState, tree: ResearchTree, rules: RulesSnapshot): number {
+  return Math.max(rules.travel.initialRange, ...tree.nodes.filter(node => state.completed.includes(node.id))
+    .flatMap(node => node.effects.flatMap(effect => effect.kind === 'strategic-range' ? [effect.maxJumpDistance] : [])));
+}
 
 export const researchStateSchema = z.object({
   completed: z.array(researchIdSchema).max(64),
@@ -254,6 +268,8 @@ export function calculateResearchTurn(state: ResearchState, tree: ResearchTree, 
 
 export function describeResearchEffect(effect: ResearchEffect, tree: ResearchTree,
   catalog: readonly RulesEffect[] = createDefaultRulesSnapshot().effects): string {
+  if (effect.kind === 'colonization-unlock') return 'основание колоний: токсичные миры, без изменения среды';
+  if (effect.kind === 'strategic-range') return `стратегическая дальность ${effect.maxJumpDistance} гал. ед.`;
   if (effect.kind === 'hull-unlock') return `корпус ${HULLS[effect.hullId].name}`;
   if (effect.kind === 'component-unlock') return `семейство ${createComponentWithId(effect.component, 'research-label').name}`;
   if (effect.kind === 'colony-effect') {

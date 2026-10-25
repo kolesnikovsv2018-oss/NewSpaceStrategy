@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import type { GalaxyMap } from './galaxyMap';
-import { campaignCommandSchema, campaignStateSchema, createCampaignState, executeCampaignCommand,
+import { campaignCommandSchema, campaignStateSchema, conquestGalaxyStateSchema, createCampaignState, executeCampaignCommand,
   areSystemsAdjacent, factionIdSchema, systemIdSchema, getCampaignView, type CampaignErrorCode, type CampaignFactionId,
-  type CampaignState, type CampaignView } from './campaign';
+  type CampaignState, type CampaignView, type SystemId } from './campaign';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { calculateEndTurnEconomy, getUpkeepQuote, type EndTurnBudget, type EconomyCalculation } from './campaignUpkeep';
 import { designSchema, validateDesign } from './shipDesign';
+import { isWorldInRange } from './campaignTravel';
+import { getGalaxyDefinition } from './campaign';
 import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
   MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
 import { campaignFleetsSchema, createCampaignFleets, fleetIdSchema, fleetShipIdsSchema, getFleetTransit, isShipInFleet,
@@ -23,7 +25,7 @@ const colonyIncome: Readonly<Treasury> = { credits: 10, minerals: 5 };
 
 /** Turn is a single side's action window: odd=blue, even=red. No duplicated active-side field. */
 function makeSessionSchema(allowHostile: boolean) { return z.object({
-  galaxy: campaignStateSchema,
+  galaxy: allowHostile ? conquestGalaxyStateSchema : campaignStateSchema,
   turn: turnSchema,
   treasuries: z.object({ blue: treasurySchema, red: treasurySchema }).strict(),
   production: productionStateSchema,
@@ -57,7 +59,7 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
   }
   for (const ship of state.ships) {
     if (!systemIds.has(ship.systemId) || (ship.transit &&
-      (!systemIds.has(ship.transit.destinationId) || !areSystemsAdjacent(ship.systemId, ship.transit.destinationId, state.galaxy)))) {
+      (!systemIds.has(ship.transit.destinationId) || (!allowHostile && !areSystemsAdjacent(ship.systemId, ship.transit.destinationId, state.galaxy))))) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль и маршрут должны принадлежать карте партии' });
     }
     if (productionIds.has(ship.id) || ship.id > state.production.lastOrderId) {
@@ -137,18 +139,25 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
 }
 
 export function executeConquestSessionCommand(inputState: unknown, inputCommand: unknown,
-  conquestEndTurnBudget?: EndTurnBudget): SessionResult {
-  return executeStrategicCommand(inputState, inputCommand, true, conquestEndTurnBudget);
+  conquestEndTurnBudget?: EndTurnBudget, strategicRange?: number): SessionResult {
+  return executeStrategicCommand(inputState, inputCommand, true, conquestEndTurnBudget, strategicRange);
 }
 
 function executeStrategicCommand(inputState: unknown, inputCommand: unknown, allowHostile: boolean,
-  conquestEndTurnBudget?: EndTurnBudget): SessionResult {
+  conquestEndTurnBudget?: EndTurnBudget, strategicRange?: number): SessionResult {
   const parsedState = (allowHostile ? conquestSessionSchema : campaignSessionSchema).safeParse(inputState);
   if (!parsedState.success) return { ok: false, code: 'INVALID_STATE', message: 'Недопустимое состояние стратегической партии' };
   const parsedCommand = sessionCommandSchema.safeParse(inputCommand);
   if (!parsedCommand.success) return { ok: false, code: 'INVALID_COMMAND', message: 'Недопустимая стратегическая команда' };
   const state = parsedState.data;
   const command = parsedCommand.data;
+  if (allowHostile && (command.kind === 'sendShip' || command.kind === 'sendFleet') &&
+    (strategicRange === undefined || !Number.isFinite(strategicRange) || strategicRange <= 0)) {
+    return { ok: false, code: 'INVALID_COMMAND', message: 'Не задана проверенная стратегическая дальность стороны' };
+  }
+  const canTravel = (from: SystemId, to: SystemId) => allowHostile
+    ? isWorldInRange(getGalaxyDefinition(state.galaxy).systems, from, to, strategicRange!)
+    : areSystemsAdjacent(from, to, state.galaxy);
   if (command.expectedTurn !== state.turn) {
     return { ok: false, code: 'STALE_TURN', message: 'Номер хода изменился; обновите состояние перед командой' };
   }
@@ -178,8 +187,8 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
       if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
         return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
       }
-      if (!areSystemsAdjacent(command.systemId, command.destinationId, state.galaxy)) {
-        return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
+      if (!canTravel(command.systemId, command.destinationId)) {
+        return { ok: false, code: 'INVALID_ROUTE', message: 'Цель вне доступной дальности или маршрута' };
       }
       // Membership was validated at the session boundary. Check every tank before any debit.
       const members = state.ships.filter(ship => fleet.shipIds.includes(ship.id));
@@ -234,8 +243,8 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
     if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
     }
-    if (!areSystemsAdjacent(command.systemId, command.destinationId, state.galaxy)) {
-      return { ok: false, code: 'INVALID_ROUTE', message: 'Нужен прямой переход в другую собственную колонию' };
+    if (!canTravel(command.systemId, command.destinationId)) {
+      return { ok: false, code: 'INVALID_ROUTE', message: 'Цель вне доступной дальности или маршрута' };
     }
     if (ship.fuel < TRAVEL_FUEL_COST) {
       return { ok: false, code: 'INSUFFICIENT_FUEL', message: 'Недостаточно стратегического топлива; нужна заправка' };
@@ -292,6 +301,9 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
     return { ok: true, state };
   }
   if (command.kind === 'explore' || command.kind === 'colonize') {
+    if (allowHostile) {
+      return { ok: false, code: 'INVALID_COMMAND', message: 'Изучение и основание требуют полной границы военной кампании' };
+    }
     // Reuse all map rules without passing the session-only field to the strict map schema.
     const result = executeCampaignCommand(state.galaxy, {
       kind: command.kind, factionId: command.factionId, systemId: command.systemId
@@ -341,12 +353,12 @@ export function getCampaignSessionView(inputState: CampaignSession, factionId: C
 }
 
 export function getConquestSessionView(inputState: CampaignSession, factionId: CampaignFactionId): CampaignSessionView {
-  return sessionView(conquestSessionSchema.parse(inputState), factionId);
+  return sessionView(conquestSessionSchema.parse(inputState), factionId, true);
 }
 
-function sessionView(state: CampaignSession, factionId: CampaignFactionId): CampaignSessionView {
+function sessionView(state: CampaignSession, factionId: CampaignFactionId, dynamicEnvironment = false): CampaignSessionView {
   const faction = factionIdSchema.parse(factionId);
-  return { galaxy: getCampaignView(state.galaxy, faction), turn: state.turn,
+  return { galaxy: getCampaignView(state.galaxy, faction, dynamicEnvironment), turn: state.turn,
     activeFactionId: activeFaction(state.turn), treasury: { ...state.treasuries[faction] },
     income: incomeFor(state.galaxy, faction), economyForecast: economyFor(state, faction), production: {
       orders: state.production.orders.filter(order => order.factionId === faction),

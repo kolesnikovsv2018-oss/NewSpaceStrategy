@@ -55,9 +55,10 @@ fallback, загрузки YAML-скриптов или исполнения `fo
 | capacity-add | own-colonies | count, flat | colony-capacity |
 | production-output, science-output, culture-output | own-colonies | percent, flat | colony-output |
 
-Пять колониальных targets требуют modifier, обязательный worldType
-habitable/barren и activationPhase=on-turn-start. Иные scope/type/phase
-отвергаются. У неколониальных effects worldType запрещён.
+Пять колониальных targets требуют modifier, обязательный список worldTypes
+из каталога habitable/toxic/barren и activationPhase=on-turn-start.
+Текущие пять effects явно выбирают habitable+toxic. Иные scope/type/phase
+отвергаются. У неколониальных effects worldTypes запрещён.
 
 - `modifier`: числовой эффект. `multiply` принимает только percent/ratio; отрицательный
   value разрешён только для add. Value конечен в ±1 000 000, cap конечен в 0..1 000 000
@@ -141,9 +142,9 @@ Capability/policy-reference и будущий growth не превращаютс
 
 | Контракт | Текущий формат | Producers | Consumers/readers | Связь с Н04 |
 | --- | --- | --- | --- | --- |
-| Исследования Conquest | tree4 / research-points-v1 / component-bands-v1 | campaignResearch, ResearchTreeYaml, research-default.yaml | Conquest/access/UI/AI/save10 | Hull/family/tier и ссылки colony-effect |
-| Военная кампания | save10 / rules7 | encodeConquestSave, ConquestSaveManager | decodeConquestSave, ConquestScene, baseline6 | Rules/population/output/researchJournal; treeId/ссылки/прогресс/журнал согласованы |
-| Библиотека | rules snapshot5 / rules5 | encodeRulesSnapshot, JSON fixture/API | decodeRulesSnapshot, typed math/activation, Conquest | Пять handlers и worldType; только текущая версия |
+| Исследования Conquest | tree6 / research-points-v1 / component-bands-v1 | campaignResearch, ResearchTreeYaml, research-default.yaml | Conquest/access/UI/AI/save12 | Hull/family/tier, colony-effect, strategic-range, colonization-unlock |
+| Военная кампания | save12 / rules9 | encodeConquestSave, ConquestSaveManager | decodeConquestSave, ConquestScene, baseline8 | Environment/surveys и согласованные rules/дальность/журнал/население/производство |
+| Библиотека | rules snapshot7 / rules7 | encodeRulesSnapshot, JSON fixture/API | decodeRulesSnapshot, typed math/activation, Conquest | WorldTypes selectors, capacities toxic, travel/planetology; только текущая версия |
 | Мирные/старые библиотечные save API | прежние самостоятельные форматы | существующие кодеки | прежние readers | Не изменялись; не запасной reader нового snapshot |
 
 Будущие номера schemas не резервируются. Иные версии snapshot/save отвергаются;

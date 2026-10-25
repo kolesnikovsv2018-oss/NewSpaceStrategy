@@ -6,6 +6,7 @@ import { flightDesignSchema, getProductionQuote, MAX_COLONY_QUEUE, MAX_PRODUCTIO
 import type { ColonyOutputRules } from './campaignRules';
 import type { PopulationState } from './campaignPopulation';
 import { calculateColonyValue, getColonyWorldType, type ColonyValueBreakdown } from './campaignColonyEffects';
+import type { EnvironmentState } from './worldEnvironment';
 import type { RulesEffect } from './campaignRules';
 
 const amountSchema = z.number().int().min(0).max(1_000_000_000);
@@ -191,7 +192,8 @@ export interface ColonyOutputForecast {
 }
 
 export function getColonyOutputForecast(galaxy: CampaignState, population: PopulationState, outputInput: unknown,
-  factionInput: unknown, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = []): ColonyOutputForecast {
+  factionInput: unknown, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = [],
+  environment?: EnvironmentState): ColonyOutputForecast {
   const faction = factionIdSchema.parse(factionInput);
   const output = colonyOutputStateSchema.parse(outputInput);
   const colonies = galaxy.systems.filter(system => system.ownerId === faction && population[system.id]);
@@ -203,7 +205,7 @@ export function getColonyOutputForecast(galaxy: CampaignState, population: Popul
     const workforce = output.assignments[system.id];
     const totalAssigned = workforce.industry + workforce.research + workforce.culture;
     const head = output.production.orders.find(order => order.factionId === faction && order.systemId === system.id);
-    const worldType = getColonyWorldType(galaxy, system.id);
+    const worldType = getColonyWorldType(galaxy, system.id, environment);
     const production = calculateColonyValue(rules.pointsPerWorker, workforce.industry, 'production-output', worldType, effects);
     const science = calculateColonyValue(rules.pointsPerWorker, workforce.research, 'science-output', worldType, effects);
     const culture = calculateColonyValue(rules.pointsPerWorker, workforce.culture, 'culture-output', worldType, effects);
@@ -252,13 +254,14 @@ export function calculateColonyEndTurnBudget(treasury: Treasury, forecast: Colon
 }
 
 export function advanceColonyOutput(input: unknown, galaxy: CampaignState, population: PopulationState,
-  faction: CampaignFactionId, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = []): {
+  faction: CampaignFactionId, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = [],
+  environment?: EnvironmentState): {
     state: ColonyOutputState;
     forecast: ColonyOutputForecast;
     completedIds: number[];
   } {
   const state = colonyOutputStateSchema.parse(input);
-  const forecast = getColonyOutputForecast(galaxy, population, state, faction, rules, shipCount, effects);
+  const forecast = getColonyOutputForecast(galaxy, population, state, faction, rules, shipCount, effects, environment);
   const completedIds: number[] = [];
   for (const row of forecast.production) {
     const order = state.production.orders.find(item => item.factionId === faction && item.systemId === row.systemId);

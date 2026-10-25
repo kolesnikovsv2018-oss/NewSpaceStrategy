@@ -7,7 +7,7 @@ import { createCombatDesign } from '../src/domain/combatPresets';
 import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { ConquestSaveManager, decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../src/domain/campaign';
+import { getGalaxyDefinition, type CampaignFactionId } from '../src/domain/campaign';
 
 function apply(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
@@ -78,7 +78,7 @@ describe('campaign-owned project contract', () => {
     state = apply(state, { kind: 'deleteProject', projectId: 1 });
     state = save(state);
     expect(state.projects.blue.items.map(item => item.id)).toEqual([2, 3]);
-    expect(state.session.production.lastOrderId).toBe(0);
+    expect(state.session.production.lastOrderId).toBe(2);
     reject(state, { kind: 'deleteProject', projectId: 1 }, 'PROJECT_NOT_FOUND');
   });
 
@@ -157,6 +157,7 @@ describe('campaign-owned project contract', () => {
     for (const system of state.session.galaxy.systems) {
       if (getGalaxyDefinition(state.session.galaxy).systems.find(item => item.id === system.id)!.habitable) {
         system.ownerId = 'blue'; system.exploredBy = ['blue', 'red'];
+        state.surveys.blue[system.id] = state.environment[system.id];
       }
     }
     expect(getConquestView(state, 'blue').projects).toHaveLength(1);
@@ -189,7 +190,7 @@ describe('campaign-owned project contract', () => {
     reject(state, { kind: 'replaceProject', projectId: 1, design: createDesign('battleship') }, 'INVALID_DESIGN');
     expect(decodeConquestSave(encodeConquestSave(state))).toEqual(accepted);
     const envelope = JSON.parse(encodeConquestSave(state));
-    expect(envelope.schemaVersion).toBe(10);
+    expect(envelope.schemaVersion).toBe(12);
     expect(() => decodeConquestSave(JSON.stringify({ ...envelope, schemaVersion: 5 }))).toThrow();
   });
 
@@ -244,23 +245,17 @@ it('paid generated campaign projects survive FIFO, deletion, travel and real bat
   state = checkpoint(state);
   state = advanceUntil(state, candidate => candidate.colonyOutput.production.completed.length === 2);
   expect([...state.colonyOutput.production.completed].sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: item.design }))).toEqual(snapshots);
-  state = apply(state, { kind: 'deployProduction', systemId: home('blue'), orderId: 2 });
+  state = apply(state, { kind: 'deployProduction', systemId: home('blue'), orderId: 4 });
   state = apply(state, { kind: 'endTurn' });
-  state = apply(state, { kind: 'deployProduction', systemId: home('red'), orderId: 1 });
+  state = apply(state, { kind: 'deployProduction', systemId: home('red'), orderId: 3 });
   state = apply(state, { kind: 'endTurn' });
-  const lanes = getGalaxyDefinition(state.session.galaxy).lanes;
-  const paths: SystemId[][] = [[home('blue')]], visited = new Set<SystemId>();
-  let route: SystemId[] | undefined;
-  while (paths.length) {
-    const path = paths.shift()!, last = path[path.length - 1];
-    if (last === home('red')) { route = path; break; }
-    if (visited.has(last)) continue;
-    visited.add(last);
-    for (const [a, b] of lanes) if (a === last || b === last) paths.push([...path, a === last ? b : a]);
+  state = apply(state, { kind: 'assignWorkers', systemId: home('blue'), workers: { industry: 3500, research: 1500, culture: 0 } });
+  for (const technologyId of ['engineering', 'support', 'ordnance']) {
+    state = apply(state, { kind: 'research', technologyId });
+    state = advanceUntil(state, candidate => candidate.research.blue.completed.includes(technologyId));
   }
-  if (!route) throw new Error('Missing route');
-  for (const destinationId of route.slice(1)) {
-    const ship = state.session.ships.find(item => item.id === 2)!;
+  for (const destinationId of [home('red')]) {
+    const ship = state.session.ships.find(item => item.id === 4)!;
     state = apply(state, { kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId });
     state = checkpoint(state);
     state = round(state);

@@ -7,8 +7,8 @@ function generatedMap(worldCount = 6, participantCount = 2) {
     worldCount,
     participantCount,
     seed: 12345,
-    generatorVersion: 'galaxy-generator-v1',
-    profileId: 'balanced-start-v1'
+    generatorVersion: 'galaxy-generator-v3',
+    profileId: 'balanced-start-v3'
   });
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error(result.message);
@@ -39,11 +39,11 @@ describe('galaxy map format and validation', () => {
       ok: false,
       code: 'UNSUPPORTED_FORMAT'
     });
-    expect(decodeGalaxyMap({ ...map, schemaVersion: 2 })).toMatchObject({
+    expect(decodeGalaxyMap({ ...map, schemaVersion: 1 })).toMatchObject({
       ok: false,
       code: 'UNSUPPORTED_VERSION'
     });
-    expect(decodeGalaxyMap({ ...map, rulesVersion: 2 })).toMatchObject({
+    expect(decodeGalaxyMap({ ...map, rulesVersion: 1 })).toMatchObject({
       ok: false,
       code: 'UNSUPPORTED_VERSION'
     });
@@ -54,7 +54,7 @@ describe('galaxy map format and validation', () => {
     expect(validateGalaxyMap({ ...map, unexpected: true })).toMatchObject({ ok: false, code: 'INVALID_MAP' });
     expect(validateGalaxyMap({ ...map, worlds: [map.worlds[0], ...map.worlds] }))
       .toMatchObject({ ok: false, code: 'INVALID_MAP' });
-    expect(validateGalaxyMap({ ...map, lanes: [['world-001', 'world-999'], ...map.lanes] }))
+    expect(validateGalaxyMap({ ...map, lanes: [['world-001', 'world-999']] }))
       .toMatchObject({ ok: false, code: 'INVALID_MAP' });
   });
 
@@ -68,13 +68,11 @@ describe('galaxy map format and validation', () => {
     };
     expect(validateGalaxyMap(barren)).toMatchObject({ ok: false, code: 'INVALID_MAP' });
 
-    const missingLane = {
+    const tooFar = {
       ...map,
-      lanes: map.lanes.filter(([from, to]) =>
-        !((from === participant.homeWorldId && to === nearest[0].id) ||
-          (from === nearest[0].id && to === participant.homeWorldId)))
+      profile: { ...map.profile, initialTravel: { ...map.profile.initialTravel, maxJumpDistance: 1 } }
     };
-    expect(validateGalaxyMap(missingLane)).toMatchObject({ ok: false, code: 'INVALID_MAP' });
+    expect(validateGalaxyMap(tooFar)).toMatchObject({ ok: false, code: 'INVALID_MAP' });
   });
 
   it('sorts equal-distance neutral worlds by stable ASCII ID', () => {

@@ -20,7 +20,8 @@ export function loadProductionCatalog(repository: Pick<ShipDesignManager, 'load'
   };
   const choices: ProductionChoice[] = [
     ...(['fighter', 'frigate', 'cruiser', 'dreadnought'] as CombatPresetId[]).map(id => choice(createCombatDesign(id), 'Пресет')),
-    ...(Object.keys(CIVILIAN_PRESET_NAMES) as CivilianPresetId[]).map(id => choice(createCivilianDesign(id), 'Пресет'))
+    ...(Object.keys(CIVILIAN_PRESET_NAMES) as CivilianPresetId[]).filter(id => id !== 'colonizer')
+      .map(id => choice(createCivilianDesign(id), 'Пресет'))
   ];
   try {
     const saved = repository.load().designs.map(design => choice(design, 'Библиотека'));

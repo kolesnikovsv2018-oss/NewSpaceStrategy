@@ -23,17 +23,19 @@
 
 ## Одна связь и один расчёт
 
-Узел tree4 содержит `colony-effect {effectId}`.
-Описание числового modifier существует в rules snapshot5/rules5.
+Узел tree6 содержит `colony-effect {effectId}`.
+Описание числового modifier существует в rules snapshot7/rules7.
 Действующие effect IDs регистрирует поставляемый каталог; импорт дерева
 может ссылаться только на поддерживаемые IDs. Неизвестная ссылка — ошибка,
 не пустой эффект. Параметры сохранённого snapshot автономны от каталога.
 Conquest проверяет связи и допускает только исполнимые колониальные
 modifiers, не библиотечные примеры боевых/policy effects.
 
-Scope — `own-colonies`; обязательный worldType — habitable либо barren.
-До Н10 текущий тип берётся из начальной карты партии через общий query.
-После Н10 источник query заменяется runtime-средой, не меняется snapshot.
+Scope — `own-colonies`; обязательный уникальный worldTypes selector.
+Текущие пять effects явно выбирают habitable и toxic.
+После [Н10](CAMPAIGN_PLANETOLOGY.md) query читает отдельную runtime-среду,
+не изменяя начальный snapshot. Для toxic базовый K6000/absolute12000,
+биосфера даёт8000; прежние относительные бонусы/caps сохранены.
 Н09 не разрешает колонизацию barren; типовые фильтры проверяются
 вычислителем независимо от существования колонии.
 
@@ -77,8 +79,8 @@ Baseline суммирует рассчитанные K, не число коло
 
 ## Сквозная поставка
 
-Н09 вводит только текущие save10/rules7, snapshot5/rules5,
-tree4 и baseline6. Producers/consumers/fixtures меняются вместе.
+Н09 исторически ввёл save10/tree4. После Н10 актуальны save12/rules9,
+snapshot7/rules7/tree6 и baseline8. Producers/consumers/fixtures меняются вместе.
 Другие версии отвергаются без миграции/readers/fallback.
 Мирная кампания, её сохранения, свободная верфь и бой не меняются.
 

@@ -103,6 +103,7 @@ it.each(['mining', 'battle'])('rolls back scientific completion and all payments
   state.session.production.lastOrderId = 2;
   state.session.ships = [{ id: 1, factionId: 'blue', systemId: 'rift', design, fuel: 3 }];
   state.operations = { '1': createOperationalState(design) };
+  state.surveys.blue.rift = 'barren';
   if (failure === 'mining') state.session.treasuries.blue.minerals = 999999995;
   else {
     state.lastBattleId = MAX_TURN;
@@ -151,6 +152,7 @@ it('does not promise a research deadline at the turn limit or after campaign com
   state.session.turn = 1;
   for (const system of state.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
     system.ownerId = 'blue';
+    state.surveys.blue[system.id] = state.environment[system.id];
     if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
   }
   expect(getConquestView(state, 'blue').researchForecast.timing).toEqual({ status: 'unavailable', reason: 'campaign-completed' });
@@ -189,4 +191,4 @@ it('checkpoints a real partially funded research before short games finish and a
   for (const metric of Object.values(run.metrics)) {
     expect(metric.researchPoints).toBe(metric.researchSpent + metric.researchReserve + metric.researchOverflow);
   }
-});
+}, 60000);

@@ -28,6 +28,10 @@ export class ShipFactory {
     return this.createFromDesign(createCivilianDesign('miner'));
   }
 
+  static createColonizer(): DesignedShip {
+    return this.createFromDesign(createCivilianDesign('colonizer'));
+  }
+
   /** @deprecated Legacy-only compatibility API. Use createFromDesign for canonical projects, or LegacyShipFactory explicitly. */
   static createCustomShip(name: string, powerSourceType: PowerSourceType, engineType: EngineType, cargoType: CargoType): Ship {
     return LegacyShipFactory.createCustomShip(name, powerSourceType, engineType, cargoType);

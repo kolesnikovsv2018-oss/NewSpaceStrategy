@@ -46,7 +46,7 @@ export function componentStatus(component: ComponentDefinition): string {
 export type ComponentDefinition = z.infer<typeof componentSchema>;
 export type ComponentKind = ComponentDefinition['kind'];
 export type SlotSize = 'small' | 'medium' | 'large' | 'capital';
-export const hullIdSchema = z.enum(['fighter', 'corvette', 'frigate', 'destroyer', 'cruiser', 'battleship']);
+export const hullIdSchema = z.enum(['fighter', 'corvette', 'frigate', 'destroyer', 'cruiser', 'battleship', 'colonizer']);
 export type HullId = z.infer<typeof hullIdSchema>;
 export interface Hardpoint {
   id: string;
@@ -86,7 +86,8 @@ export const HULLS: Record<HullId, HullDefinition> = {
   frigate: { id: 'frigate', name: 'Фрегат', mass: 150, maxMass: 650, hitPoints: 900, cost: 6000, energyCapacity: 3000, scale: 1.15, slots: slots('large') },
   destroyer: { id: 'destroyer', name: 'Эсминец', mass: 250, maxMass: 1000, hitPoints: 1400, cost: 10000, energyCapacity: 4500, scale: 1.3, slots: slots('capital') },
   cruiser: { id: 'cruiser', name: 'Крейсер', mass: 400, maxMass: 1600, hitPoints: 2200, cost: 16000, energyCapacity: 6500, scale: 1.5, slots: slots('capital') },
-  battleship: { id: 'battleship', name: 'Линкор', mass: 650, maxMass: 2400, hitPoints: 3500, cost: 25000, energyCapacity: 10000, scale: 1.7, slots: slots('capital') }
+  battleship: { id: 'battleship', name: 'Линкор', mass: 650, maxMass: 2400, hitPoints: 3500, cost: 25000, energyCapacity: 10000, scale: 1.7, slots: slots('capital') },
+  colonizer: { id: 'colonizer', name: 'Колонизатор', mass: 130, maxMass: 350, hitPoints: 500, cost: 8000, energyCapacity: 2000, scale: 1, slots: slots('large') }
 };
 
 const designFields = {
@@ -302,7 +303,8 @@ export function calculateShipStats(design: ShipDesign): ShipStats {
 const HULL_CARGO: Record<HullId, { mass: number; volume: number }> = {
   fighter: { mass: 0, volume: 0 }, corvette: { mass: 100, volume: 100 },
   frigate: { mass: 200, volume: 250 }, destroyer: { mass: 350, volume: 400 },
-  cruiser: { mass: 500, volume: 600 }, battleship: { mass: 800, volume: 900 }
+  cruiser: { mass: 500, volume: 600 }, battleship: { mass: 800, volume: 900 },
+  colonizer: { mass: 100, volume: 100 }
 };
 
 export interface DesignIssue { code: string; message: string; slotId?: string }

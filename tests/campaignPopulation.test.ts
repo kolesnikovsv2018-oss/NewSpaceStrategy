@@ -5,16 +5,25 @@ import { createConquest, conquestSchema, executeConquestCommand, getConquestView
 import { createDesign, createComponentWithId } from '../src/domain/shipDesign';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import { getGalaxyDefinition, type CampaignFactionId } from '../src/domain/campaign';
+import { type CampaignFactionId } from '../src/domain/campaign';
 import { buildConquestDesigns, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
 
 const rules = createDefaultRulesSnapshot().population;
+function placeColonizer(state: Conquest, systemId: 'eden' | 'nexus', armed = false): number {
+  const colonizer = state.session.ships.find(item => item.factionId === 'blue' && item.design.hullId === 'colonizer')!;
+  colonizer.systemId = systemId;
+  state.surveys.blue[systemId] = state.environment[systemId];
+  if (armed) colonizer.design.slots.find(slot => slot.id === 'beam_1')!.component = createComponentWithId('beam', 'colonizer-beam');
+  state.operations[String(colonizer.id)] = createOperationalState(colonizer.design);
+  return colonizer.id;
+}
 function ship(state: Conquest, systemId: 'eden' | 'nexus' | 'sol', factionId: CampaignFactionId = 'blue', armed = true) {
   const design = createDesign('fighter', true);
   if (!armed) design.slots.find(slot => slot.id === 'beam_1')!.component = null;
   const id = ++state.session.production.lastOrderId;
   state.session.ships.push({ id, factionId, systemId, fuel: 3, design });
   state.operations[String(id)] = createOperationalState(design);
+  state.surveys.blue.rift = 'barren';
 }
 function command(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
@@ -120,20 +129,20 @@ describe('campaign demographic boundary', () => {
     state.session.galaxy.systems.find(system => system.id === 'nexus')!.ownerId = 'blue';
     state.session.galaxy.systems.find(system => system.id === 'nexus')!.exploredBy.push('blue');
     state.population.nexus.population = 2000;
-    const galaxy = state.session.galaxy, lanes = getGalaxyDefinition(galaxy).lanes;
-    const quote = () => quoteFounding(galaxy, lanes, state.population, 'blue', 'eden', state.session.treasuries.blue, rules);
+    const galaxy = state.session.galaxy;
+    const quote = () => quoteFounding(galaxy, state.population, 'blue', 'eden', state.session.treasuries.blue, rules);
     expect(quote()).toEqual({ ok: true, sourceId: 'nexus', cost: { credits: 20, minerals: 10 } });
-    galaxy.systems.reverse(); lanes.reverse();
+    galaxy.systems.reverse();
     expect(quote()).toEqual({ ok: true, sourceId: 'nexus', cost: { credits: 20, minerals: 10 } });
     state.population.nexus.population = 1999;
     expect(quote()).toMatchObject({ ok: true, sourceId: 'sol' });
   });
 
   it.each([true, false])('manual founding transfers real population and pays once (armed=%s)', armed => {
-    const state = createConquest(); ship(state, 'eden', 'blue', armed);
+    const state = createConquest(), shipId = placeColonizer(state, 'eden', armed);
     state.population.sol.remainder = 17;
     state.session.treasuries.blue = { credits: 20, minerals: 10 };
-    const next = command(freeze(state), { kind: 'colonize', systemId: 'eden' });
+    const next = command(freeze(state), { kind: 'colonize', systemId: 'eden', shipId });
     expect(next.population.sol).toEqual({ population: 4000, remainder: 17 });
     expect(next.population.eden).toEqual({ population: 1000, remainder: 0 });
     expect(next.session.treasuries.blue).toEqual({ credits: 0, minerals: 0 });
@@ -145,28 +154,30 @@ describe('campaign demographic boundary', () => {
   });
 
   it.each(['source', 'credits', 'minerals'] as const)('manual refusal is atomic when %s is missing', missing => {
-    const state = createConquest(); ship(state, 'eden');
+    const state = createConquest(), shipId = placeColonizer(state, 'eden');
     if (missing === 'source') {
       state.population.sol.population = 1999;
       state.colonyOutput.assignments.sol.industry = 1999;
     }
     else state.session.treasuries.blue[missing] = missing === 'credits' ? 19 : 9;
     const before = structuredClone(state);
-    const result = executeConquestCommand(freeze(state), { kind: 'colonize', systemId: 'eden', factionId: 'blue', expectedTurn: 1 });
+    const result = executeConquestCommand(freeze(state), { kind: 'colonize', systemId: 'eden', shipId, factionId: 'blue', expectedTurn: 1 });
     expect(result).toMatchObject({ ok: false, code: missing === 'source' ? 'NO_SETTLERS' : 'INSUFFICIENT_RESOURCES' });
     expect(state).toEqual(before);
   });
 
-  it('auto founding uses post-growth settlers, pays after population income and does not grow a new colony twice', () => {
+  it('armed presence no longer auto-founds, spends settlers or charges a founding payment', () => {
     const state = createConquest(); ship(state, 'eden');
+    const budget = getConquestView(state, 'blue').economyForecast;
+    if (!budget.ok) throw new Error(budget.code);
     const next = command(state, { kind: 'endTurn' });
-    expect(next.population.sol.population).toBe(4100);
-    expect(next.population.eden).toEqual({ population: 1000, remainder: 0 });
-    expect(next.session.treasuries.blue).toEqual({ credits: 10079, minerals: 5040 });
+    expect(next.population.sol.population).toBe(5100);
+    expect(next.population.eden).toEqual({ population: 0, remainder: 0 });
+    expect(next.session.treasuries.blue).toEqual(budget.treasuryAfter);
     expect(command(next, { kind: 'endTurn' }).population.eden).toEqual(next.population.eden);
   });
 
-  it.each(['source', 'credits'] as const)('auto refusal reports %s and does not roll back unrelated income or grow a neutral world', missing => {
+  it.each(['source', 'credits'] as const)('endTurn does not attempt implicit founding when %s is missing', missing => {
     const state = createConquest(); ship(state, 'eden');
     if (missing === 'source') {
       state.population.sol.population = 1000;
@@ -176,8 +187,8 @@ describe('campaign demographic boundary', () => {
       state.rules.population.foundingCost.credits = 10000;
     }
     const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
-    expect(result).toMatchObject({ ok: true, notices: [{ factionId: 'blue', systemId: 'eden',
-      code: missing === 'source' ? 'NO_SETTLERS' : 'INSUFFICIENT_RESOURCES' }] });
+    expect(result).toMatchObject({ ok: true });
+    expect(result).not.toHaveProperty('notices');
     if (!result.ok) throw new Error(result.message);
     expect(result.state.session.turn).toBe(2);
     expect(result.state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBeNull();
@@ -188,14 +199,14 @@ describe('campaign demographic boundary', () => {
     });
   });
 
-  it('multiple auto foundations cannot spend or transfer the same available settlers twice', () => {
+  it('multiple armed presences cannot implicitly spend any settlers', () => {
     const state = createConquest(); ship(state, 'eden'); ship(state, 'nexus');
     state.population.sol.population = 2000;
     state.colonyOutput.assignments.sol.industry = 2000;
     const next = command(state, { kind: 'endTurn' });
-    expect(next.population.eden.population).toBe(1000);
+    expect(next.population.eden.population).toBe(0);
     expect(next.population.nexus.population).toBe(0);
-    expect(next.population.sol.population).toBe(1040);
+    expect(next.population.sol.population).toBe(2040);
   });
 
   it('capture retains residents and remainder without charging or granting attacker growth until next own end', () => {
@@ -228,8 +239,8 @@ describe('campaign demographic boundary', () => {
   });
 
   it('save retains demographic arithmetic and rule snapshot; load does not grow and next command matches', () => {
-    let state = createConquest(); ship(state, 'eden');
-    state = command(state, { kind: 'colonize', systemId: 'eden' });
+    let state = createConquest(); const shipId = placeColonizer(state, 'eden');
+    state = command(state, { kind: 'colonize', systemId: 'eden', shipId });
     state.population.sol = { population: 4081, remainder: 53 };
     const loaded = decodeConquestSave(encodeConquestSave(state));
     expect(loaded).toEqual(state);
@@ -243,8 +254,9 @@ describe('campaign demographic boundary', () => {
   });
 
   it('preserves founded and grown population through a real battle capture, save and next own growth', () => {
-    let state = createConquest(); ship(state, 'eden', 'blue', false);
-    state = command(state, { kind: 'colonize', systemId: 'eden' });
+    let state = createConquest(); const shipId = placeColonizer(state, 'eden');
+    state = command(state, { kind: 'colonize', systemId: 'eden', shipId });
+    ship(state, 'eden', 'blue', false);
     state = command(state, { kind: 'endTurn' });
     expect(state.population.eden).toEqual({ population: 1020, remainder: 0 });
     ship(state, 'eden', 'red');
@@ -262,7 +274,7 @@ describe('campaign demographic boundary', () => {
   it('AI uses own demographic eligibility for legal founding and avoids retrying impossible colonization', () => {
     let state = createConquest(); state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
     state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
-    ship(state, 'eden', 'blue', false);
+    placeColonizer(state, 'eden');
     state = command(state, { kind: 'explore', systemId: 'eden' });
     expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'colonize', systemId: 'eden' });
     const result = executeConquestAiTurn(state, 'blue', 1);
@@ -289,7 +301,7 @@ describe('campaign demographic boundary', () => {
     expect(first).toMatchObject({ kind: 'sendShip', shipId: 1 });
     view.ships[0].transit = { destinationId: 'eden', remainingTurns: 1 };
     const second = planConquestAction(view);
-    expect(second).toMatchObject({ kind: 'sendShip', shipId: 2 });
+    expect(second).toMatchObject({ kind: 'sendShip', shipId: 3 });
     if (first.kind !== 'sendShip' || second.kind !== 'sendShip') throw new Error('Expected movement');
     expect(second.destinationId).not.toBe(first.destinationId);
   });

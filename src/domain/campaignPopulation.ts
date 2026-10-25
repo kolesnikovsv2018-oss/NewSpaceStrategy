@@ -4,6 +4,8 @@ import type { PopulationRules } from './campaignRules';
 import type { Treasury } from './campaignEconomy';
 import { calculateColonyValue, getColonyWorldType, type ColonyWorldType } from './campaignColonyEffects';
 import type { RulesEffect } from './campaignRules';
+import { getWorldDistance } from './campaignTravel';
+import type { EnvironmentState } from './worldEnvironment';
 
 export const populationRecordSchema = z.object({
   population: z.number().int().min(0).max(1_000_000_000),
@@ -32,9 +34,10 @@ export function getPopulationTechnologyForecast(rules: PopulationRules, worldTyp
   };
 }
 
-export function populationGrowth(record: PopulationRecord, rules: PopulationRules, habitable = true,
+export function populationGrowth(record: PopulationRecord, rules: PopulationRules, habitable: boolean | ColonyWorldType = true,
   effects: readonly RulesEffect[] = []) {
-  const forecast = getPopulationTechnologyForecast(rules, habitable ? 'habitable' : 'barren', effects);
+  const forecast = getPopulationTechnologyForecast(rules, typeof habitable === 'boolean'
+    ? habitable ? 'habitable' : 'barren' : habitable, effects);
   const capacity = forecast.capacity.total;
   const reason: GrowthReason = record.population === 0 ? 'empty' : record.population > capacity
     ? 'over-capacity' : record.population === capacity ? 'at-capacity' : 'growing';
@@ -46,30 +49,22 @@ export function populationGrowth(record: PopulationRecord, rules: PopulationRule
 }
 
 export function advancePopulation(galaxy: CampaignState, input: PopulationState, faction: CampaignFactionId,
-  rules: PopulationRules, effects: readonly RulesEffect[] = []): PopulationState {
+  rules: PopulationRules, effects: readonly RulesEffect[] = [], environment?: EnvironmentState): PopulationState {
   const next = structuredClone(input);
   for (const system of galaxy.systems) if (system.ownerId === faction) {
-    next[system.id] = populationGrowth(input[system.id], rules, getColonyWorldType(galaxy, system.id) === 'habitable', effects).next;
+    next[system.id] = populationGrowth(input[system.id], rules, getColonyWorldType(galaxy, system.id, environment), effects).next;
   }
   return next;
 }
 
-export function quoteFounding(galaxy: Pick<CampaignState, 'systems'>, lanes: readonly (readonly [SystemId, SystemId])[],
+export function quoteFounding(galaxy: CampaignState,
   population: PopulationState, faction: CampaignFactionId, target: SystemId, treasury: Treasury,
   rules: PopulationRules): FoundingQuote {
-  const distances = new Map<SystemId, number>([[target, 0]]), queue = [target];
-  for (let index = 0; index < queue.length; index++) {
-    const here = queue[index];
-    for (const [from, to] of lanes) {
-      const neighbour = from === here ? to : to === here ? from : undefined;
-      if (neighbour && !distances.has(neighbour)) {
-        distances.set(neighbour, distances.get(here)! + 1); queue.push(neighbour);
-      }
-    }
-  }
+  const worlds = getGalaxyDefinition(galaxy).systems;
+  const distance = (id: SystemId) => getWorldDistance(worlds, target, id);
   const source = galaxy.systems.filter(system => system.ownerId === faction && system.id !== target &&
-    population[system.id]?.population >= rules.minimumSource && distances.has(system.id))
-    .sort((left, right) => distances.get(left.id)! - distances.get(right.id)! ||
+    population[system.id]?.population >= rules.minimumSource)
+    .sort((left, right) => distance(left.id) - distance(right.id) ||
       (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))[0];
   if (!source) return { ok: false, code: 'NO_SETTLERS' };
   if (treasury.credits < rules.foundingCost.credits || treasury.minerals < rules.foundingCost.minerals) {

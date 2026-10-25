@@ -17,6 +17,8 @@ function end(state: Conquest): Conquest {
 
 function diagnosticServiceState() {
   const state = createConquest();
+  state.session.ships = [];
+  state.operations = {};
   state.research.blue.completed = ['engineering', 'applied', 'support', 'ordnance'];
   state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
   const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
@@ -26,6 +28,7 @@ function diagnosticServiceState() {
   state.session.production.lastOrderId = 1;
   state.session.ships.push({ id: 1, factionId: 'blue', systemId: 'rift', fuel: 2, design });
   state.operations['1'] = { ...createOperationalState(design), hull: 100 };
+  state.surveys.blue.rift = 'barren';
   return conquestSchema.parse(state);
 }
 
@@ -54,14 +57,14 @@ it('diagnostic field repair uses real module rate and debits both resources atom
   expect(source).toEqual(before);
 });
 
-it('diagnostic scanner extends presence by one lane without exposing a distant enemy treasury', () => {
+it('diagnostic scanner extends presence by strategic distance without exposing enemy treasury', () => {
   const source = diagnosticServiceState();
   source.session.ships[0].design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('scanner', 'scanner');
   const result = executeConquestCommand(source, { kind: 'explore', systemId: 'dust', factionId: 'blue', expectedTurn: 1 });
   if (!result.ok) throw new Error(result.message);
   const view = getConquestView(result.state, 'blue');
   expect(view.galaxy.systems.find(system => system.id === 'dust')?.visibility).toBe('explored');
-  expect(view.galaxy.systems.find(system => system.id === 'vega')).not.toHaveProperty('ownerId');
+  expect(view.galaxy.systems.find(system => system.id === 'vega')?.visibility).toBe('explored');
   expect(view).not.toHaveProperty('treasuries');
   source.session.ships[0].design.slots.find(slot => slot.id === 'service_1')!.component = null;
   expect(executeConquestCommand(source, { kind: 'explore', systemId: 'dust', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
@@ -104,9 +107,11 @@ it('requires all habitable planets, not merely the enemy capital', () => {
   const state = createConquest();
   const vega = state.session.galaxy.systems.find(system => system.id === 'vega')!;
   vega.ownerId = 'blue'; vega.exploredBy.push('blue');
+  state.surveys.blue.vega = state.environment.vega;
   expect(getConquestOutcome(state)).toEqual({ status: 'ongoing' });
   for (const system of state.session.galaxy.systems.filter(system => ['eden', 'nexus'].includes(system.id))) {
     system.ownerId = 'blue'; system.exploredBy.push('blue');
+    state.surveys.blue[system.id] = state.environment[system.id];
   }
   expect(getConquestOutcome(conquestSchema.parse(state))).toEqual({ status: 'completed', winner: 'blue', reason: 'all-planets' });
   expect(executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
@@ -161,6 +166,8 @@ it('preserves unlocked variant ranges through research, production, ships and sa
   tree.variantPolicy.tiers[2] = { ...tree.variantPolicy.tiers[1], level: 3 };
   tree.variantPolicy.tiers[3] = { ...tree.variantPolicy.tiers[1], level: 4 };
   const state = createConquest({ mode: 'local' }, tree);
+  state.session.ships = [];
+  state.operations = {};
   state.research.blue.completed = ['engineering', 'support'];
   state.researchJournal.blue = { engineering: 1, support: 1 };
   state.research.blue.activeId = 'ordnance';
@@ -219,19 +226,19 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":10', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":12', '"schemaVersion":999'))).toThrow();
 });
 
 it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 10, rulesVersion: 7,
-    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 4 } } });
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 12, rulesVersion: 9,
+    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 6 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };
   expect(() => decodeConquestSave(JSON.stringify(oldEnvelope))).toThrow();
-  for (const schemaVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+  for (const schemaVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
     expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, schemaVersion }))).toThrow();
   }
   expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, rulesVersion: 2 }))).toThrow();
@@ -250,6 +257,7 @@ it('removes captured production and invalidated groups while preserving survivin
   state.session.production.lastOrderId = 5;
   const eden = state.session.galaxy.systems.find(system => system.id === 'eden')!;
   eden.ownerId = 'red'; eden.exploredBy = ['red'];
+  state.surveys.red.eden = state.environment.eden;
   state.session.ships = [
     { id: 1, factionId: 'blue', systemId: 'sol', fuel: 2, design, transit: { destinationId: 'eden', remainingTurns: 1 } },
     { id: 2, factionId: 'blue', systemId: 'sol', fuel: 2, design, transit: { destinationId: 'eden', remainingTurns: 1 } },
@@ -306,15 +314,17 @@ it('earns research, pays for a library service ship and mines after arrival with
   expect(state.session.treasuries.blue).toEqual({ credits: before.credits - quote.cost.credits, minerals: before.minerals - quote.cost.minerals });
   storage.clear();
   for (let turn = 0; turn < 2; turn++) state = decodeConquestSave(encodeConquestSave(end(state)));
-  command({ kind: 'deployProduction', systemId: 'sol', orderId: 1 });
-  expect(state.session.ships[0].design).toEqual(snapshot);
-  command({ kind: 'sendShip', shipId: 1, systemId: 'sol', destinationId: 'rift' });
+  const orderId = state.colonyOutput.production.completed[0].id;
+  command({ kind: 'deployProduction', systemId: 'sol', orderId });
+  expect(state.session.ships.find(ship => ship.id === orderId)!.design).toEqual(snapshot);
+  command({ kind: 'survey', systemId: 'rift' });
+  command({ kind: 'sendShip', shipId: orderId, systemId: 'sol', destinationId: 'rift' });
   const minerals = state.session.treasuries.blue.minerals;
   const mineralIncome = getConquestView(state, 'blue').income.minerals;
   expect(mineralIncome).toBe(5314);
   command({ kind: 'endTurn' });
   expect(state.session.treasuries.blue.minerals).toBe(minerals + mineralIncome);
   expect(getConquestView(state, 'blue').galaxy.systems.find(system => system.id === 'dust')?.visibility).toBe('explored');
-  expect(state.session.ships[0].fuel).toBe(2);
+  expect(state.session.ships.find(ship => ship.id === orderId)!.fuel).toBe(2);
   expect(storage.size).toBe(0);
 });

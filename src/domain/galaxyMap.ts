@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { INITIAL_STRATEGIC_RANGE, isWorldInRange } from './campaignTravel.ts';
+import { worldTypeSchema } from './worldEnvironment.ts';
 
 export const GALAXY_MAP_FORMAT = 'orion-galaxy-map';
-export const GALAXY_MAP_SCHEMA_VERSION = 1;
-export const GALAXY_MAP_RULES_VERSION = 1;
-export const GALAXY_GENERATOR_VERSION = 'galaxy-generator-v1';
-export const GALAXY_PROFILE_ID = 'balanced-start-v1';
+export const GALAXY_MAP_SCHEMA_VERSION = 3;
+export const GALAXY_MAP_RULES_VERSION = 3;
+export const GALAXY_GENERATOR_VERSION = 'galaxy-generator-v3';
+export const GALAXY_PROFILE_ID = 'balanced-start-v3';
 export const MAX_GALAXY_WORLDS = 256;
 export const MIN_PARTICIPANTS = 2;
 export const MAX_PARTICIPANTS = 8;
@@ -21,18 +23,18 @@ export const galaxyProfileSchema = z.object({
   participantCount: z.number().int().min(MIN_PARTICIPANTS).max(MAX_PARTICIPANTS),
   guaranteedNeutralWorldsPerParticipant: z.literal(GUARANTEED_NEUTRAL_WORLDS),
   habitableExtraWorldPercent: z.literal(70),
+  toxicExtraWorldPercent: z.literal(20),
   minimumWorldCountMultiplier: z.literal(GUARANTEED_NEUTRAL_WORLDS + 1),
   maxWorldCount: z.literal(MAX_GALAXY_WORLDS),
   minimumCoordinate: z.literal(MAP_MIN_COORDINATE),
   maximumCoordinate: z.literal(MAP_MAX_COORDINATE),
   minimumSeparation: z.literal(MAP_MINIMUM_SEPARATION),
   placementGridDivisions: z.literal(32),
-  topology: z.literal('cycle-plus-starter-links-v1'),
-  maxDegree: z.literal(4),
   initialTravel: z.object({
-    policy: z.literal('initial-lanes-v1'),
+    policy: z.literal('distance-only-v1'),
     fuelCapacity: z.literal(3),
-    fuelPerLane: z.literal(1)
+    fuelPerJump: z.literal(1),
+    maxJumpDistance: z.literal(INITIAL_STRATEGIC_RANGE)
   }).strict()
 }).strict();
 
@@ -47,11 +49,9 @@ const worldSchema = z.object({
   name: z.string().min(1).max(80),
   x: z.number().finite().min(MAP_MIN_COORDINATE).max(MAP_MAX_COORDINATE),
   y: z.number().finite().min(MAP_MIN_COORDINATE).max(MAP_MAX_COORDINATE),
-  type: z.enum(['habitable', 'barren']),
+  type: worldTypeSchema,
   ownerId: participantIdSchema.nullable()
 }).strict();
-
-const laneSchema = z.tuple([worldIdSchema, worldIdSchema]);
 
 export const galaxyMapSchema = z.object({
   format: z.literal(GALAXY_MAP_FORMAT),
@@ -61,8 +61,7 @@ export const galaxyMapSchema = z.object({
   seed: z.number().int().min(1).max(0xffffffff),
   profile: galaxyProfileSchema,
   participants: z.array(participantSchema).min(MIN_PARTICIPANTS).max(MAX_PARTICIPANTS),
-  worlds: z.array(worldSchema).min(1).max(MAX_GALAXY_WORLDS),
-  lanes: z.array(laneSchema).min(1)
+  worlds: z.array(worldSchema).min(1).max(MAX_GALAXY_WORLDS)
 }).strict();
 
 export type GalaxyMap = z.infer<typeof galaxyMapSchema>;
@@ -86,18 +85,9 @@ function squaredDistance(left: GalaxyWorld, right: GalaxyWorld): number {
   return x * x + y * y;
 }
 
-function laneKey(from: string, to: string): string {
-  return asciiCompare(from, to) < 0 ? `${from}:${to}` : `${to}:${from}`;
-}
-
-function hasLane(map: GalaxyMap, from: string, to: string): boolean {
-  const expected = laneKey(from, to);
-  return map.lanes.some(([start, end]) => laneKey(start, end) === expected);
-}
-
 export function canReachInitialWorld(map: GalaxyMap, fromWorldId: string, toWorldId: string): boolean {
-  const { fuelCapacity, fuelPerLane } = map.profile.initialTravel;
-  return fromWorldId !== toWorldId && fuelCapacity >= fuelPerLane && hasLane(map, fromWorldId, toWorldId);
+  const { fuelCapacity, fuelPerJump, maxJumpDistance } = map.profile.initialTravel;
+  return fuelCapacity >= fuelPerJump && isWorldInRange(map.worlds, fromWorldId, toWorldId, maxJumpDistance);
 }
 
 export function getNearestNeutralWorlds(
@@ -127,24 +117,22 @@ function canonicalize(map: GalaxyMap): GalaxyMap {
       participantCount: map.profile.participantCount,
       guaranteedNeutralWorldsPerParticipant: map.profile.guaranteedNeutralWorldsPerParticipant,
       habitableExtraWorldPercent: map.profile.habitableExtraWorldPercent,
+      toxicExtraWorldPercent: map.profile.toxicExtraWorldPercent,
       minimumWorldCountMultiplier: map.profile.minimumWorldCountMultiplier,
       maxWorldCount: map.profile.maxWorldCount,
       minimumCoordinate: map.profile.minimumCoordinate,
       maximumCoordinate: map.profile.maximumCoordinate,
       minimumSeparation: map.profile.minimumSeparation,
       placementGridDivisions: map.profile.placementGridDivisions,
-      topology: map.profile.topology,
-      maxDegree: map.profile.maxDegree,
       initialTravel: {
         policy: map.profile.initialTravel.policy,
         fuelCapacity: map.profile.initialTravel.fuelCapacity,
-        fuelPerLane: map.profile.initialTravel.fuelPerLane
+        fuelPerJump: map.profile.initialTravel.fuelPerJump,
+        maxJumpDistance: map.profile.initialTravel.maxJumpDistance
       }
     },
     participants: map.participants.slice().sort((left, right) => asciiCompare(left.id, right.id)),
-    worlds: map.worlds.slice().sort((left, right) => asciiCompare(left.id, right.id)),
-    lanes: map.lanes.slice().sort((left, right) =>
-      asciiCompare(left[0], right[0]) || asciiCompare(left[1], right[1]))
+    worlds: map.worlds.slice().sort((left, right) => asciiCompare(left.id, right.id))
   };
 }
 
@@ -193,31 +181,6 @@ export function validateGalaxyMap(input: unknown): GalaxyMapValidation {
     }
   }
 
-  const laneKeys = new Set<string>();
-  const degrees = new Map<string, number>(map.worlds.map(world => [world.id, 0]));
-  for (const [from, to] of map.lanes) {
-    const key = laneKey(from, to);
-    if (from === to || !worldIds.has(from) || !worldIds.has(to) || laneKeys.has(key) ||
-        asciiCompare(from, to) >= 0) {
-      return invalid('Линии должны быть уникальными, канонически упорядоченными и соединять разные существующие миры');
-    }
-    laneKeys.add(key);
-    degrees.set(from, (degrees.get(from) ?? 0) + 1);
-    degrees.set(to, (degrees.get(to) ?? 0) + 1);
-  }
-  if ([...degrees.values()].some(degree => degree > map.profile.maxDegree)) {
-    return invalid('Степень связности мира превышает предел профиля');
-  }
-
-  const reached = new Set<string>([map.worlds[0].id]);
-  for (let pass = 0; pass < map.worlds.length; pass++) {
-    for (const [from, to] of map.lanes) {
-      if (reached.has(from)) reached.add(to);
-      if (reached.has(to)) reached.add(from);
-    }
-  }
-  if (reached.size !== map.worlds.length) return invalid('Галактическая сеть должна быть связной');
-
   const reserved = new Set<string>();
   for (const participant of map.participants) {
     const nearest = getNearestNeutralWorlds(map, participant.homeWorldId);
@@ -236,7 +199,10 @@ export function validateGalaxyMap(input: unknown): GalaxyMapValidation {
 
   const extras = map.worlds.filter(world => !homeIds.has(world.id) && !reserved.has(world.id));
   const expectedHabitableExtras = Math.floor(extras.length * map.profile.habitableExtraWorldPercent / 100);
-  if (extras.filter(world => world.type === 'habitable').length !== expectedHabitableExtras) {
+  const toxic = extras.length < 2 ? 0 : Math.min(expectedHabitableExtras,
+    Math.max(1, Math.floor(extras.length * map.profile.toxicExtraWorldPercent / 100)));
+  if (extras.filter(world => world.type === 'habitable').length !== expectedHabitableExtras - toxic ||
+    extras.filter(world => world.type === 'toxic').length !== toxic) {
     return invalid('Доля пригодных дополнительных миров не соответствует профилю');
   }
 

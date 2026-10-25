@@ -2,8 +2,9 @@ import { getGalaxyDefinition, type CampaignState, type SystemId } from './campai
 import { activateRulesEffects, applyNumericEffects, COLONY_EFFECT_TARGETS,
   type ColonyEffectTarget, type RulesEffect, type RulesSnapshot } from './campaignRules';
 import type { ResearchState, ResearchTree } from './campaignResearch';
+import { getEnvironmentType, type EnvironmentState, type WorldType } from './worldEnvironment';
 
-export type ColonyWorldType = 'habitable' | 'barren';
+export type ColonyWorldType = WorldType;
 export interface ColonyValueBreakdown {
   base: number;
   workers: number;
@@ -14,7 +15,13 @@ export interface ColonyValueBreakdown {
   effectIds: string[];
 }
 
-export function getColonyWorldType(galaxy: CampaignState, systemId: SystemId): ColonyWorldType {
+export function getColonyWorldType(galaxy: CampaignState, systemId: SystemId, environment?: EnvironmentState): ColonyWorldType {
+  if (environment) return getEnvironmentType(environment, systemId);
+  if (galaxy.map) {
+    const world = galaxy.map.worlds.find(world => world.id === systemId);
+    if (!world) throw new Error('Тип отсутствующего мира недоступен');
+    return world.type;
+  }
   const world = getGalaxyDefinition(galaxy).systems.find(system => system.id === systemId);
   if (!world) throw new Error('Тип отсутствующего мира недоступен');
   return world.habitable ? 'habitable' : 'barren';
@@ -35,7 +42,7 @@ export function calculateColonyValue(base: number, workers: number, target: Colo
   const labor = base * workers;
   if (!Number.isSafeInteger(labor) || labor < 0) throw new Error('Недопустимая база колониального расчёта');
   const selected = effects.filter(effect => effect.kind === 'modifier' &&
-    effect.target === target && effect.worldType === worldType)
+    effect.target === target && effect.worldTypes?.includes(worldType))
     .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const modified = applyNumericEffects(labor, selected, { phase: 'on-turn-start' });
   const limit = target === 'capacity-add' ? absoluteLimit : Math.min(labor * 2, absoluteLimit ?? Number.MAX_SAFE_INTEGER);

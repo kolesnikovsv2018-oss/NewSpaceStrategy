@@ -22,7 +22,7 @@ function complete(state: Conquest, ids: string[]): void {
 }
 function effect(overrides: Partial<NumericModifierEffect> = {}): NumericModifierEffect {
   return { kind: 'modifier', id: 'test-output', target: 'science-output', scope: 'own-colonies',
-    worldType: 'habitable', unit: 'percent', operation: 'add', value: 0.1, cap: null,
+    worldTypes: ['habitable'], unit: 'percent', operation: 'add', value: 0.1, cap: null,
     stackingGroup: 'science', activationPhase: 'on-turn-start', handler: 'colony-output', ...overrides };
 }
 
@@ -40,8 +40,8 @@ it('uses canonical groups with independent 130/132 oracles, one rounding and bou
 });
 
 it('requires an explicit own/type/phase/handler and never enables barren colonization', () => {
-  for (const invalid of [{ ...effect(), worldType: undefined }, { ...effect(), scope: 'global' },
-    { ...effect(), worldType: 'ocean' }, { ...effect(), activationPhase: 'on-research' },
+  for (const invalid of [{ ...effect(), worldTypes: undefined }, { ...effect(), scope: 'global' },
+    { ...effect(), worldTypes: ['ocean'] }, { ...effect(), activationPhase: 'on-research' },
     { ...effect(), handler: 'ship-stats' }]) expect(rulesEffectSchema.safeParse(invalid).success).toBe(false);
   expect(calculateColonyValue(1, 100, 'science-output', 'barren', [effect()]).total).toBe(100);
   const rules = createDefaultRulesSnapshot();

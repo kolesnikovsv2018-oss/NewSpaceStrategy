@@ -6,7 +6,8 @@ import { LocalGalaxyMapRepository } from '../src/utils/GalaxyMapRepository';
 import { createConquest, conquestSchema, executeConquestCommand, getConquestOutcome, getConquestView,
   type Conquest } from '../src/domain/conquest';
 import { executeConquestAiTurn } from '../src/domain/conquestAi';
-import { getGalaxyDefinition, areSystemsAdjacent, type CampaignFactionId } from '../src/domain/campaign';
+import { getGalaxyDefinition, type CampaignFactionId } from '../src/domain/campaign';
+import { isWorldInRange } from '../src/domain/campaignTravel';
 import { createDesign } from '../src/domain/shipDesign';
 import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { encodeConquestSave, decodeConquestSave } from '../src/utils/ConquestSaveManager';
@@ -115,7 +116,7 @@ describe('generated campaign snapshots', () => {
     expect(state.session.galaxy.map).toEqual(snapshot);
     expect(campaignSessionSchema.safeParse(state.session).success).toBe(false);
     const reordered = structuredClone(snapshot);
-    reordered.participants.reverse(); reordered.worlds.reverse(); reordered.lanes.reverse();
+    reordered.participants.reverse(); reordered.worlds.reverse();
     expect(createConquest(undefined, undefined, snapshot.seed, reordered)).toEqual(state);
     expect(state.session.galaxy.systems.filter(system => system.ownerId)).toHaveLength(2);
     for (const system of state.session.galaxy.systems) {
@@ -136,10 +137,11 @@ describe('generated campaign snapshots', () => {
     const first = createConquest(undefined, undefined, 1, map(12, 1));
     const second = createConquest(undefined, undefined, 2, map(12, 2));
     const firstDefinition = getGalaxyDefinition(first.session.galaxy);
-    const uniqueLane = firstDefinition.lanes.find(([a, b]) => !areSystemsAdjacent(a, b, second.session.galaxy))!;
-    expect(uniqueLane).toBeDefined();
-    expect(areSystemsAdjacent(...uniqueLane, first.session.galaxy)).toBe(true);
-    expect(areSystemsAdjacent(...uniqueLane, second.session.galaxy)).toBe(false);
+    const uniqueTarget = firstDefinition.systems.find(world =>
+      isWorldInRange(firstDefinition.systems, 'world-001', world.id, 200) !==
+        isWorldInRange(getGalaxyDefinition(second.session.galaxy).systems, 'world-001', world.id, 200));
+    expect(uniqueTarget).toBeDefined();
+    expect(firstDefinition.lanes).toEqual([]);
     expect(getGalaxyDefinition(first.session.galaxy)).toEqual(firstDefinition);
     const view = getConquestView(first, 'blue');
     expect(view).not.toHaveProperty('map'); expect(view.galaxy).not.toHaveProperty('map');
@@ -152,19 +154,20 @@ describe('generated campaign snapshots', () => {
     const snapshot = structuredClone(state.session.galaxy.map!);
     const participant = snapshot.participants[faction === 'blue' ? 0 : 1];
     const nearest = getNearestNeutralWorlds(snapshot, participant.homeWorldId, 2);
-    state = command(state, { kind: 'createFleet', systemId: participant.homeWorldId, shipIds: state.session.ships.map(ship => ship.id) });
+    const memberIds = state.session.ships.filter(ship => ship.factionId === faction && ship.design.hullId === 'fighter').map(ship => ship.id);
+    state = command(state, { kind: 'createFleet', systemId: participant.homeWorldId, shipIds: memberIds });
     for (const target of nearest) {
-      const start = state.session.ships[0].systemId;
+      const start = state.session.ships.find(ship => ship.id === memberIds[0])!.systemId;
       state = command(state, { kind: 'sendFleet', fleetId: 1, systemId: start, destinationId: target.id });
-      expect(state.session.ships.every(ship => ship.fuel === 2)).toBe(true);
+      expect(state.session.ships.filter(ship => memberIds.includes(ship.id)).every(ship => ship.fuel === 2)).toBe(true);
       const restored = decodeConquestSave(encodeConquestSave(state));
       expect(round(restored)).toEqual(round(state));
       state = round(state);
       expect(state.session.fleets.items[0].systemId).toBe(target.id);
-      expect(state.session.galaxy.systems.find(system => system.id === target.id)?.ownerId).toBe(faction);
+      expect(state.session.galaxy.systems.find(system => system.id === target.id)?.ownerId).toBeNull();
       state = command(state, { kind: 'sendFleet', fleetId: 1, systemId: target.id, destinationId: participant.homeWorldId });
       state = round(state);
-      for (const ship of state.session.ships) state = command(state, { kind: 'refuelShip', systemId: participant.homeWorldId, shipId: ship.id });
+      for (const id of memberIds) state = command(state, { kind: 'refuelShip', systemId: participant.homeWorldId, shipId: id });
     }
     expect(state.session.galaxy.map).toEqual(snapshot);
     const invalid = structuredClone(state);
@@ -195,7 +198,10 @@ describe('generated campaign snapshots', () => {
     const state = createConquest(undefined, undefined, 12345, map());
     for (const system of state.session.galaxy.systems) {
       const habitable = state.session.galaxy.map!.worlds.find(world => world.id === system.id)!.type === 'habitable';
-      if (habitable) { system.ownerId = 'blue'; system.exploredBy = ['blue']; }
+      if (habitable || state.environment[system.id] === 'toxic') {
+        system.ownerId = 'blue'; system.exploredBy = ['blue'];
+        state.surveys.blue[system.id] = state.environment[system.id];
+      }
     }
     const checked = conquestSchema.parse(state);
     expect(getConquestView(checked, 'blue').totalHabitableWorlds).toBe(10);
@@ -227,12 +233,13 @@ describe('generated campaign snapshots', () => {
     expect(first.frames).toEqual(second.frames);
     expect(first.state.operations).toEqual(second.state.operations);
     expect(first.state.session.ships).toEqual(second.state.session.ships);
-    expect(first.state.session.galaxy.systems.find(system => system.id === 'world-003')?.ownerId).toBe('blue');
+    expect(first.state.session.galaxy.systems.find(system => system.id === 'world-003')?.ownerId).toBeNull();
   });
 
   it('diagnostic mining and scanner queries use the generated map and conceal unseen enemy details', () => {
     const snapshot = map(), state = createConquest(undefined, undefined, snapshot.seed, snapshot);
     const barren = snapshot.worlds.find(world => world.type === 'barren')!;
+    state.surveys.blue[barren.id] = 'barren';
     state.research.blue.completed = ['engineering', 'applied', 'support', 'ordnance'];
     state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
     const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
@@ -245,7 +252,7 @@ describe('generated campaign snapshots', () => {
     const view = getConquestView(checked, 'blue');
     expect(view.income.minerals).toBe(5008);
     expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(5058);
-    const neighbour = snapshot.lanes.flatMap(([a, b]) => a === barren.id ? [b] : b === barren.id ? [a] : [])[0];
+    const neighbour = snapshot.worlds.find(world => isWorldInRange(snapshot.worlds, barren.id, world.id, 800))!.id;
     checked = command(checked, { kind: 'explore', systemId: neighbour });
     expect(getConquestView(checked, 'blue').galaxy.systems.find(system => system.id === neighbour)?.visibility).toBe('explored');
     const next = command(checked, { kind: 'endTurn' });

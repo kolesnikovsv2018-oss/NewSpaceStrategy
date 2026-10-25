@@ -494,7 +494,7 @@ describe('detached output and pure runtime dependency boundary', () => {
         if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier ||
           !ts.isStringLiteral(statement.moduleSpecifier)) continue;
         const name = statement.moduleSpecifier.text;
-        if (name.startsWith('.')) visit(resolve(dirname(path), name + '.ts')); else packages.add(name);
+        if (name.startsWith('.')) visit(resolve(dirname(path), name.endsWith('.ts') ? name : name + '.ts')); else packages.add(name);
       }
     }
     visit(resolve(root, 'src/domain/campaignRun.ts')); visit(resolve(root, 'src/domain/campaignControl.ts'));

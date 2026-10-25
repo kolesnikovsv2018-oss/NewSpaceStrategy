@@ -1,7 +1,7 @@
-version: 4
-id: orion-technologies-v4
+version: 6
+id: orion-technologies-v6
 initial:
-  hulls: [fighter, corvette]
+  hulls: [fighter, corvette, colonizer]
   components: [engine, beam]
 nodes:
   - id: engineering
@@ -10,6 +10,7 @@ nodes:
     researchCost: 2000
     effects:
       - {kind: variant-tier, tier: 2}
+      - {kind: strategic-range, maxJumpDistance: 400}
   - id: applied
     name: Прикладные службы
     prerequisites: []
@@ -36,6 +37,7 @@ nodes:
       - {kind: hull-unlock, hullId: cruiser}
       - {kind: component-unlock, component: projectile}
       - {kind: variant-tier, tier: 3}
+      - {kind: strategic-range, maxJumpDistance: 800}
   - id: capital
     name: Линейные корабли
     prerequisites: [ordnance]
@@ -43,6 +45,7 @@ nodes:
     effects:
       - {kind: hull-unlock, hullId: battleship}
       - {kind: variant-tier, tier: 4}
+      - {kind: strategic-range, maxJumpDistance: 1500}
   - id: biology
     name: Биология
     prerequisites: []
@@ -73,6 +76,12 @@ nodes:
     researchCost: 2000
     effects:
       - {kind: colony-effect, effectId: cultural-output}
+  - id: toxic-adaptation
+    name: Адаптация к токсичной среде
+    prerequisites: []
+    researchCost: 3000
+    effects:
+      - {kind: colonization-unlock, worldType: toxic}
 variantPolicy:
   id: component-bands-v1
   tiers:

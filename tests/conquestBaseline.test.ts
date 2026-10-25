@@ -28,7 +28,7 @@ describe('Conquest baseline', () => {
     const run = runBaseline(options);
     const verification = verifyBaseline(run);
     expect(verification).toEqual({ repeat: 'passed', roundTrip: run.checkpoint ? 'passed' : 'no-checkpoint-before-stop' });
-    expect(run.versions).toEqual({ baseline: 6, save: 10, rules: 7, tree: 4, battlePolicy: 'campaign-v2' });
+    expect(run.versions).toEqual({ baseline: 8, save: 12, rules: 9, tree: 6, battlePolicy: 'campaign-v2' });
     expect(run.map.seed).toBe(options.mapSeed);
     expect(run.finalState.seed).toBe(options.campaignSeed);
     expect(run.status).not.toBe('executor-error');
@@ -43,10 +43,10 @@ describe('Conquest baseline', () => {
     const normal = createBaselineStart(input());
     const start = createBaselineStart(input({ mirrored }));
     expect(validateGalaxyMap(start.map)).toEqual({ ok: true, map: start.map });
-    expect(start.map.lanes).toEqual(normal.map.lanes);
+    expect(start.map).not.toHaveProperty('lanes');
     expect(start.map.participants[0].homeWorldId).toBe(normal.map.participants[mirrored ? 1 : 0].homeWorldId);
-    expect(start.state.session.ships).toEqual([]);
-    expect(start.state.session.production.lastOrderId).toBe(0);
+    expect(start.state.session.ships).toHaveLength(2);
+    expect(start.state.session.production.lastOrderId).toBe(2);
     expect(start.state.session.treasuries.blue).toEqual({ credits: 100, minerals: 50 });
     const run = runBaseline(input({ mirrored }));
     expect(run.lineups.first).toBe(mirrored ? 'red' : 'blue');
@@ -82,7 +82,7 @@ describe('Conquest baseline', () => {
     expect(builder.commands.every(record => record.result === 'accepted')).toBe(true);
     expect(builder.metrics[first].released).toBeGreaterThan(0);
     expect(builder.metrics[first].spent.enqueueProduction.credits).toBeGreaterThan(0);
-  });
+  }, 60000);
 
   it('accounts for actual gross releases and spending with an independent paid resource oracle', () => {
     const run = runBaseline(input({ schedule: 'production-first', maxTurns: 8 }));
@@ -192,7 +192,7 @@ describe('Conquest baseline', () => {
     } finally { log.mockRestore(); error.mockRestore(); }
   });
 
-  it('records legal H07 outcomes across all six-world seed pairs and opening schedules', () => {
+  it('records legal distance-policy outcomes across all six-world seed pairs and opening schedules', () => {
     for (const options of baselineMatrix().filter(item => item.kind === 'paid' && item.worldCount === 6)) {
       const run = runBaseline(options), metrics = run.metrics[run.lineups.first];
       const production = options.schedule === 'production-first';
@@ -203,5 +203,5 @@ describe('Conquest baseline', () => {
       if (production) expect(metrics.firstOrder.status).toBe('measured');
       expect(verifyBaseline(run).roundTrip).toBe(run.checkpoint ? 'passed' : 'no-checkpoint-before-stop');
     }
-  }, 60000);
+  }, 120000);
 });

@@ -160,7 +160,7 @@ it.each(['cancel', 'shutdown', 'supersede'])('ignores late imported trees after 
   else test.click('conquest-import-tree');
   const old = getDefaultResearchTree(); old.id = 'obsolete-tree'; read.resolve(JSON.stringify(old));
   await stale;
-  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v4');
+  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v6');
   expect(test.find('conquest-generation-error').text).toBe('');
   test.events.emit('shutdown');
 });
@@ -261,6 +261,7 @@ it('keeps the mobile worker rows disjoint and renders the snapshot point rate', 
 it('shows paused industry without inventing a one-turn estimate and refreshes the own-turn estimate', () => {
   const test = fixture();
   const state = test.owner.state, design = createDesign('fighter', true);
+  state.session.ships = []; state.operations = {};
   const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   state.session.production.lastOrderId = 1;
   state.colonyOutput.assignments.sol = { industry: 0, research: 0, culture: 0 };
@@ -274,18 +275,18 @@ it('shows paused industry without inventing a one-turn estimate and refreshes th
   test.events.emit('shutdown');
 });
 
-it('reports deferred automatic founding without exposing other-side refusal details', () => {
+it('does not report or perform implicit founding for an armed ship', () => {
   const test = fixture();
   const state = createConquest(), design = createDesign('fighter', true);
-  state.session.production.lastOrderId = 1;
-  state.session.ships.push({ id: 1, factionId: 'blue', systemId: 'eden', fuel: 3, design });
-  state.operations['1'] = createOperationalState(design);
+  state.session.production.lastOrderId = 3;
+  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'eden', fuel: 3, design });
+  state.operations['3'] = createOperationalState(design);
   state.population.sol.population = 1000;
   state.colonyOutput.assignments.sol = { industry: 1000, research: 0, culture: 0 };
   test.owner.replace(state);
   test.click('conquest-end');
-  expect(test.find('conquest-message').text).toContain('основание отложено');
-  expect(test.find('conquest-message').text).toContain('нет колонистов');
+  expect(test.find('conquest-message').text).not.toContain('основание отложено');
+  expect(test.owner.state.population.eden.population).toBe(0);
   test.events.emit('shutdown');
 });
 
@@ -703,6 +704,7 @@ it('completed campaigns remain readonly while save and inspection stay available
   const test = fixture(), completed = createConquest();
   for (const system of completed.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
     system.ownerId = 'blue'; if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
+    completed.surveys.blue[system.id] = completed.environment[system.id];
   }
   test.owner.replace(completed);
   expect(test.find('conquest-end').input.enabled).toBe(false);
@@ -716,6 +718,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   const test = fixture();
   const design = createDesign('fighter', true);
   const state = test.owner.state;
+  state.session.ships = []; state.operations = {};
   state.session.production.lastOrderId = 5;
   state.colonyOutput.production.completed = Array.from({ length: 5 }, (_, index) => ({
     id: index + 1, factionId: 'blue' as const, systemId: 'sol' as const, design: structuredClone(design)
@@ -777,7 +780,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   test.owner.tab = 'research';
   test.owner.page = 99;
   test.owner.render();
-  expect(test.nodes.some(node => !node.destroyed && node.text === '5 / 5')).toBe(true);
+  expect(test.nodes.some(node => !node.destroyed && node.text === '6 / 6')).toBe(true);
   test.events.emit('shutdown');
 });
 
@@ -832,6 +835,7 @@ it.each(['Очень длинное название проекта '.repeat(2).
   const test = fixture(new Map(), true, 390, 844);
   const design = createDesign('fighter', true); design.name = name;
   const state = test.owner.state;
+  state.session.ships = []; state.operations = {};
   state.session.treasuries.blue.credits = 0;
   state.session.production.lastOrderId = 1;
   state.colonyOutput.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
@@ -882,6 +886,7 @@ it('mobile help pauses AI and completed controls stay readonly with inspection a
   const completed = createConquest();
   for (const system of completed.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
     system.ownerId = 'blue'; if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
+    completed.surveys.blue[system.id] = completed.environment[system.id];
   }
   test.owner.replace(completed);
   expect(test.find('conquest-status').text).toContain('только просмотр');

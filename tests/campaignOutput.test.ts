@@ -10,6 +10,14 @@ import { createOperationalState } from '../src/domain/campaignOperations';
 
 const outputRules = createDefaultRulesSnapshot().colonyOutput;
 
+function outputFixture() {
+  const state = createConquest();
+  state.session.ships = [];
+  state.operations = {};
+  state.session.production.lastOrderId = 0;
+  return state;
+}
+
 function end(state: ReturnType<typeof createConquest>, factionId: 'blue' | 'red' = 'blue') {
   const result = executeConquestCommand(state, { kind: 'endTurn', factionId, expectedTurn: state.session.turn });
   if (!result.ok) throw new Error(result.message);
@@ -59,7 +67,7 @@ it('quotes point costs and computes exact proportional refunds including large i
 
 it('cancels by the unused point share and rolls back a refund that exceeds the resource cap', () => {
   const design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
-  const state = createConquest();
+  const state = outputFixture();
   state.session.production.lastOrderId = 1;
   const order = { id: 1, factionId: 'blue' as const, systemId: 'sol' as const, design,
     cost: quote.cost, productionCost: quote.productionCost, productionProgress: Math.floor(quote.productionCost / 2) };
@@ -83,7 +91,7 @@ it('cancels by the unused point share and rolls back a refund that exceeds the r
 });
 
 it('uses pre-growth workforce, completes only one FIFO head without spillover, and never repeats completion', () => {
-  const state = createConquest(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
+  const state = outputFixture(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
   state.session.production.lastOrderId = 2;
   state.colonyOutput.assignments.sol = { industry: quote.productionCost, research: 0, culture: 0 };
   state.colonyOutput.production.orders = [1, 2].map(id => ({ id, factionId: 'blue' as const, systemId: 'sol' as const,
@@ -109,7 +117,7 @@ it('uses pre-growth workforce, completes only one FIFO head without spillover, a
 });
 
 it('keeps zero-industry orders paused and preserves over-cap reserves without growing them', () => {
-  const state = createConquest(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
+  const state = outputFixture(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
   state.session.production.lastOrderId = 1;
   state.colonyOutput.assignments.sol = { industry: 0, research: 1, culture: 0 };
   state.colonyOutput.production.orders = [{ id: 1, factionId: 'blue', systemId: 'sol', design,
@@ -128,7 +136,7 @@ it('keeps zero-industry orders paused and preserves over-cap reserves without gr
 });
 
 it('does not progress a blue queue or reserves on the enemy end turn', () => {
-  const state = createConquest(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
+  const state = outputFixture(), design = createDesign('fighter', true), quote = getColonyProductionQuote(design, outputRules);
   state.session.turn = 2;
   state.session.production.lastOrderId = 1;
   state.colonyOutput.assignments.sol = { industry: 1, research: 0, culture: 0 };
@@ -153,7 +161,7 @@ it('caps science and culture at the population-based limit', () => {
 });
 
 it('matches pre-growth science spending to the forecast and actual receipt', () => {
-  const state = createConquest();
+  const state = outputFixture();
   state.population.sol = { population: 9, remainder: 99 };
   state.colonyOutput.assignments.sol = { industry: 3, research: 4, culture: 2 };
   state.research.blue.activeId = 'support';
@@ -195,7 +203,7 @@ it('uses the saved output rates in quotes, validation, forecast and production p
 });
 
 it('rejects saved waiting-order progress and forged costs instead of repairing them', () => {
-  const state = createConquest(), design = createDesign('fighter', true);
+  const state = outputFixture(), design = createDesign('fighter', true);
   const quote = getColonyProductionQuote(design, outputRules);
   state.session.production.lastOrderId = 2;
   state.colonyOutput.production.orders = [1, 2].map(id => ({
@@ -229,14 +237,14 @@ it('round-trips a paid partial order and produces the identical completion, rese
     state = uninterrupted.state; restored = resumed.state;
   }
   expect(state.colonyOutput.production.orders).toEqual([]);
-  expect(state.colonyOutput.production.completed.map(record => record.id)).toEqual([1]);
+  expect(state.colonyOutput.production.completed.map(record => record.id)).toEqual([3]);
   state = end(state, 'red').state;
   restored = end(restored, 'red').state;
   const payload = { kind: 'deployProduction', factionId: 'blue', expectedTurn: state.session.turn,
-    systemId: 'sol', orderId: 1 };
+    systemId: 'sol', orderId: 3 };
   const deployed = executeConquestCommand(state, payload);
   expect(executeConquestCommand(restored, payload)).toEqual(deployed);
-  expect(deployed.ok && deployed.state.session.ships.map(ship => ship.id)).toEqual([1]);
+  expect(deployed.ok && deployed.state.session.ships.map(ship => ship.id)).toEqual([1, 2, 3]);
 });
 
 it('preserves the output receipt when an AI packet ends its turn', () => {
@@ -250,7 +258,7 @@ it('preserves the output receipt when an AI packet ends its turn', () => {
 });
 
 it('keeps a diagnostic upkeep deficit soft while progressing the queue, growth and reserves', () => {
-  const state = createConquest(), design = createDesign('fighter', true);
+  const state = outputFixture(), design = createDesign('fighter', true);
   state.rules.colonyOutput.creditsPerPopulation = 0;
   state.session.treasuries.blue.credits = 1;
   state.session.production.lastOrderId = 1;
@@ -266,7 +274,7 @@ it('keeps a diagnostic upkeep deficit soft while progressing the queue, growth a
 });
 
 it('captures without refund or transferring the old reserve and resets the captured workforce', () => {
-  const state = createConquest(), design = createDesign('fighter', true);
+  const state = outputFixture(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 2;
   state.session.ships.push({ id: 2, factionId: 'red', systemId: 'sol', design, fuel: 3 });
   state.operations['2'] = createOperationalState(design);
@@ -285,7 +293,7 @@ it('captures without refund or transferring the old reserve and resets the captu
 });
 
 it('keeps production and science reserves restricted to the observed side', () => {
-  const state = createConquest(), design = createDesign('fighter', true);
+  const state = outputFixture(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 1;
   state.colonyOutput.production.completed.push({ id: 1, factionId: 'red', systemId: 'vega', design });
   state.colonyOutput.reserves.red.research = 123;

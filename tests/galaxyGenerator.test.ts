@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { generateGalaxy } from '../src/domain/galaxyGenerator';
-import { getNearestNeutralWorlds, validateGalaxyMap } from '../src/domain/galaxyMap';
+import { canReachInitialWorld, getNearestNeutralWorlds, validateGalaxyMap } from '../src/domain/galaxyMap';
 
 function request(worldCount: number, participantCount: number, seed = 1) {
   return {
     worldCount,
     participantCount,
     seed,
-    generatorVersion: 'galaxy-generator-v1',
-    profileId: 'balanced-start-v1'
+    generatorVersion: 'galaxy-generator-v3',
+    profileId: 'balanced-start-v3'
   };
 }
 
@@ -30,8 +30,7 @@ describe('deterministic galaxy generation', () => {
         const guaranteed = getNearestNeutralWorlds(generated.map, home.id);
         expect(guaranteed).toHaveLength(2);
         expect(guaranteed.every(world =>
-          world.type === 'habitable' && generated.map.lanes.some(([from, to]) =>
-            (from === home.id && to === world.id) || (from === world.id && to === home.id))))
+          world.type === 'habitable' && canReachInitialWorld(generated.map, home.id, world.id)))
           .toBe(true);
       }
     }
@@ -54,8 +53,7 @@ describe('deterministic galaxy generation', () => {
     const counts = generated.map.participants.map(participant => {
       const home = generated.map.worlds.find(world => world.id === participant.homeWorldId)!;
       return getNearestNeutralWorlds(generated.map, home.id)
-        .filter(world => world.type === 'habitable' && generated.map.lanes.some(([from, to]) =>
-          (from === home.id && to === world.id) || (from === world.id && to === home.id))).length;
+        .filter(world => world.type === 'habitable' && canReachInitialWorld(generated.map, home.id, world.id)).length;
     });
     expect(new Set(counts)).toEqual(new Set([2]));
   });
@@ -69,17 +67,14 @@ describe('deterministic galaxy generation', () => {
       const reordered = {
         ...generated.map,
         participants: [...generated.map.participants].reverse(),
-        worlds: [...generated.map.worlds].reverse(),
-        lanes: [...generated.map.lanes].reverse()
+        worlds: [...generated.map.worlds].reverse()
       };
       expect(validateGalaxyMap(reordered).ok, `participants ${participantCount}, seed ${seed}`).toBe(true);
       for (const participant of generated.map.participants) {
         const guaranteed = getNearestNeutralWorlds(generated.map, participant.homeWorldId);
         expect(guaranteed).toHaveLength(2);
         expect(guaranteed.every(world => world.type === 'habitable' &&
-          generated.map.lanes.some(([from, to]) =>
-            (from === participant.homeWorldId && to === world.id) ||
-            (from === world.id && to === participant.homeWorldId))))
+          canReachInitialWorld(generated.map, participant.homeWorldId, world.id)))
           .toBe(true);
       }
     }

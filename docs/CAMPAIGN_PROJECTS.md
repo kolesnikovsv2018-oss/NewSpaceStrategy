@@ -52,8 +52,8 @@ completed и deploy. Замена/удаление проекта или отк�
 
 ## Сохранение
 
-Н05а ввёл save6/rules3. После Н09 актуален только **save10/rules7**:
-обязательны `projects`, rules snapshot5/rules5, population, `colonyOutput`, tree4, `researchJournal`, карта партии
+Н05а ввёл save6/rules3. После Н10 актуален только **save12/rules9**:
+обязательны `projects`, rules snapshot7/rules7, environment/surveys/population, `colonyOutput`, tree6, `researchJournal`, карта партии
 и явный battlePolicy. Иные версии явно отклоняются без миграции и fallback.
 Мирные production quote/FIFO/формулы не менялись; [Н06](CAMPAIGN_POPULATION.md)
 добавил рост и платное основание с переносом жителей, а [Н07](CAMPAIGN_OUTPUT.md)
@@ -65,7 +65,7 @@ Campaign save хранит только принятые записи, не не
 Открытие/закрытие редактора не выполняет endTurn, генерацию, оплату или autosave.
 Общая демонстрационная библиотека не читается и не записывается кампанийным путём.
 
-Диагностический Н03 runner пишет baseline6 с save10/rules7 и фактическими кодами отказов.
+Диагностический Н03 runner пишет baseline8 с save12/rules9 и фактическими кодами отказов.
 Очередь и выпуск учитываются отдельно; результаты после смены экономики должны
 измеряться заново, прежние числа не являются новым замером.
 

@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { worldTypeSchema } from './worldEnvironment';
 import defaultFixture from './fixtures/rules-default.json';
 
 export const RULES_SNAPSHOT_FORMAT = 'orion-rules-snapshot';
-export const RULES_SNAPSHOT_SCHEMA_VERSION = 5;
-export const RULES_SNAPSHOT_RULES_VERSION = 5;
+export const RULES_SNAPSHOT_SCHEMA_VERSION = 7;
+export const RULES_SNAPSHOT_RULES_VERSION = 7;
 
 export const COLONY_EFFECT_TARGETS = [
   'growth-rate', 'capacity-add', 'production-output', 'science-output', 'culture-output'
@@ -126,7 +127,7 @@ const numericModifierEffectSchema = z.object({
   id: ruleIdentifierSchema,
   target: z.enum(RULES_TARGETS),
   scope: z.enum(RULES_SCOPES),
-  worldType: z.enum(['habitable', 'barren']).optional(),
+  worldTypes: z.array(worldTypeSchema).min(1).max(3).refine(types => new Set(types).size === types.length).optional(),
   unit: z.enum(RULES_UNITS),
   operation: z.enum(RULES_OPERATIONS),
   value: z.number().finite().min(-1000000).max(1000000),
@@ -162,10 +163,10 @@ const rulesEffectUnionSchema = z.discriminatedUnion('kind', [
 
 export const rulesEffectSchema = rulesEffectUnionSchema.superRefine((effect, ctx) => {
   const colony = COLONY_EFFECT_TARGETS.some(target => target === effect.target);
-  if (colony && (effect.kind !== 'modifier' || !effect.worldType || effect.activationPhase !== 'on-turn-start')) {
+  if (colony && (effect.kind !== 'modifier' || !effect.worldTypes || effect.activationPhase !== 'on-turn-start')) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Колониальный эффект требует modifier, тип мира и on-turn-start' });
   }
-  if (!colony && effect.kind === 'modifier' && effect.worldType !== undefined) {
+  if (!colony && effect.kind === 'modifier' && effect.worldTypes !== undefined) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Тип мира разрешён только колониальному эффекту' });
   }
   if (effect.kind === 'capability' || effect.kind === 'modifier') {
@@ -222,7 +223,7 @@ export const populationRulesSchema = z.object({
   minimumSource: populationAmountSchema.positive(),
   growthPercent: z.number().int().min(0).max(100),
   foundingCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict(),
-  capacities: z.object({ habitable: capacitySchema, barren: capacitySchema }).strict()
+  capacities: z.object({ habitable: capacitySchema, toxic: capacitySchema, barren: capacitySchema }).strict()
 }).strict().refine(value => value.minimumSource >= value.settlers &&
   value.home <= value.capacities.habitable.base && value.settlers <= value.capacities.habitable.base,
 'Начальные жители требуют вместимость и источник');
@@ -249,9 +250,9 @@ export const rulesSnapshotSchema = z.object({
   treeId: ruleIdentifierSchema,
   tablesId: ruleIdentifierSchema,
   policyId: ruleIdentifierSchema,
-  treeVersion: z.literal('research-tree-v4'),
+  treeVersion: z.literal('research-tree-v6'),
   researchPolicy: z.literal('research-points-v1'),
-  tablesVersion: z.literal('campaign-tables-v2'),
+  tablesVersion: z.literal('campaign-tables-v4'),
   policyVersion: z.literal('component-bands-v1'),
   handlers: z.array(z.enum(RULES_HANDLERS)).min(1).max(32).refine(array => new Set(array).size === array.length, {
     message: 'Список обработчиков содержит дубликаты'
@@ -261,7 +262,10 @@ export const rulesSnapshotSchema = z.object({
   }),
   effects: z.array(rulesEffectSchema).max(256),
   population: populationRulesSchema,
-  colonyOutput: colonyOutputRulesSchema
+  colonyOutput: colonyOutputRulesSchema,
+  travel: z.object({ policy: z.literal('distance-only-v1'), initialRange: z.literal(200) }).strict(),
+  planetology: z.object({ policy: z.literal('survey-v1'),
+    surveyCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict() }).strict()
 }).strict().superRefine((snapshot, ctx) => {
   const duplicateIds = new Set<string>();
   for (const effect of snapshot.effects) {

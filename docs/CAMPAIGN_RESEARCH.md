@@ -9,8 +9,8 @@
 
 ## Дерево и эффекты
 
-Единственная актуальная схема дерева — version4, ID `orion-technologies-v4`.
-Начально доступны fighter/corvette и engine/beam.
+Единственная актуальная схема дерева — version6, ID `orion-technologies-v6`.
+Начально доступны fighter/corvette/colonizer и engine/beam.
 
 | Узел | Предпосылки | Научная цена | Рабочий эффект |
 | --- | --- | --- | --- |
@@ -24,6 +24,10 @@
 | automation | engineering | 3000 | Промышленный выпуск +20% |
 | scientific-method | applied | 3000 | Научный выпуск +20% |
 | cultural-practices | Нет | 2000 | Культурный выпуск +20% |
+| toxic-adaptation | Нет | 3000 | Основание на toxic после survey, без изменения типа/P/K |
+
+Engineering/ordnance/capital также открывают стратегическую дальность400/800/1500;
+начальная200. Н09 modifiers имеют явные selectors habitable/toxic.
 
 Корневые ветви не исключают друг друга. Строгий узел содержит
 id/name/prerequisites/researchCost/effects, без credits/turns.
@@ -128,7 +132,7 @@ AI направляет примерно20% P в науку до заверше�
 и own-view без скрытых данных сохранены.
 
 [YAML-пример](research-default.yaml), JSON и ResearchTreeSource принимают
-только tree4 и зарегистрированные colony-effect IDs. Лимит256000 UTF-8 bytes; aliases/custom tags/duplicate keys
+только tree6, зарегистрированные colony-effect IDs и достижимые дальность/адаптацию. Лимит256000 UTF-8 bytes; aliases/custom tags/duplicate keys
 отвергаются. Импорт выбирает дерево новой партии, не заменяет действующую.
 Результат и ошибка только последнего запроса могут менять диалог.
 Новый запрос/cancel/shutdown/reentry инвалидируют прежнее чтение;
@@ -136,7 +140,9 @@ AI направляет примерно20% P в науку до заверше�
 
 ## Форматы и проверки
 
-Актуальны Conquest save10/rules7, rules snapshot5/rules5, tree4, baseline6.
+Актуальны Conquest save12/rules9, rules snapshot7/rules7, tree6, baseline8.
+Д08 добавил стартовый корпус colonizer и эффекты стратегической дальности:
+engineering400/ordnance800/capital1500 при начальных200.
 Все snapshots автономны. Старые военные форматы явно отвергаются без
 миграции/fallback и без удаления прежнего слота.
 Receipt/forecast/страницы не сериализуются; мирные readers не меняются.
