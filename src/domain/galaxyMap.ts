@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { INITIAL_STRATEGIC_RANGE, isWorldInRange } from './campaignTravel.ts';
+import { createStrategicEquipment, getTravelCapabilities, getTravelQuote, getWorldDistance, STRATEGIC_TRAVEL_POLICY } from './campaignTravel.ts';
 import { worldTypeSchema } from './worldEnvironment.ts';
 
 export const GALAXY_MAP_FORMAT = 'orion-galaxy-map';
-export const GALAXY_MAP_SCHEMA_VERSION = 3;
-export const GALAXY_MAP_RULES_VERSION = 3;
-export const GALAXY_GENERATOR_VERSION = 'galaxy-generator-v3';
-export const GALAXY_PROFILE_ID = 'balanced-start-v3';
+export const GALAXY_MAP_SCHEMA_VERSION = 4;
+export const GALAXY_MAP_RULES_VERSION = 4;
+export const GALAXY_GENERATOR_VERSION = 'galaxy-generator-v4';
+export const GALAXY_PROFILE_ID = 'balanced-start-v4';
 export const MAX_GALAXY_WORLDS = 256;
 export const MIN_PARTICIPANTS = 2;
 export const MAX_PARTICIPANTS = 8;
@@ -31,10 +31,9 @@ export const galaxyProfileSchema = z.object({
   minimumSeparation: z.literal(MAP_MINIMUM_SEPARATION),
   placementGridDivisions: z.literal(32),
   initialTravel: z.object({
-    policy: z.literal('distance-only-v1'),
-    fuelCapacity: z.literal(3),
-    fuelPerJump: z.literal(1),
-    maxJumpDistance: z.literal(INITIAL_STRATEGIC_RANGE)
+    policy: z.literal(STRATEGIC_TRAVEL_POLICY),
+    strategicSpeed: z.literal(100), fuelCapacity: z.literal(3000),
+    fuelConsumptionPerDistance: z.literal(5), maxJumpDistance: z.literal(200)
   }).strict()
 }).strict();
 
@@ -86,8 +85,8 @@ function squaredDistance(left: GalaxyWorld, right: GalaxyWorld): number {
 }
 
 export function canReachInitialWorld(map: GalaxyMap, fromWorldId: string, toWorldId: string): boolean {
-  const { fuelCapacity, fuelPerJump, maxJumpDistance } = map.profile.initialTravel;
-  return fuelCapacity >= fuelPerJump && isWorldInRange(map.worlds, fromWorldId, toWorldId, maxJumpDistance);
+  const initial = getTravelCapabilities(createStrategicEquipment());
+  return getTravelQuote(getWorldDistance(map.worlds, fromWorldId, toWorldId), initial, initial.fuelCapacity).ok;
 }
 
 export function getNearestNeutralWorlds(
@@ -126,8 +125,9 @@ function canonicalize(map: GalaxyMap): GalaxyMap {
       placementGridDivisions: map.profile.placementGridDivisions,
       initialTravel: {
         policy: map.profile.initialTravel.policy,
+        strategicSpeed: map.profile.initialTravel.strategicSpeed,
         fuelCapacity: map.profile.initialTravel.fuelCapacity,
-        fuelPerJump: map.profile.initialTravel.fuelPerJump,
+        fuelConsumptionPerDistance: map.profile.initialTravel.fuelConsumptionPerDistance,
         maxJumpDistance: map.profile.initialTravel.maxJumpDistance
       }
     },

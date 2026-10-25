@@ -64,6 +64,7 @@ export class DesignedShip extends TacticalShip {
   getEnergyCapacity(): number { return this.stats.energyCapacity; }
   getEnergyGeneration(): number { return this.stats.powerGeneration; }
   getMovementPower(): number { return this.stats.movementPower; }
+  override getAcceleration(): number { return this.stats.thrust / this.getTotalWeight(); }
   /** @deprecated Battery-only compatibility estimate, not strategic range. Use getFlightEstimate. */
   getMaxRange(): number { return this.getEnergy() / this.stats.movementPower * this.stats.speed; }
 
@@ -149,6 +150,7 @@ export class DesignedShip extends TacticalShip {
     return `${this.name}\nПроект: ${this.design.id}\nКорпус: ${HULLS[this.design.hullId].name}\n` +
       `Масса: ${this.getTotalWeight().toFixed(1)} т | Стоимость: ${this.stats.cost}\n` +
       `Скорость: ${this.getCurrentMaxSpeed().toFixed(1)} такт. ед/с | DPS*: ${this.stats.dps.toFixed(1)}\n` +
+      `Разгон: ${this.getAcceleration().toFixed(2)} такт. ед/с² | ${this.design.hullVariant}\n` +
       `* DPS до исчерпания боезапаса; без критов/защиты цели\n` +
       `Энергия: ${this.getEnergy().toFixed(0)}/${this.stats.energyCapacity} ЭЕ\n` +
       `Генерация / движение: ${this.getEnergyGeneration()}/${this.getMovementPower()} ЭЕ/с\n` +

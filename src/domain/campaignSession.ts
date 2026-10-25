@@ -6,9 +6,10 @@ import { campaignCommandSchema, campaignStateSchema, conquestGalaxyStateSchema, 
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { calculateEndTurnEconomy, getUpkeepQuote, type EndTurnBudget, type EconomyCalculation } from './campaignUpkeep';
 import { designSchema, validateDesign } from './shipDesign';
-import { isWorldInRange } from './campaignTravel';
+import { getWorldDistance, getTravelCapabilities, getTravelQuote, getFleetTravelQuotes,
+  getStrategicRefuelQuote, STRATEGIC_TRAVEL_POLICY } from './campaignTravel';
 import { getGalaxyDefinition } from './campaign';
-import { advanceShipTravel, campaignShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
+import { advanceShipTravel, campaignShipsSchema, strategicShipsSchema, CAMPAIGN_FUEL_CAPACITY, getRefuelQuote,
   MAX_CAMPAIGN_SHIPS, TRAVEL_FUEL_COST, type CampaignShip } from './campaignShips';
 import { campaignFleetsSchema, createCampaignFleets, fleetIdSchema, fleetShipIdsSchema, getFleetTransit, isShipInFleet,
   MAX_CAMPAIGN_FLEETS, MAX_FLEET_ID, type CampaignFleet } from './campaignFleets';
@@ -29,7 +30,7 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
   turn: turnSchema,
   treasuries: z.object({ blue: treasurySchema, red: treasurySchema }).strict(),
   production: productionStateSchema,
-  ships: campaignShipsSchema,
+  ships: allowHostile ? strategicShipsSchema : campaignShipsSchema,
   fleets: campaignFleetsSchema
 }).strict().superRefine((state, ctx) => {
   if (!allowHostile && state.galaxy.map) {
@@ -58,6 +59,23 @@ function makeSessionSchema(allowHostile: boolean) { return z.object({
     }
   }
   for (const ship of state.ships) {
+    if (allowHostile && ship.transit && 'policy' in ship.transit &&
+      systemIds.has(ship.systemId) && systemIds.has(ship.transit.destinationId)) {
+      const route = ship.transit;
+      const fleet = state.fleets.items.find(item => item.shipIds.includes(ship.id));
+      const members = fleet ? state.ships.filter(item => fleet.shipIds.includes(item.id)) : [ship];
+      const own = getTravelCapabilities(ship.design.strategicEquipment);
+      const caps = { ...own,
+        strategicSpeed: Math.min(...members.map(item => getTravelCapabilities(item.design.strategicEquipment).strategicSpeed)),
+        maxJumpDistance: Math.min(...members.map(item => getTravelCapabilities(item.design.strategicEquipment).maxJumpDistance)) };
+      const distance = getWorldDistance(getGalaxyDefinition(state.galaxy).systems, ship.systemId, route.destinationId);
+      const quote = getTravelQuote(distance, caps, caps.fuelCapacity);
+      if (!quote.ok || route.distance !== distance || route.totalTurns !== quote.totalTurns ||
+        route.fuelCost !== quote.fuelCost || ship.fuel + route.fuelCost > own.fuelCapacity ||
+        Object.entries(caps).some(([key, value]) => route.capabilities[key as keyof typeof caps] !== value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Снимок перелёта не согласован с проектом и картой' });
+      }
+    }
     if (!systemIds.has(ship.systemId) || (ship.transit &&
       (!systemIds.has(ship.transit.destinationId) || (!allowHostile && !areSystemsAdjacent(ship.systemId, ship.transit.destinationId, state.galaxy))))) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Корабль и маршрут должны принадлежать карте партии' });
@@ -127,10 +145,10 @@ function incomeFor(galaxy: CampaignState, factionId: CampaignFactionId): Treasur
 }
 
 /** Hypothetical own endTurn, including for an inactive observer; never command authorization. */
-function economyFor(state: CampaignSession, factionId: CampaignFactionId): EconomyForecast {
+function economyFor(state: CampaignSession, factionId: CampaignFactionId, military = false): EconomyForecast {
   if (state.turn === MAX_TURN) return { ok: false, code: 'TURN_LIMIT' };
   return calculateEndTurnEconomy(state.treasuries[factionId], incomeFor(state.galaxy, factionId),
-    getUpkeepQuote(state.ships, factionId));
+    getUpkeepQuote(state.ships, factionId, military));
 }
 
 /** Pure session boundary. Callers must keep the returned state; this is not network deduplication. */
@@ -139,12 +157,12 @@ export function executeSessionCommand(inputState: unknown, inputCommand: unknown
 }
 
 export function executeConquestSessionCommand(inputState: unknown, inputCommand: unknown,
-  conquestEndTurnBudget?: EndTurnBudget, strategicRange?: number): SessionResult {
-  return executeStrategicCommand(inputState, inputCommand, true, conquestEndTurnBudget, strategicRange);
+  conquestEndTurnBudget?: EndTurnBudget, travelPolicy?: typeof STRATEGIC_TRAVEL_POLICY): SessionResult {
+  return executeStrategicCommand(inputState, inputCommand, true, conquestEndTurnBudget, travelPolicy);
 }
 
 function executeStrategicCommand(inputState: unknown, inputCommand: unknown, allowHostile: boolean,
-  conquestEndTurnBudget?: EndTurnBudget, strategicRange?: number): SessionResult {
+  conquestEndTurnBudget?: EndTurnBudget, travelPolicy?: typeof STRATEGIC_TRAVEL_POLICY): SessionResult {
   const parsedState = (allowHostile ? conquestSessionSchema : campaignSessionSchema).safeParse(inputState);
   if (!parsedState.success) return { ok: false, code: 'INVALID_STATE', message: 'Недопустимое состояние стратегической партии' };
   const parsedCommand = sessionCommandSchema.safeParse(inputCommand);
@@ -152,12 +170,10 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
   const state = parsedState.data;
   const command = parsedCommand.data;
   if (allowHostile && (command.kind === 'sendShip' || command.kind === 'sendFleet') &&
-    (strategicRange === undefined || !Number.isFinite(strategicRange) || strategicRange <= 0)) {
-    return { ok: false, code: 'INVALID_COMMAND', message: 'Не задана проверенная стратегическая дальность стороны' };
+    travelPolicy !== STRATEGIC_TRAVEL_POLICY) {
+    return { ok: false, code: 'INVALID_COMMAND', message: 'Не задана политика возможностей проектов' };
   }
-  const canTravel = (from: SystemId, to: SystemId) => allowHostile
-    ? isWorldInRange(getGalaxyDefinition(state.galaxy).systems, from, to, strategicRange!)
-    : areSystemsAdjacent(from, to, state.galaxy);
+  const canTravel = (from: SystemId, to: SystemId) => allowHostile || areSystemsAdjacent(from, to, state.galaxy);
   if (command.expectedTurn !== state.turn) {
     return { ok: false, code: 'STALE_TURN', message: 'Номер хода изменился; обновите состояние перед командой' };
   }
@@ -192,6 +208,22 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
       }
       // Membership was validated at the session boundary. Check every tank before any debit.
       const members = state.ships.filter(ship => fleet.shipIds.includes(ship.id));
+      if (allowHostile) {
+        const distance = getWorldDistance(getGalaxyDefinition(state.galaxy).systems, command.systemId, command.destinationId);
+        const quotes = getFleetTravelQuotes(distance, members.map(ship => ({
+          capabilities: getTravelCapabilities(ship.design.strategicEquipment), fuel: ship.fuel })));
+        const failed = quotes.find(item => !item.quote.ok)?.quote;
+        if (failed && !failed.ok) return { ok: false, code: failed.code === 'INSUFFICIENT_FUEL' ? 'INSUFFICIENT_FUEL' : 'INVALID_ROUTE', message: failed.message };
+        for (const [index, ship] of members.entries()) {
+          const { capabilities, quote } = quotes[index];
+          if (!quote.ok) throw new Error('Группа не прошла предварительную проверку');
+          ship.fuel -= quote.fuelCost;
+          ship.transit = { policy: STRATEGIC_TRAVEL_POLICY, destinationId: command.destinationId,
+            distance: quote.distance, totalTurns: quote.totalTurns, fuelCost: quote.fuelCost,
+            capabilities, remainingTurns: quote.totalTurns };
+        }
+        return { ok: true, state };
+      }
       if (members.some(ship => ship.fuel < TRAVEL_FUEL_COST)) {
         return { ok: false, code: 'INSUFFICIENT_FUEL', message: 'Недостаточно топлива у одного из кораблей группы; нужна заправка' };
       }
@@ -228,17 +260,29 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
     if (!ship) return { ok: false, code: 'SHIP_NOT_FOUND', message: 'Свой корабль не найден в указанной системе' };
     if (ship.transit) return { ok: false, code: 'SHIP_IN_TRANSIT', message: 'Корабль уже в пути' };
     if (command.kind === 'refuelShip') {
-      const quote = getRefuelQuote(ship.fuel), treasury = state.treasuries[command.factionId];
+      const capacity = allowHostile ? getTravelCapabilities(ship.design.strategicEquipment).fuelCapacity : CAMPAIGN_FUEL_CAPACITY;
+      const quote = allowHostile ? getStrategicRefuelQuote(ship.fuel, capacity) : getRefuelQuote(ship.fuel), treasury = state.treasuries[command.factionId];
       if (quote.amount === 0) return { ok: false, code: 'FUEL_FULL', message: 'Топливный бак уже полон' };
       if (treasury.credits < quote.cost.credits || treasury.minerals < quote.cost.minerals) {
         return { ok: false, code: 'INSUFFICIENT_RESOURCES', message: 'Недостаточно ресурсов для полной заправки' };
       }
       treasury.credits -= quote.cost.credits; treasury.minerals -= quote.cost.minerals;
-      ship.fuel = CAMPAIGN_FUEL_CAPACITY;
+      ship.fuel = capacity;
       return { ok: true, state };
     }
     if (isShipInFleet(state.fleets.items, ship.id)) {
       return { ok: false, code: 'SHIP_IN_FLEET', message: 'Корабль входит в группу; сначала расформируйте её' };
+    }
+    if (allowHostile) {
+      const capabilities = getTravelCapabilities(ship.design.strategicEquipment);
+      const quote = getTravelQuote(getWorldDistance(getGalaxyDefinition(state.galaxy).systems,
+        command.systemId, command.destinationId), capabilities, ship.fuel);
+      if (!quote.ok) return { ok: false, code: quote.code === 'INSUFFICIENT_FUEL' ? 'INSUFFICIENT_FUEL' : 'INVALID_ROUTE', message: quote.message };
+      ship.fuel -= quote.fuelCost;
+      ship.transit = { policy: STRATEGIC_TRAVEL_POLICY, destinationId: command.destinationId,
+        distance: quote.distance, totalTurns: quote.totalTurns, fuelCost: quote.fuelCost,
+        capabilities, remainingTurns: quote.totalTurns };
+      return { ok: true, state };
     }
     if (!allowHostile && state.galaxy.systems.find(system => system.id === command.destinationId)!.ownerId !== command.factionId) {
       return { ok: false, code: 'NOT_OWN_COLONY', message: 'Перелёт доступен только в свою колонию' };
@@ -314,7 +358,7 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
   }
   const economy = allowHostile && conquestEndTurnBudget
     ? { ok: true as const, ...conquestEndTurnBudget }
-    : economyFor(state, command.factionId);
+    : economyFor(state, command.factionId, allowHostile);
   if (!economy.ok) {
     return { ok: false, code: economy.code, message: economy.code === 'TURN_LIMIT'
       ? 'Достигнут предел номера хода' : 'Доход превысит предел ресурсов; ход не завершён' };
@@ -326,9 +370,9 @@ function executeStrategicCommand(inputState: unknown, inputCommand: unknown, all
   // Use the validated members' route before advancing ships; publish both arrivals together.
   for (const fleet of state.fleets.items) {
     const transit = getFleetTransit(fleet, state.ships);
-    if (fleet.factionId === command.factionId && transit) fleet.systemId = transit.destinationId;
+    if (fleet.factionId === command.factionId && transit?.remainingTurns === 1) fleet.systemId = transit.destinationId;
   }
-  state.ships = advanceShipTravel(state.ships, command.factionId);
+  state.ships = advanceShipTravel(state.ships, command.factionId, allowHostile);
   state.turn += 1;
   return { ok: true, state, endTurnEconomy };
 }
@@ -360,7 +404,7 @@ function sessionView(state: CampaignSession, factionId: CampaignFactionId, dynam
   const faction = factionIdSchema.parse(factionId);
   return { galaxy: getCampaignView(state.galaxy, faction, dynamicEnvironment), turn: state.turn,
     activeFactionId: activeFaction(state.turn), treasury: { ...state.treasuries[faction] },
-    income: incomeFor(state.galaxy, faction), economyForecast: economyFor(state, faction), production: {
+    income: incomeFor(state.galaxy, faction), economyForecast: economyFor(state, faction, dynamicEnvironment), production: {
       orders: state.production.orders.filter(order => order.factionId === faction),
       completed: state.production.completed.filter(record => record.factionId === faction)
     }, ships: state.ships.filter(ship => ship.factionId === faction),

@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { calculateComponent, componentSchema, COMPONENT_NAMES, createComponent, componentStatus,
+import { calculateComponent, componentSchema, COMPONENT_NAMES, createComponent, componentStatus, withTacticalVariant,
   type ComponentDefinition, type ComponentKind } from '../domain/shipDesign';
 import { button, text, panelBackground } from './ShipyardWidgets';
 
@@ -90,14 +90,26 @@ export class ComponentBuilderPanel {
     const selected = this.components.find(item => item.id === this.selectedId);
     if (!selected) { text(this.scene, this.container, 18, 365, 'Выберите компонент для настройки'); return; }
     const stats = calculateComponent(selected);
-    text(this.scene, this.container, 18, 346,
-      `${stats.mass.toFixed(1)} т · ${stats.cost} ₡ · ${stats.slotSize}\n` +
+    button(this.scene, this.container, 220, 300, selected.technologyVariant === 'compact' ? 'Компактный' : 'Обычный', () => {
+      this.components = this.components.map(component => component.id === selected.id ? {
+        ...component, technologyVariant: component.technologyVariant === 'standard' ? 'compact' : 'standard'
+      } : component);
+      this.changed();
+    }, 'component-technology-variant').setFixedSize(200, 30);
+    button(this.scene, this.container, 18, 333, `Тактика: ${selected.tacticalVariant}`, () => {
+      const next = selected.tacticalVariant === 'standard' ? withTacticalVariant(selected) :
+        componentSchema.parse({ ...selected, tacticalVariant: 'standard' });
+      this.components = this.components.map(item => item.id === selected.id ? next : item);
+      this.changed();
+    }, 'component-tactical-variant').setFixedSize(400, 30);
+    text(this.scene, this.container, 18, 369,
+      `${stats.mass.toFixed(1)} т · ${stats.cost} ₡ · ${stats.slotSize} · объём ${stats.equipmentVolume}\n` +
       `Номинал: ${stats.power.toFixed(1)} ЭЕ/с · Выстрел: ${stats.energyPerShot.toFixed(1)} ЭЕ`, 12);
-    text(this.scene, this.container, 18, 552, componentStatus(selected), 11, '#ffc880').setWordWrapWidth(400);
+    text(this.scene, this.container, 18, 583, componentStatus(selected), 11, '#ffc880').setWordWrapWidth(400);
     const values = selected as unknown as Record<string, unknown>;
     parameters[selected.kind].forEach((field, index) => {
       const value = Number(values[field.key]);
-      const y = 397 + index * 35;
+      const y = 411 + index * 35;
       text(this.scene, this.container, 18, y + 7, `${field.label}: ${value.toFixed(2)}`, 12);
       for (const [label, sign, percentage, x] of [
         ['−10%', -1, 0.1, 280], ['−1%', -1, 0.01, 320], ['+1%', 1, 0.01, 360], ['+10%', 1, 0.1, 400]

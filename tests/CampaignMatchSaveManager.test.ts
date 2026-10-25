@@ -6,8 +6,7 @@ import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { campaignMatchSchema, createCampaignMatch, getCampaignOutcome, executeMatchAiTurn, executeMatchCommand,
   type CampaignMatch, type CampaignScenario } from '../src/domain/campaignMatch';
 import * as codec from '../src/domain/campaignMatchSave';
-import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
-import { encodeCampaignRunSave } from '../src/domain/campaignRunSave';
+import { MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
 import * as sessions from '../src/domain/campaignSession';
 import * as executor from '../src/domain/campaignAiExecutor';
 import * as planner from '../src/domain/campaignAiPlanner';
@@ -53,8 +52,9 @@ function encoded(match: unknown): string {
   const result = codec.encodeCampaignMatchSave(match); if (!result.ok) throw Error(result.message); return result.json;
 }
 function oldEncoded(match: CampaignMatch, version: number): string {
-  const result = version === 1 ? encodeCampaignSave(match.run.session) : encodeCampaignRunSave(match.run);
-  if (!result.ok) throw Error(result.message); return result.json;
+  return JSON.stringify({ format: 'orion-campaign', schemaVersion: version, rulesVersion: version < 4 ? 1 : 2,
+    session: match.run.session, ...(![1, 4].includes(version) ? { control: match.run.control } : {}),
+    ...(version === 3 ? { scenario: match.scenario } : {}) });
 }
 function loaded(store: StoragePort): CampaignMatch {
   const result = new CampaignMatchSaveManager(store).load(); if (!result.ok) throw Error(result.message);
@@ -73,11 +73,11 @@ function surveyed(match: CampaignMatch): void {
   match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
 }
 const bytes = (text: string): number => new TextEncoder().encode(text).byteLength;
-function sizedMatch(size: number, version = 3): CampaignMatch {
+function sizedMatch(size: number, version = 7): CampaignMatch {
   const match = created(), design = createCombatDesign('fighter'); design.createdAt = '2026-10-08T00:00:00.0Z';
   match.run.session.production.lastOrderId = 1;
   match.run.session.ships.push({ id: 1, factionId: 'blue', systemId: 'sol', fuel: 0, design });
-  const initial = bytes(version === 3 ? encoded(match) : oldEncoded(match, version));
+  const initial = bytes(version === 7 ? encoded(match) : oldEncoded(match, version));
   design.createdAt = '2026-10-08T00:00:00.' + '0'.repeat(size - initial + 1) + 'Z';
   expect(campaignMatchSchema.safeParse(match).success).toBe(true); return match;
 }
@@ -91,7 +91,7 @@ describe('match repository boundary', () => {
     expect(manager.save(null)).toMatchObject({ ok: false, code: 'INVALID_STATE' });
     expect(access).not.toHaveBeenCalled();
   });
-  it('writes completed3 once and restores through a new instance without advancing the match', () => {
+  it('writes completed6 once and restores through a new instance without advancing the match', () => {
     const result = createCampaignMatch({ mode: 'local' }, 'joint-survey-v1'); if (!result.ok) throw Error(result.message);
     result.match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
     const data = new Map<string, string>();
@@ -101,7 +101,7 @@ describe('match repository boundary', () => {
     const loaded = new CampaignMatchSaveManager(port).load(); if (!loaded.ok) throw Error(loaded.message);
     expect(port.getItem).toHaveBeenCalledTimes(1); expect(loaded.match).toEqual(result.match);
     expect(getCampaignOutcome(loaded.match)).toEqual({ ok: true, outcome: { status: 'completed', reason: 'joint-survey-complete' } });
-    expect(JSON.parse(data.get(CampaignMatchSaveManager.STORAGE_KEY)!).schemaVersion).toBe(3);
+    expect(JSON.parse(data.get(CampaignMatchSaveManager.STORAGE_KEY)!).schemaVersion).toBe(8);
     expect(port.setItem).toHaveBeenCalledTimes(1);
   });
 });
@@ -291,17 +291,17 @@ describe('round-trip and explicit migration across new instances', () => {
     expect(Array.from(store.data).filter(([key]) => key !== KEY)).toEqual(otherKeys);
     for (const spy of [execute, ai, policy, store.removeItem, store.clear]) expect(spy).not.toHaveBeenCalled();
   });
-  it.each([1, 2].flatMap(version => [local, computer].map(control => ({ version, control }))))
-  ('strict$version/$control.mode loads sandbox without rewriting, explicit save writes3', ({ version, control }) => {
+  it.each([1, 2, 3, 4, 5, 6].flatMap(version => [local, computer].map(control => ({ version, control }))))
+  ('strict$version/$control.mode rejects without rewriting or deriving a sandbox match', ({ version, control }) => {
     const match = created('joint-survey-v1'); match.run.control = control; surveyed(match);
     const text = oldEncoded(match, version), store = new MemoryStorage(); store.data.set(KEY, text);
-    const first = loaded(store); expect(first.scenario).toBe('sandbox'); expect(first.run.control).toEqual(version === 1 ? local : control);
-    expect(getCampaignOutcome(first)).toEqual({ ok: true, outcome: { status: 'ongoing' } });
+    const before = Array.from(store.data);
+    reject(new CampaignMatchSaveManager(store).load(), 'UNSUPPORTED_SAVE_VERSION');
     noWrites(store); expect(store.data.get(KEY)).toBe(text);
-    expect(new CampaignMatchSaveManager(store).save(first)).toEqual({ ok: true }); expect(store.setItem).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(store.data.get(KEY)!).schemaVersion).toBe(3); expect(loaded(store)).toEqual(first);
-    expect(new CampaignRunSaveManager(store).load().ok).toBe(false); expect(new CampaignSaveManager(store).load().ok).toBe(false);
-    expect(store.setItem).toHaveBeenCalledTimes(1);
+    expect(Array.from(store.data)).toEqual(before);
+    expect(store.getItem.mock.calls).toEqual([[KEY]]);
+    expect(new CampaignMatchSaveManager(store).save(match)).toEqual({ ok: true }); expect(store.setItem).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(store.data.get(KEY)!).schemaVersion).toBe(8); expect(loaded(store)).toEqual(match);
   });
   it('last successful writer wins; existing manager sees replacement and missing without caching', () => {
     const store = new MemoryStorage(), first = new CampaignMatchSaveManager(store), second = new CampaignMatchSaveManager(store);
@@ -319,7 +319,7 @@ describe('round-trip and explicit migration across new instances', () => {
   });
 });
 
-describe('real byte limits and immutable old bytes on failed upgrade', () => {
+describe('real byte limits and immutable rejected bytes', () => {
   it('writes and reads an exactly5MB valid match; +1 encode never accesses storage', () => {
     const match = sizedMatch(MAX_CAMPAIGN_SAVE_BYTES), store = new MemoryStorage();
     expect(new CampaignMatchSaveManager(store).save(match)).toEqual({ ok: true }); expect(bytes(store.data.get(KEY)!)).toBe(MAX_CAMPAIGN_SAVE_BYTES);
@@ -329,12 +329,13 @@ describe('real byte limits and immutable old bytes on failed upgrade', () => {
     reject(new CampaignMatchSaveManager().save(match), 'SAVE_TOO_LARGE'); expect(access).not.toHaveBeenCalled();
     expect(Array.from(store.data)).toEqual(before); expect(store.setItem).toHaveBeenCalledTimes(1);
   });
-  it.each([1, 2])('legacy%s exactly5MB loads but upgrade3 refuses without changing any slot bytes', version => {
+  it.each([1, 2, 3, 4, 5, 6])('retired%s exactly5MB rejects and oversized replacement leaves every byte unchanged', version => {
     const match = sizedMatch(MAX_CAMPAIGN_SAVE_BYTES, version), text = oldEncoded(match, version), store = new MemoryStorage();
     expect(bytes(text)).toBe(MAX_CAMPAIGN_SAVE_BYTES); store.data.set(KEY, text); const before = Array.from(store.data);
-    const restored = loaded(store); expect(restored).toEqual(match); noWrites(store);
+    reject(new CampaignMatchSaveManager(store).load(), 'UNSUPPORTED_SAVE_VERSION'); noWrites(store);
+    match.run.session.ships[0].design.createdAt = match.run.session.ships[0].design.createdAt.replace('Z', '0Z');
     const access = vi.fn(() => store); globalStorage(access);
-    reject(new CampaignMatchSaveManager().save(restored), 'SAVE_TOO_LARGE'); expect(access).not.toHaveBeenCalled();
+    reject(new CampaignMatchSaveManager().save(match), 'SAVE_TOO_LARGE'); expect(access).not.toHaveBeenCalled();
     expect(Array.from(store.data)).toEqual(before); noWrites(store); expect(store.getItem).toHaveBeenCalledTimes(1);
   });
   it('exact5MB JSON whitespace loads once, +1 refuses before parse without repair', () => {

@@ -212,6 +212,7 @@ describe('design to runtime', () => {
     ship.moveToTarget(target, undefined, undefined, true);
 
     expect(ship.isMoving).toBe(true);
+    ship.update(0.05);
     expect(ship.velocity.x).toBeLessThan(0);
     expect(ship.velocity.y).toBeCloseTo(0);
   });

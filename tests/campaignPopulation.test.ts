@@ -21,7 +21,7 @@ function ship(state: Conquest, systemId: 'eden' | 'nexus' | 'sol', factionId: Ca
   const design = createDesign('fighter', true);
   if (!armed) design.slots.find(slot => slot.id === 'beam_1')!.component = null;
   const id = ++state.session.production.lastOrderId;
-  state.session.ships.push({ id, factionId, systemId, fuel: 3, design });
+  state.session.ships.push({ id, factionId, systemId, fuel: 3000, design });
   state.operations[String(id)] = createOperationalState(design);
   state.surveys.blue.rift = 'barren';
 }
@@ -230,7 +230,7 @@ describe('campaign demographic boundary', () => {
     const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
     design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
     const id = ++state.session.production.lastOrderId;
-    state.session.ships.push({ id, factionId: 'blue', systemId: 'rift', fuel: 3, design });
+    state.session.ships.push({ id, factionId: 'blue', systemId: 'rift', fuel: 3000, design });
     state.operations[String(id)] = createOperationalState(design);
     state.session.treasuries.blue.minerals = 1_000_000_000 - 5000;
     const before = structuredClone(state);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { calculateComponent, calculateShipStats, componentSchema, createComponent, createDesign,
-  designSchema, HULLS, installComponent, migrateV1Design, validateDesign, type ComponentKind } from '../src/domain/shipDesign';
+  designSchema, HULLS, installComponent, validateDesign, type ComponentKind } from '../src/domain/shipDesign';
 import { createCivilianDesign, type CivilianPresetId } from '../src/domain/civilianPresets';
 import { DesignedShip } from '../src/entities/DesignedShip';
 import { ShipFactory } from '../src/entities/ShipFactory';
@@ -17,12 +17,12 @@ const v1JSON = () => JSON.stringify({ schemaVersion: 1, designs: [createV1Design
 
 describe('typed service modules', () => {
   it.each(kinds)('installs %s into either service point without mutating input/catalogue', kind => {
-    const design = createDesign('corvette', true);
+    const design = createDesign('cruiser', true);
     const component = createComponent(kind);
     let installed = installComponent(design, 'service_1', component);
     installed = installComponent(installed, 'service_2', component);
     expect(design.slots.filter(slot => slot.id.startsWith('service')).every(slot => slot.component === null)).toBe(true);
-    expect(installed.schemaVersion).toBe(2);
+    expect(installed.schemaVersion).toBe(5);
     expect(validateDesign(installed, 'flight')).toEqual([]);
     installed.slots[6].component!.name = 'Changed';
     expect(installed.slots[7].component!.name).toBe(component.name);
@@ -75,16 +75,16 @@ describe('typed service modules', () => {
   it('rejects service size, total mass, duplicate/extra/missing slots and insufficient nominal power', () => {
     expect(() => installComponent(createDesign('fighter'), 'service_1', {
       ...createComponent('mining'), kind: 'mining', miningSpeed: 30, efficiency: 0.8
-    })).toThrow('слишком велик');
+    , tacticalVariant: 'standard' as const})).toThrow('слишком велик');
     let heavy = installComponent(createDesign('corvette', true), 'service_1', {
       ...createComponent('mining'), kind: 'mining', miningSpeed: 20, efficiency: 0.8
-    });
+    , tacticalVariant: 'standard' as const});
     expect(() => installComponent(heavy, 'service_2', {
       ...createComponent('mining'), kind: 'mining', miningSpeed: 25, efficiency: 0.8
-    })).toThrow('Перегрузка');
+    , tacticalVariant: 'standard' as const})).toThrow('Перегрузка');
     heavy = installComponent(createDesign('corvette', true), 'service_1', {
       ...createComponent('repair'), kind: 'repair', repairRate: 40
-    });
+    , tacticalVariant: 'standard' as const});
     expect(validateDesign(heavy, 'flight').some(issue => issue.code === 'power')).toBe(true);
     expect(() => new DesignedShip(heavy, 'blue', 'flight')).toThrow('мощности');
     for (const slots of [heavy.slots.slice(0, 6), [...heavy.slots, heavy.slots[6]],
@@ -113,7 +113,7 @@ describe('typed service modules', () => {
   it('accounts for service mass in remaining hull payload reserve even when expanding volume', () => {
     let design = installComponent(createDesign('corvette', true), 'armor_1', {
       ...createComponent('armor'), kind: 'armor', armorPoints: 1100, beamResistance: 0, projectileResistance: 0
-    });
+    , tacticalVariant: 'standard' as const});
     design = installComponent(design, 'service_1', createComponent('cargoExpansion'));
     const stats = calculateShipStats(design);
     expect(stats.mass).toBe(332);
@@ -147,33 +147,30 @@ describe('typed service modules', () => {
   });
 });
 
-describe('v1 -> v2 library compatibility', () => {
-  it('upgrades the exact v1 shape preserving identity, dates, modules and empty-ship statistics', () => {
-    const old = createV1Design(), next = migrateV1Design(old);
-    expect(next).toMatchObject({ id: old.id, name: old.name, createdAt: old.createdAt, updatedAt: old.updatedAt, schemaVersion: 2 });
-    expect(next.slots.slice(0, 6)).toEqual(old.slots);
-    expect(next.slots.slice(6)).toEqual([{ id: 'service_1', component: null }, { id: 'service_2', component: null }]);
-    const stats = calculateShipStats(next);
-    expect(stats).toMatchObject({ mass: 147, cargoMassLimit: 100, cargoVolume: 100, peakPower: 230, shield: 0 });
-    expect(stats.speed).toBeCloseTo(200 * 1000 / 1014.7);
-    next.slots[0].component!.name = 'Changed';
-    expect(old.slots[0].component!.name).toBe('Лазер');
+describe('current v3 library without compatibility readers', () => {
+  it('rejects the exact v1 shape without synthesizing service slots or component variants', () => {
+    const old = createV1Design(), before = structuredClone(old);
+    expect(designSchema.safeParse(old).success).toBe(false);
+    const { repository, data } = storage();
+    expect(() => repository.importJSON(v1JSON())).toThrow('Версия формата библиотеки не поддерживается');
+    expect(old).toEqual(before); expect(data.size).toBe(0);
   });
 
-  it('reads v1 without writes; saves only to v2 and keeps v1 originals verbatim', () => {
+  it('ignores v1 storage; current save preserves identity, dates, modules, stats and old bytes', () => {
     const { store, data, repository } = storage();
-    const raw = v1JSON(); store.setItem(ShipDesignManager.V1_STORAGE_KEY, raw);
+    const raw = v1JSON(); store.setItem('orion_shipyard_v1', raw);
     const loaded = repository.load();
-    expect(loaded.schemaVersion).toBe(2);
+    expect(loaded).toEqual({ schemaVersion: 5, designs: [], components: [] });
     expect(data.size).toBe(1);
-    const edited = installComponent(loaded.designs[0], 'service_1', createComponent('mining'));
-    repository.saveDesign(edited);
-    expect(store.getItem(ShipDesignManager.V1_STORAGE_KEY)).toBe(raw);
-    expect(JSON.parse(store.getItem(ShipDesignManager.STORAGE_KEY)!).schemaVersion).toBe(2);
-    expect(repository.load().designs[0].slots[6].component?.kind).toBe('mining');
+    const edited = installComponent(createDesign('corvette', true), 'service_1', createComponent('mining'));
+    const saved = repository.saveDesign(edited), restored = repository.load().designs[0];
+    expect(restored).toEqual(saved); expect(calculateShipStats(restored)).toEqual(calculateShipStats(edited));
+    expect(store.getItem('orion_shipyard_v1')).toBe(raw);
+    expect(JSON.parse(store.getItem(ShipDesignManager.STORAGE_KEY)!).schemaVersion).toBe(5);
+    expect(restored.slots[6].component?.kind).toBe('mining');
   });
 
-  it.each(kinds)('round-trips %s in catalogue and design through v2 export/import', kind => {
+  it.each(kinds)('round-trips %s in catalogue and design through v3 export/import', kind => {
     const first = storage(), second = storage();
     const component = createComponent(kind);
     first.repository.saveComponents([component]);
@@ -183,19 +180,22 @@ describe('v1 -> v2 library compatibility', () => {
     expect(new DesignedShip(second.repository.load().designs[0], 'blue').getDesign().slots[6].component).toEqual(component);
   });
 
-  it('imports v1 idempotently and refuses conflicts after a service edit', () => {
+  it('rejects repeated v1 imports and preserves current conflict checks after a service edit', () => {
     const { repository } = storage();
-    repository.importJSON(v1JSON()); repository.importJSON(v1JSON());
+    expect(() => repository.importJSON(v1JSON())).toThrow('Версия формата библиотеки не поддерживается');
+    expect(() => repository.importJSON(v1JSON())).toThrow('Версия формата библиотеки не поддерживается');
+    repository.saveDesign(createDesign('corvette', true));
+    const original = repository.exportJSON();
     expect(repository.load().designs).toHaveLength(1);
     repository.saveDesign(installComponent(repository.load().designs[0], 'service_1', createComponent('repair')));
     const before = repository.exportJSON();
-    expect(() => repository.importJSON(v1JSON())).toThrow('уже существует');
+    expect(() => repository.importJSON(original)).toThrow('уже существует');
     expect(repository.exportJSON()).toBe(before);
   });
 
-  it.each(['{broken', '{"schemaVersion":999,"designs":[],"components":[]}'])('does not fall back to v1 when v2 is invalid: %s', bad => {
+  it.each(['{broken', '{"schemaVersion":999,"designs":[],"components":[]}'])('does not fall back to v1 when v3 is invalid: %s', bad => {
     const { store, repository } = storage();
-    store.setItem(ShipDesignManager.V1_STORAGE_KEY, v1JSON());
+    store.setItem('orion_shipyard_v1', v1JSON());
     store.setItem(ShipDesignManager.STORAGE_KEY, bad);
     expect(() => repository.load()).toThrow();
     expect(() => repository.saveDesign(createDesign())).toThrow();
@@ -213,26 +213,30 @@ describe('v1 -> v2 library compatibility', () => {
     for (const design of variants) {
       expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 1, designs: [design], components: [] }))).toThrow();
     }
-    expect(() => repository.decode(JSON.stringify({ schemaVersion: 1, designs: [old, old], components: [] }))).toThrow('Повторяющиеся');
+    expect(() => repository.decode(JSON.stringify({ schemaVersion: 1, designs: [old, old], components: [] }))).toThrow('Версия формата библиотеки не поддерживается');
+    const current = createDesign();
+    expect(() => repository.decode(JSON.stringify({ schemaVersion: 5, designs: [current, current], components: [] }))).toThrow('Повторяющиеся');
     expect(() => repository.decode(JSON.stringify({ schemaVersion: 1, designs: [], components: [createComponent('mining')] }))).toThrow();
   });
 
-  it('keeps both original keys unchanged on quota failure during first v2 save', () => {
+  it('keeps original keys unchanged on quota failure during first v3 save', () => {
     const { store, repository } = storage();
-    const raw = v1JSON(); store.setItem(ShipDesignManager.V1_STORAGE_KEY, raw);
-    const design = repository.load().designs[0];
+    const raw = v1JSON(); store.setItem('orion_shipyard_v1', raw);
+    const design = createDesign('corvette', true);
     vi.spyOn(store, 'setItem').mockImplementation(() => { throw new Error('Quota'); });
     expect(() => repository.saveDesign(design)).toThrow('Quota');
-    expect(store.getItem(ShipDesignManager.V1_STORAGE_KEY)).toBe(raw);
+    expect(store.getItem('orion_shipyard_v1')).toBe(raw);
     expect(store.getItem(ShipDesignManager.STORAGE_KEY)).toBeNull();
   });
 
-  it('strictly rejects future versions and invalid v2 service placement before writing', () => {
+  it('strictly rejects retired/future versions and invalid v3 service placement before writing', () => {
     const { repository, data } = storage();
     const design = createDesign('corvette', true);
     design.slots[6].component = createComponent('beam' as ComponentKind);
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 2, designs: [design], components: [] }))).toThrow('несовместимый');
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 3, designs: [], components: [] }))).toThrow();
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 5, designs: [design], components: [] }))).toThrow('несовместимый');
+    for (const schemaVersion of [1, 2, 3]) {
+      expect(() => repository.importJSON(JSON.stringify({ schemaVersion, designs: [], components: [] }))).toThrow('Версия формата библиотеки не поддерживается');
+    }
     expect(data.size).toBe(0);
   });
 });

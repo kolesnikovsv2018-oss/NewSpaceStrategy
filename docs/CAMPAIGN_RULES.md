@@ -1,5 +1,18 @@
 # Н04 — библиотечный контракт эффектов и rules snapshot
 
+Н14: текущий snapshot11/rules11/tree10. Travel policy project-travel-v1
+задаёт проектное оснащение и общий quote; scanner initialRange200 остаётся
+отдельным. Default fixture автономен, runtime не читает внешнюю библиотеку.
+Матрица — [сохранения](CAMPAIGN_SAVE.md), формулы — [travel](CAMPAIGN_TRAVEL.md).
+Нижние номера Н13 исторические.
+
+Н13: текущий snapshot10/rules10, tree9. [Боевые варианты](CAMPAIGN_COMBAT_TECHNOLOGIES.md) закрепляются в design4; tacticalRules=design-combat-v1 не заменяет initiative policy. Обязательный `terraforming`
+содержит автономный переход toxic→habitable, цену300/150 и12000 очков.
+Исполнитель — [общий промышленный FIFO](CAMPAIGN_TERRAFORMING.md).
+Миниатюризация/refit используют [общий effective design](CAMPAIGN_EQUIPMENT_REFIT.md)
+и прежний промышленный divisor10; новые боевые формулы вводит Н13.
+Прежние номера в этапных описаниях ниже исторические.
+
 Н04 предоставляет чистый [API](../src/domain/campaignRules.ts), строгие схемы и
 [JSON-пример/fixture](../src/domain/fixtures/rules-default.json).
 Библиотечные examples не включаются в Conquest автоматически.

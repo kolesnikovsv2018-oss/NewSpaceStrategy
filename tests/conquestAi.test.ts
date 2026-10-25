@@ -19,8 +19,8 @@ function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
       const secondFaction = firstFaction === 'blue' ? 'red' : 'blue';
       const secondId = secondFaction === 'blue' ? 1 : 2;
       const ships: CampaignShip[] = [
-        { id: firstId, factionId: firstFaction, systemId: 'eden', design: first, fuel: 3 },
-        { id: secondId, factionId: secondFaction, systemId: 'eden', design: second, fuel: 3 }
+        { id: firstId, factionId: firstFaction, systemId: 'eden', design: first, fuel: 3000 },
+        { id: secondId, factionId: secondFaction, systemId: 'eden', design: second, fuel: 3000 }
       ];
       const operations = Object.fromEntries(ships.map(ship => [String(ship.id), createOperationalState(ship.design)]));
       return resolveConquestBattle(ships, operations, seed, 'campaign-v2').winner;
@@ -87,11 +87,12 @@ it('caps projectile output by ammo, reflects resource scarcity, defense and enga
   mixedRange = installComponent(mixedRange, 'engine_1', { ...engine, powerGeneration: 1000 });
   const mixedStats = calculateShipStats(mixedRange);
   expect(calculateConquestDesignScore(mixedRange, treasury).approachSeconds)
-    .toBeCloseTo((600 - 300) / (2 * mixedStats.speed));
+    .toBeCloseTo(Math.sqrt(2 * 150 * mixedStats.mass / mixedStats.thrust));
 });
 
 it('ranks twin-beam above single-beam on mirrored dispersed seeds with campaign-v2 policy', () => {
   const state = createConquest();
+  state.research.blue.completed = ['engineering', 'miniaturization'];
   const candidates = buildConquestDesigns(state.research.blue, state.researchTree).filter(design => design.hullId === 'fighter');
   const singleBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component === null)!;
   const twinBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component?.kind === 'beam')!;

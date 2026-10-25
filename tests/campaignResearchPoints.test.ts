@@ -2,7 +2,6 @@ import { expect, it } from 'vitest';
 import { createConquest, conquestSchema, executeConquestCommand, getConquestView, type Conquest } from '../src/domain/conquest';
 import { getDefaultResearchTree, isCampaignDesignAvailable } from '../src/domain/campaignResearch';
 import { createDesign, createComponentWithId, installComponent } from '../src/domain/shipDesign';
-import { createCombatDesign } from '../src/domain/combatPresets';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
@@ -55,7 +54,7 @@ it.each(['engineering', 'applied', 'support'])('earns a working root effect: %s'
   if (beam?.kind !== 'beam') throw new Error('Invalid beam');
   const design = id === 'engineering' ? installComponent(base, 'beam_1', { ...beam, damage: 30 })
     : id === 'applied' ? installComponent(base, 'service_1', createComponentWithId('scanner', 'opened-scanner'))
-      : createCombatDesign('frigate');
+      : installComponent(createDesign('frigate', true), 'armor_1', createComponentWithId('armor', 'opened-armor'));
   expect(isCampaignDesignAvailable(design, state.research.blue, state.researchTree)).toBe(false);
   state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 0, research: 5000, culture: 0 } });
   state = apply(state, { kind: 'research', technologyId: id });
@@ -99,7 +98,7 @@ it.each(['mining', 'battle'])('rolls back scientific completion and all payments
   state.population.sol = { population: 0, remainder: 0 };
   state.colonyOutput.assignments.sol = { industry: 0, research: 0, culture: 0 };
   const design = failure === 'mining' ? installComponent(createDesign('corvette', true), 'service_1',
-    createComponentWithId('mining', 'late-miner')) : createCombatDesign('fighter');
+    createComponentWithId('mining', 'late-miner')) : createDesign('fighter', true);
   state.session.production.lastOrderId = 2;
   state.session.ships = [{ id: 1, factionId: 'blue', systemId: 'rift', design, fuel: 3 }];
   state.operations = { '1': createOperationalState(design) };
@@ -183,7 +182,7 @@ it('the actual bounded AI earns science, completes an opening and retains indust
 
 it('checkpoints a real partially funded research before short games finish and accounts for all science', () => {
   const input = baselineMatrix().find(input => input.kind === 'paid' && input.worldCount === 6 && input.schedule === 'current-ai')!;
-  const run = runBaseline(input);
+  const run = runBaseline({ ...input, maxTurns: 16 });
   expect(run.checkpoint?.turnsExecuted).toBe(4);
   const restored = decodeConquestSave(run.checkpoint!.json);
   expect(Object.values(restored.research.blue.progress).some(value => value > 0)).toBe(true);

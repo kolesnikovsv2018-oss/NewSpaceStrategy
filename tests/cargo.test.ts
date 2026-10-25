@@ -97,15 +97,16 @@ describe('cargo in ship state', () => {
     expect(ship.getTotalWeight()).toBe(before.mass + 20);
     const speed = 100 * before.thrust / (before.thrust + (before.mass + 20) * 0.1);
     expect(ship.getCurrentMaxSpeed()).toBeCloseTo(speed);
-    expect(ship.velocity.x).toBeCloseTo(speed * 0.6);
-    expect(ship.velocity.y).toBeCloseTo(speed * 0.8);
+    expect(ship.velocity.x).toBe(0);
+    expect(ship.velocity.y).toBe(0);
     ship.update(0.5);
-    expect(ship.position.x).toBeCloseTo(speed * 0.6 * 0.5);
+    const accelerated = before.thrust / (before.mass + 20) * 0.5;
+    expect(ship.position.x).toBeCloseTo(accelerated * 0.6 * 0.5);
     expect(ship.getTotalCost()).toBe(before.cost);
     expect(calculateShipStats(ship.getDesign())).toEqual(before);
     expect(ship.unloadCargo('ore', 10)).toBe(true);
     expect(ship.getTotalWeight()).toBe(before.mass);
-    expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(before.speed);
+    expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(accelerated);
     expect(ship.cargoHold.currentWeight).toBe(0);
     expect(ship.cargoHold.usedSpace).toBe(0);
   });
@@ -124,8 +125,8 @@ describe('cargo in ship state', () => {
 
   it('caps payload by hull mass reserve rather than equipment slot count', () => {
     const engineOnly = installComponent(createDesign('corvette'), 'engine_1', createComponent('engine'));
-    const design = installComponent(engineOnly, 'armor_1', { ...createComponent('armor'), kind: 'armor',
-      armorPoints: 1100, beamResistance: 0, projectileResistance: 0 });
+    const design = installComponent(engineOnly, 'armor_1', {  ...createComponent('armor'), kind: 'armor',
+      armorPoints: 1100, beamResistance: 0, projectileResistance: 0 , tacticalVariant: 'standard' as const});
     const stats = calculateShipStats(design);
     expect(stats.mass).toBe(297);
     expect(stats.cargoMassLimit).toBe(53);
@@ -163,21 +164,23 @@ describe('cargo in ship state', () => {
     expect(ship.getTotalWeight()).toBe(mass);
   });
 
-  it('loads the original six-slot v1 schema and persists blueprints without runtime cargo', () => {
+  it('rejects the original six-slot v1 and persists current blueprints without runtime cargo', () => {
     const data = new Map<string, string>();
     const store: StoragePort = { getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value); } };
     const oldV1 = createV1Design();
-    store.setItem(ShipDesignManager.V1_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, designs: [oldV1], components: [] }));
+    const oldBytes = JSON.stringify({ schemaVersion: 1, designs: [oldV1], components: [] });
+    store.setItem('orion_shipyard_v1', oldBytes);
     const repository = new ShipDesignManager(store);
-    const loaded = repository.load().designs[0];
-    expect(loaded.slots.slice(0, 6)).toEqual(oldV1.slots);
-    expect(loaded.id).toBe(oldV1.id);
+    expect(repository.load().designs).toEqual([]);
+    expect(() => repository.importJSON(oldBytes)).toThrow('Версия формата библиотеки не поддерживается');
+    const loaded = createDesign('corvette', true);
     const ship = new DesignedShip(loaded, 'blue');
     expect(ship.loadCargo(legacyOre)).toBe(true);
     repository.saveDesign(ship.getDesign());
     const reopened = new ShipDesignManager(store).load().designs[0];
     expect(reopened.slots).toHaveLength(8);
-    expect(reopened.schemaVersion).toBe(2);
+    expect(reopened.schemaVersion).toBe(5);
+    expect(store.getItem('orion_shipyard_v1')).toBe(oldBytes);
     expect(designSchema.safeParse({ ...reopened, cargo: [ore] }).success).toBe(false);
     expect(repository.exportJSON()).not.toContain('cargo');
     expect(new DesignedShip(reopened, 'blue').getState().cargo).toEqual([]);

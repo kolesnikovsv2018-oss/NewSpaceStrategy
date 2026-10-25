@@ -2,12 +2,12 @@ import { createConquest, conquestSchema, executeConquestCommand, convertConquest
   getConquestOutcome, type Conquest, type ConquestCommand, type ConquestResult, type ConquestView } from '../domain/conquest';
 import { buildConquestDesigns, executeConquestAiTurn } from '../domain/conquestAi';
 import { getDefaultResearchTree, getResearchAccess, isCampaignDesignAvailable, describeResearchEffect, getResearchProgress } from '../domain/campaignResearch';
-import { getColonyProductionQuote, getColonyProductionRefund, type Workforce } from '../domain/campaignOutput';
-import { getRefuelQuote } from '../domain/campaignShips';
-import { getRepairQuote, getAmmunitionQuote } from '../domain/campaignOperations';
+import { getColonyProductionQuote, getColonyProductionRefund, getColonyProjectRefund, type Workforce } from '../domain/campaignOutput';
+import { getTravelCapabilities, getFleetTravelQuotes, getStrategicRefuelQuote, formatStrategicFuel, getWorldDistance } from '../domain/campaignTravel';
+import { getFleetTransit } from '../domain/campaignFleets';
+import { getRepairQuote, getAmmunitionQuote, getRefitQuote } from '../domain/campaignOperations';
 import { HULLS, type ShipDesign } from '../domain/shipDesign';
 import { createColonizerDesign } from '../domain/civilianPresets';
-import { getWorldDistance } from '../domain/campaignTravel';
 import type { BattleFrame } from '../domain/conquestBattle';
 import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
 import { MAX_GALAXY_WORLDS } from '../domain/galaxyMap';
@@ -580,6 +580,7 @@ export class ConquestScene extends Phaser.Scene {
       }), `conquest-order-${record.id}`, manual && own, 145);
     });
     this.pager(records.length, 4, 655);
+    this.control(845, 626, 'Работы мира', () => this.showColonyProjects(view, manual), 'conquest-world-projects', own, 125);
     this.control(980, 626, 'Разбивка колонии', () => this.showColonyEffects(view), 'conquest-effects', own, 230);
   }
 
@@ -595,21 +596,26 @@ export class ConquestScene extends Phaser.Scene {
         this.selectedShips = this.selectedShips.includes(ship.id) ? this.selectedShips.filter(id => id !== ship.id) : [...this.selectedShips.slice(-9), ship.id];
         this.render();
       }, `conquest-ship-${ship.id}`, true, 325);
-      text(this, this.root!, 370, ypos, `Корпус ${Math.ceil(operation.hull)} · топливо ${ship.fuel}/3`, 14);
-      text(this, this.root!, 370, ypos + 19, ship.transit ? `→ ${ship.transit.destinationId}` : `Боезапас: ${operation.ammunition.map(item => item.amount).join(', ') || '—'}`, 12);
+      text(this, this.root!, 370, ypos, `HP ${Math.ceil(operation.hull)} · бак ${formatStrategicFuel(ship.fuel)}/${formatStrategicFuel(getTravelCapabilities(ship.design.strategicEquipment).fuelCapacity)}`, 14);
+      text(this, this.root!, 370, ypos + 19, ship.transit ? `→ ${ship.transit.destinationId} · ${ship.transit.remainingTurns} своих ходов` : `Боезапас: ${operation.ammunition.map(item => item.amount).join(', ') || '—'}`, 12);
     });
     const ship = ships.find(item => item.id === this.selectedShips[0]);
     const groups = view.fleets.filter(fleet => fleet.systemId === this.selected);
     const group = groups.find(fleet => fleet.id === this.selectedGroup);
+    const groupTransit = group && getFleetTransit(group, view.ships);
     text(this, this.root!, 655, 385, group ? `Группа #${group.id} · кораблей ${group.shipIds.length}` : ship ? `Корабль #${ship.id}` : 'Выбор корабля или группы', 17);
     const stationary = !!ship && !ship.transit;
     const costs = ship ? this.serviceCosts(view, ship.id) : undefined;
-    this.control(655, 427, costs ? `Топливо ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: this.selected, shipId: ship.id }), 'conquest-refuel', manual && stationary && ship!.fuel < 3, 180);
+    this.control(655, 427, costs ? `Топливо ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: this.selected, shipId: ship.id }), 'conquest-refuel', manual && stationary && ship!.fuel < getTravelCapabilities(ship!.design.strategicEquipment).fuelCapacity, 180);
     this.control(845, 427, costs ? `Ремонт ${costs.repair}` : 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: this.selected, shipId: ship.id }), 'conquest-repair', manual && stationary, 165);
     this.control(1020, 427, costs ? `Снаряды ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: this.selected, shipId: ship.id }), 'conquest-resupply', manual && stationary, 175);
     this.control(655, 478, 'Выбрать цель перелёта', () => this.selectDestination(view, ship?.id, group?.id),
-      'conquest-select-destination', manual && (!!group || stationary), 540);
-    text(this, this.root!, 655, 536, `Прямой перелёт · дальность ${view.strategicRange} гал. ед.`, 14);
+      'conquest-select-destination', manual && (!!group && !groupTransit || stationary) &&
+        !view.workProjects.some(project => project.kind === 'refit' && project.shipId === ship?.id), 350);
+    this.control(1015, 478, 'Переоснастить', () => ship && this.requestRefit(view, ship.id),
+      'conquest-refit', manual && stationary, 180);
+    text(this, this.root!, 655, 536, groupTransit ? `В пути → ${groupTransit.destinationId} · ${groupTransit.remainingTurns} своих ходов` :
+      ship ? this.travelLabel(ship) : 'Прямой перелёт: возможности каждого проекта', 14);
     this.control(655, 578, 'Создать группу', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }), 'conquest-create-fleet', manual && this.selectedShips.length >= 2, 180);
     this.control(845, 578, 'Выбрать группу', () => {
       this.pauseAi(); this.render();
@@ -619,8 +625,8 @@ export class ConquestScene extends Phaser.Scene {
         this.selectedGroup = id; this.selectedShips = []; this.render();
       });
     }, 'conquest-select-fleet', groups.length > 0, 180);
-    this.control(1035, 578, 'Расформировать', () => group && this.command({ kind: 'disbandFleet', fleetId: group.id, systemId: this.selected }), 'conquest-disband', manual && !!group, 180);
-    text(this, this.root!, 655, 638, 'Цены служб: кредиты / минералы · перелёт: 1 топлива', 14);
+    this.control(1035, 578, 'Расформировать', () => group && this.command({ kind: 'disbandFleet', fleetId: group.id, systemId: this.selected }), 'conquest-disband', manual && !!group && !groupTransit, 180);
+    text(this, this.root!, 655, 638, 'Цены: кр./мин. · расход 0.005 топлива/гал. ед.', 14);
     this.pager(ships.length, 4);
   }
 
@@ -655,6 +661,67 @@ export class ConquestScene extends Phaser.Scene {
     });
   }
 
+  private showColonyProjects(view: ConquestView, manual: boolean): void {
+    const systemId = this.selected;
+    const source = this.state;
+    this.pauseAi(); this.render();
+    const quote = view.terraforming.find(item => item.systemId === systemId)?.quote;
+    const projects = view.workProjects.filter(project => project.systemId === systemId);
+    const forecast = view.colonyOutput.forecast.production.find(item => item.systemId === systemId);
+    const items: Array<{ label: string; value: number }> = projects.map(project => {
+      const refund = getColonyProjectRefund(project);
+      const timing = forecast?.orderId !== project.id ? 'ожидает FIFO' : !forecast.productionPoints
+        ? 'пауза: нет промышленности' : `${Math.ceil((project.productionCost - project.productionProgress) / forecast.productionPoints)} своих ходов`;
+      return { label: `#${project.id} ${project.kind === 'terraform' ? 'toxic→habitable' : `refit ship#${project.shipId}`}: ${project.productionProgress}/${project.productionCost}, ${timing}. Отмена: ${refund.credits}/${refund.minerals}`,
+        value: project.id };
+    });
+    items.push({ label: quote?.ok
+      ? `Начать toxic→habitable: ${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков общего FIFO`
+      : quote?.reason ?? 'Нужна собственная колония', value: 0 });
+    chooseItem(this, 'Общий FIFO: корабли и работы мира', items, id => {
+      if (this.disposed || this.state !== source) return;
+      if (!manual) { this.message = 'Работы доступны только активной управляемой стороне'; this.render(); return; }
+      if (id) {
+        const project = projects.find(project => project.id === id)!;
+        const refund = getColonyProjectRefund(project);
+        const timing = forecast?.orderId !== id ? 'Ожидает общего FIFO' : productionTiming(view, systemId);
+        this.confirm(`${project.productionProgress}/${project.productionCost} очков. ${timing}.\nОтменить работу? Возврат ${refund.credits} кр./${refund.minerals} мин., только за неиспользованные очки.`, () =>
+          this.command({ kind: 'cancelColonyProject', systemId, projectId: id }));
+      } else if (quote?.ok) this.confirm(`toxic → habitable: ${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков.\nОплатить проект? Промышленность общая с кораблями; захват отменяет работу без возврата.`, () =>
+        this.command({ kind: 'startTerraform', systemId }));
+      else { this.message = quote?.reason ?? 'Работа недоступна'; this.render(); }
+    });
+  }
+
+  private requestRefit(view: ConquestView, shipId: number): void {
+    const source = this.state;
+    const ship = view.ships.find(ship => ship.id === shipId);
+    if (!ship) { this.message = 'Корабль недоступен в текущем наблюдении'; this.render(); return; }
+    const active = view.workProjects.find(project => project.kind === 'refit' && project.shipId === shipId);
+    if (active) {
+      const refund = getColonyProjectRefund(active);
+      const forecast = view.colonyOutput.forecast.production.find(row => row.systemId === ship.systemId);
+      const timing = forecast?.orderId !== active.id ? 'Ожидает общего FIFO' : productionTiming(view, ship.systemId);
+      this.confirm(`Переоснащение #${active.id}: ${active.productionProgress}/${active.productionCost} очков. ${timing}.\nОтменить за ${refund.credits} кр./${refund.minerals} мин.?`, () =>
+        this.command({ kind: 'cancelColonyProject', systemId: ship.systemId, projectId: active.id }));
+      return;
+    }
+    const candidates = view.projects.filter(project => project.design.hullId === ship.design.hullId &&
+      isCampaignDesignAvailable(project.design, view.research, view.researchTree));
+    if (!candidates.length) { this.message = 'Сохраните свой доступный полётный проект того же корпуса'; this.render(); return; }
+    this.pauseAi(); this.render();
+    chooseItem(this, 'Переоснащение: собственный проект', candidates.map(project => {
+      const quote = getRefitQuote(ship.design, project.design, view.colonyOutput.rules.productionCreditsPerPoint);
+      return { label: `${project.name}: ${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков FIFO`,
+        value: project.design };
+    }), design => {
+      if (this.disposed || this.state !== source) return;
+      const quote = getRefitQuote(ship.design, design, view.colonyOutput.rules.productionCreditsPerPoint);
+      this.confirm(`${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков общего FIFO.\nОплатить refit? До завершения полёт/группировка заблокированы; HP/топливо не добавляются, новое оружие пустое.`, () =>
+        this.command({ kind: 'startRefit', shipId, systemId: ship.systemId, design: structuredClone(design) }));
+    });
+  }
+
   private showResearchJournal(view: ConquestView): void {
     this.pauseAi(); this.render();
     const items = view.researchJournal.flatMap(entry => {
@@ -675,7 +742,7 @@ export class ConquestScene extends Phaser.Scene {
       .reduce((sum, slot) => sum + (slot.component?.kind === 'repair' ? slot.component.repairRate : 0), 0);
     const operation = view.operations[String(ship.id)];
     const repair = getRepairQuote(ship.design, operation, atColony, rate), ammunition = getAmmunitionQuote(ship.design, operation);
-    const fuel = getRefuelQuote(ship.fuel);
+    const fuel = getStrategicRefuelQuote(ship.fuel, getTravelCapabilities(ship.design.strategicEquipment).fuelCapacity);
     return { fuel: `${fuel.cost.credits}/${fuel.cost.minerals}`, repair: `${repair.cost.credits}/${repair.cost.minerals}`,
       ammunition: `${ammunition.cost.credits}/${ammunition.cost.minerals}` };
   }
@@ -730,16 +797,38 @@ export class ConquestScene extends Phaser.Scene {
   private selectDestination(view: ConquestView, shipId?: number, fleetId?: number): void {
     this.pauseAi(); this.render();
     const source = this.state, systemId = this.selected;
-    chooseItem(this, `Прямой перелёт · дальность ${view.strategicRange} гал. ед.`,
-      view.galaxy.systems.filter(system => system.id !== systemId).map(system => {
-        const distance = getWorldDistance(view.galaxy.systems, systemId, system.id);
-        return { label: `${system.name} · ${distance.toFixed(1)} гал. ед.${distance > view.strategicRange ? ' · вне дальности' : ''}`,
-          value: system.id };
-      }), destinationId => {
+    const fleet = view.fleets.find(item => item.id === fleetId);
+    const ships = view.ships.filter(item => fleet ? fleet.shipIds.includes(item.id) : item.id === shipId);
+    if (!ships.length) return;
+    const routes = view.galaxy.systems.filter(system => system.id !== systemId).map(system => {
+      const distance = getWorldDistance(view.galaxy.systems, systemId, system.id);
+      const quotes = getFleetTravelQuotes(distance, ships.map(ship => ({
+        capabilities: getTravelCapabilities(ship.design.strategicEquipment), fuel: ship.fuel })));
+      const rejected = quotes.find(item => !item.quote.ok)?.quote;
+      const quote = quotes[0].quote;
+      const summary = rejected && !rejected.ok ? rejected.message : quote.ok ?
+        `${quote.totalTurns} своих ходов · ${formatStrategicFuel(quote.fuelCost)} топлива/корабль` : quote.message;
+      return { system, distance, quotes, summary, allowed: !rejected };
+    });
+    chooseItem(this, 'Прямой перелёт · срок и расход ›',
+      routes.map(route => ({ label: `${route.allowed ? '' : 'Нельзя · '}${this.shorten(route.system.name, 18)} · ${route.summary}`, value: route })), route => {
         if (this.disposed || this.state !== source) return;
-        if (fleetId !== undefined) this.command({ kind: 'sendFleet', fleetId, systemId, destinationId });
-        else if (shipId !== undefined) this.command({ kind: 'sendShip', shipId, systemId, destinationId });
+        const capabilities = route.quotes[0].capabilities;
+        this.confirm(`${route.system.name}\n${route.distance.toFixed(3)} гал. ед. · ${route.summary}\n` +
+          `Скорость ${capabilities.strategicSpeed}, переход ≤${capabilities.maxJumpDistance}.\n` +
+          ships.map(ship => `#${ship.id}: бак ${formatStrategicFuel(ship.fuel)}/${formatStrategicFuel(getTravelCapabilities(ship.design.strategicEquipment).fuelCapacity)}`).join('; ') +
+          '\nОтправить? Списание сразу, прибытие только после своих ходов.', () => {
+          if (this.disposed || this.state !== source) return;
+          const destinationId = route.system.id;
+          if (fleetId !== undefined) this.command({ kind: 'sendFleet', fleetId, systemId, destinationId });
+          else if (shipId !== undefined) this.command({ kind: 'sendShip', shipId, systemId, destinationId });
+        });
       });
+  }
+
+  private travelLabel(ship: ConquestView['ships'][number]): string {
+    const capabilities = getTravelCapabilities(ship.design.strategicEquipment);
+    return `Скорость ${capabilities.strategicSpeed} ед./свой ход · переход ≤${capabilities.maxJumpDistance}`;
   }
 
   private renderNarrow(): void {
@@ -879,7 +968,9 @@ export class ConquestScene extends Phaser.Scene {
         const forecast = view.colonyOutput.forecast.production.find(item => item.systemId === selected.id);
         if (forecast) label(658, `${forecast.productionPoints} произв. очк. · ${forecast.sciencePoints} науки · ${forecast.culturePoints} культуры за свой ход`);
       } else {
-        control(workers ? 440 : 388, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects');
+        this.control(12, workers ? 440 : 388, 'Чертежи', () => this.openProjectEditor(), 'conquest-projects', true, (width - 8) / 2);
+        this.control(20 + (width - 8) / 2, workers ? 440 : 388, 'Работы мира',
+          () => this.showColonyProjects(view, manual), 'conquest-world-projects', own, (width - 8) / 2);
         label(492, `Полная оплата сразу. FIFO: ${productionTiming(view, selected.id)}.`)
           .setName('conquest-production-forecast');
         const records = [...view.production.orders, ...view.production.completed].filter(record => record.systemId === selected.id);
@@ -933,20 +1024,25 @@ export class ConquestScene extends Phaser.Scene {
         this.render();
       }, `conquest-ship-${current.id}`, true, width);
       const operation = view.operations[String(current.id)];
-      label(288, `Корпус ${Math.ceil(operation.hull)} · топливо ${current.fuel}/3\n${current.transit ? `В пути → ${current.transit.destinationId}` : `Снаряды: ${operation.ammunition.map(item => item.amount).join(', ') || '—'}`}`);
+      label(288, `HP ${Math.ceil(operation.hull)} · бак ${formatStrategicFuel(current.fuel)}/${formatStrategicFuel(getTravelCapabilities(current.design.strategicEquipment).fuelCapacity)}\n${current.transit ? `→ ${current.transit.destinationId} · ${current.transit.remainingTurns} своих ходов` : `Снаряды: ${operation.ammunition.map(item => item.amount).join(', ') || '—'}`}`);
     } else label(240, `Свои корабли: ${this.shorten(view.galaxy.systems.find(system => system.id === this.selected)!.name, 24)} — нет`);
     const ship = ships.find(item => item.id === this.selectedShips[0]);
     const groups = view.fleets.filter(item => item.systemId === this.selected), group = groups.find(item => item.id === this.selectedGroup);
+    const groupTransit = group && getFleetTransit(group, view.ships);
     const stationary = !!ship && !ship.transit, costs = ship ? this.serviceCosts(view, ship.id) : undefined;
     this.control(12, 344, costs ? `Бак ${costs.fuel}` : 'Заправить', () => ship && this.command({ kind: 'refuelShip', systemId: ship.systemId, shipId: ship.id }),
-      'conquest-refuel', manual && stationary && ship!.fuel < 3, third);
+      'conquest-refuel', manual && stationary && ship!.fuel < getTravelCapabilities(ship!.design.strategicEquipment).fuelCapacity, third);
     this.control(20 + third, 344, costs ? `HP ${costs.repair}` : 'Ремонт', () => ship && this.command({ kind: 'repairShip', systemId: ship.systemId, shipId: ship.id }),
       'conquest-repair', manual && stationary, third);
     this.control(28 + third * 2, 344, costs ? `Снар. ${costs.ammunition}` : 'Боезапас', () => ship && this.command({ kind: 'resupplyShip', systemId: ship.systemId, shipId: ship.id }),
       'conquest-resupply', manual && stationary, third);
     this.control(12, 400, 'Выбрать цель перелёта', () => this.selectDestination(view, ship?.id, group?.id),
-      'conquest-select-destination', manual && (!!group || stationary), width);
-    label(452, `Дальность: ${view.strategicRange} гал. ед. · прямой перелёт`);
+      'conquest-select-destination', manual && (!!group && !groupTransit || stationary) &&
+        !view.workProjects.some(project => project.kind === 'refit' && project.shipId === ship?.id), (width - 8) / 2);
+    this.control(20 + (width - 8) / 2, 400, 'Переоснастить', () => ship && this.requestRefit(view, ship.id),
+      'conquest-refit', manual && stationary, (width - 8) / 2);
+    label(452, groupTransit ? `В пути → ${groupTransit.destinationId} · ${groupTransit.remainingTurns} своих ходов` :
+      ship ? this.travelLabel(ship) : 'Прямой перелёт по возможностям проекта');
     this.control(12, 510, 'Группа +', () => this.command({ kind: 'createFleet', systemId: this.selected, shipIds: [...this.selectedShips] }),
       'conquest-create-fleet', manual && this.selectedShips.length >= 2, third);
     this.control(20 + third, 510, 'Выбрать', () => {
@@ -957,11 +1053,11 @@ export class ConquestScene extends Phaser.Scene {
       });
     }, 'conquest-select-fleet', groups.length > 0, third);
     this.control(28 + third * 2, 510, 'Разделить', () => group && this.command({ kind: 'disbandFleet', systemId: group.systemId, fleetId: group.id }),
-      'conquest-disband', manual && !!group, third);
+      'conquest-disband', manual && !!group && !groupTransit, third);
     label(564, group ? `Группа #${group.id} · кораблей ${group.shipIds.length}` : `Выбрано кораблей: ${this.selectedShips.length}${ship ? ` · первый #${ship.id}` : ''}`);
     this.narrowPager(ships.length, 612);
-    label(668, costs ? `Цены кр./мин.: бак ${costs.fuel}, ремонт ${costs.repair}, снаряды ${costs.ammunition}. Полёт: 1 топлива.` :
-      'Цены: кредиты/минералы. Полёт: 1 топлива.');
+    label(668, costs ? `Цены кр./мин.: бак ${costs.fuel}, HP ${costs.repair}, снаряды ${costs.ammunition}. Расход0.005/ед.` :
+      'Цены: кр./мин. Расход0.005 топлива/гал. ед.');
   }
 
   private openReplay(): void {

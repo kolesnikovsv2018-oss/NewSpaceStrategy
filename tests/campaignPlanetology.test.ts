@@ -9,6 +9,7 @@ import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSav
 import { validateGalaxyMap } from '../src/domain/galaxyMap';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { createDesign, createComponentWithId, installComponent } from '../src/domain/shipDesign';
+import { finishWorkTravel } from './fixtures/colonyWork';
 
 function apply(state: Conquest, command: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
@@ -40,7 +41,7 @@ function arrive() {
   let state = setup.state;
   for (const technologyId of ['engineering', 'support', 'ordnance', 'capital']) state = earn(state, technologyId);
   state = apply(state, { kind: 'sendShip', systemId: setup.home, shipId: 1, destinationId: setup.target });
-  return { ...setup, state: round(state) };
+  return { ...setup, state: finishWorkTravel(state, 1) };
 }
 
 it('keeps detection, paid survey, earned adaptation and paid founding as four distinct gates', () => {
@@ -110,7 +111,7 @@ it.each(['credits', 'minerals'] as const)('rejects insufficient survey %s withou
 it('blocks survey with enemies, and occupation preserves toxic residents without giving adaptation', () => {
   const { state, target } = arrive();
   const defender = createDesign('fighter', true);
-  state.session.ships.push({ id: 3, factionId: 'red', systemId: target, design: defender, fuel: 3 });
+  state.session.ships.push({ id: 3, factionId: 'red', systemId: target, design: defender, fuel: 3000 });
   state.session.production.lastOrderId = 3;
   state.operations['3'] = createOperationalState(defender);
   expect(executeConquestCommand(state, { kind: 'survey', systemId: target, factionId: 'blue',
@@ -118,7 +119,7 @@ it('blocks survey with enemies, and occupation preserves toxic residents without
   state.session.ships = state.session.ships.filter(ship => ship.id !== 3);
   delete state.operations['3'];
   const attacker = installComponent(createDesign('fighter', true), 'beam_1', createComponentWithId('beam', 'attacker'));
-  state.session.ships.push({ id: 4, factionId: 'blue', systemId: target, design: attacker, fuel: 3 });
+  state.session.ships.push({ id: 4, factionId: 'blue', systemId: target, design: attacker, fuel: 3000 });
   state.session.production.lastOrderId = 4;
   state.operations['4'] = createOperationalState(attacker);
   const neutralArrival = apply(conquestSchema.parse(state), { kind: 'endTurn' });
@@ -221,7 +222,7 @@ it('does not leak an unstudied barren type through mining income or allow coloni
   state.research.blue.completed = ['applied']; state.researchJournal.blue = { applied: 1 };
   const design = installComponent(createDesign('corvette', true), 'service_1', createComponentWithId('mining', 'miner'));
   state.session.production.lastOrderId = 3;
-  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'rift', fuel: 3, design });
+  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'rift', fuel: 3000, design });
   state.operations['3'] = createOperationalState(design);
   expect(getConquestView(state, 'blue').income.minerals).toBe(5000);
   const studied = apply(conquestSchema.parse(state), { kind: 'survey', systemId: 'rift' });

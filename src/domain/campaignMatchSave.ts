@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { campaignMatchSchema, campaignScenarioSchema, type CampaignMatch } from './campaignMatch';
-import { CAMPAIGN_RULES_VERSION, CAMPAIGN_SAVE_FORMAT, CAMPAIGN_SAVE_SCHEMA_VERSION,
+import { CAMPAIGN_RULES_VERSION, CAMPAIGN_SAVE_FORMAT,
   MAX_CAMPAIGN_SAVE_BYTES } from './campaignSave';
-import { CAMPAIGN_RUN_SAVE_SCHEMA_VERSION, decodeCampaignRunSave, type CampaignRunSaveErrorCode } from './campaignRunSave';
+import type { CampaignRunSaveErrorCode } from './campaignRunSave';
 
-export const CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION = 3;
+export const CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION = 8;
 export type CampaignMatchSaveErrorCode = CampaignRunSaveErrorCode | 'UNSUPPORTED_SCENARIO';
 export interface CampaignMatchSaveFailure { ok: false; code: CampaignMatchSaveErrorCode; message: string }
 export type EncodeCampaignMatchSaveResult = { ok: true; json: string } | CampaignMatchSaveFailure;
@@ -66,16 +66,8 @@ export function decodeCampaignMatchSave(inputJson: unknown): DecodeCampaignMatch
     if (!parsed.success) return failure('INVALID_SAVE');
     envelope = parsed.data;
   } catch { return failure('INVALID_SAVE'); }
-  if (envelope.schemaVersion !== CAMPAIGN_SAVE_SCHEMA_VERSION && envelope.schemaVersion !== CAMPAIGN_RUN_SAVE_SCHEMA_VERSION
-    && envelope.schemaVersion !== CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION) return failure('UNSUPPORTED_SAVE_VERSION');
+  if (envelope.schemaVersion !== CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION) return failure('UNSUPPORTED_SAVE_VERSION');
   if (envelope.rulesVersion !== CAMPAIGN_RULES_VERSION) return failure('UNSUPPORTED_RULES_VERSION');
-  if (envelope.schemaVersion !== CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION) {
-    if (owns(envelope, 'scenario')) return failure('INVALID_SAVE');
-    try {
-      const legacy = decodeCampaignRunSave(inputJson);
-      return legacy.ok ? readMatch({ run: legacy.run, scenario: 'sandbox' }) : failure(legacy.code);
-    } catch { return failure('INVALID_SAVE'); }
-  }
   if (!owns(envelope, 'control') || !owns(envelope, 'scenario')) return failure('INVALID_SAVE');
   try {
     const control = savedControlSchema.safeParse(envelope.control);

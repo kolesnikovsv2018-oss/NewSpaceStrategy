@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { calculateShipStats, type ShipDesign } from './shipDesign';
+import { getProductionQuote } from './production';
 
 export const operationalStateSchema = z.object({
   hull: z.number().finite().positive(),
@@ -8,8 +9,9 @@ export const operationalStateSchema = z.object({
 export type OperationalState = z.infer<typeof operationalStateSchema>;
 
 export function createOperationalState(design: ShipDesign): OperationalState {
-  return { hull: calculateShipStats(design).hitPoints, ammunition: design.slots.flatMap(slot =>
-    slot.component?.kind === 'projectile' ? [{ slotId: slot.id, amount: slot.component.ammoCapacity }] : []) };
+  const stats = calculateShipStats(design);
+  return { hull: stats.hitPoints, ammunition: stats.weapons.flatMap(weapon =>
+    weapon.definition.kind === 'projectile' ? [{ slotId: weapon.slotId, amount: weapon.definition.ammoCapacity }] : []) };
 }
 
 export function readOperationalState(input: unknown, design: ShipDesign): OperationalState {
@@ -32,4 +34,26 @@ export function getAmmunitionQuote(design: ShipDesign, operation: OperationalSta
   const maximum = createOperationalState(design);
   const amount = maximum.ammunition.reduce((sum, item) => sum + item.amount - operation.ammunition.find(weapon => weapon.slotId === item.slotId)!.amount, 0);
   return { amount, cost: { credits: amount, minerals: amount } };
+}
+
+export function getRefitQuote(oldDesign: ShipDesign, design: ShipDesign, creditsPerPoint: number) {
+  if (oldDesign.hullId !== design.hullId) throw new Error('Переоснащение не меняет корпус');
+  const old = getProductionQuote(oldDesign).cost, next = getProductionQuote(design).cost;
+  const price = (value: number, previous: number) => Math.ceil(value / 4) + Math.max(0, value - previous);
+  const cost = { credits: price(next.credits, old.credits), minerals: price(next.minerals, old.minerals) };
+  return { cost, productionCost: Math.max(1, Math.ceil(cost.credits / creditsPerPoint)) };
+}
+
+export function getRefitOperationalState(oldDesign: ShipDesign, design: ShipDesign, input: OperationalState): OperationalState {
+  const current = readOperationalState(input, oldDesign), maximum = createOperationalState(design);
+  if (current.hull > maximum.hull) throw new Error('Новый предел HP ниже текущего корпуса');
+  const ratings = ['damage', 'range', 'fireRate', 'accuracy', 'ammoCapacity'] as const;
+  const previous = calculateShipStats(oldDesign), target = calculateShipStats(design);
+  return { hull: current.hull, ammunition: maximum.ammunition.map(item => {
+    const old = previous.weapons.find(weapon => weapon.slotId === item.slotId)?.definition;
+    const next = target.weapons.find(weapon => weapon.slotId === item.slotId)?.definition;
+    const same = old?.kind === 'projectile' && next?.kind === 'projectile' &&
+      ratings.every(key => old[key] === next[key]);
+    return { slotId: item.slotId, amount: same ? current.ammunition.find(weapon => weapon.slotId === item.slotId)!.amount : 0 };
+  }) };
 }

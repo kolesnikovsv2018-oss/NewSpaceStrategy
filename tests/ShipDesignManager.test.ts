@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ShipDesignManager, migrateLegacyComponent, type StoragePort } from '../src/utils/ShipDesignManager';
+import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { calculateShipStats, createComponent, createDesign } from '../src/domain/shipDesign';
 
 function storage(): StoragePort & { data: Map<string, string> } {
@@ -60,8 +60,8 @@ describe('versioned design repository', () => {
     const repository = new ShipDesignManager(store);
     const saved = repository.saveDesign(createDesign('corvette', true));
     const before = store.getItem(ShipDesignManager.STORAGE_KEY);
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 2, designs: [{ ...saved, name: 'Conflict' }], components: [] }))).toThrow('уже существует');
-    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 2, designs: [{ ...saved, hullId: 'fake' }], components: [] }))).toThrow();
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 5, designs: [{ ...saved, name: 'Conflict' }], components: [] }))).toThrow('уже существует');
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 5, designs: [{ ...saved, hullId: 'fake' }], components: [] }))).toThrow();
     expect(store.getItem(ShipDesignManager.STORAGE_KEY)).toBe(before);
   });
 
@@ -75,23 +75,88 @@ describe('versioned design repository', () => {
     expect(second.load()).toEqual(first.load());
   });
 
-  it('migrates old unversioned saves while retaining their original keys', () => {
+  it('reads only v3 and retains every older key verbatim on a fresh save', () => {
     const store = storage();
-    const now = new Date().toISOString();
-    const oldWeapon = { id: 'old-beam', name: 'Старый лазер', weaponType: 'beam', damage: 25, range: 500, fireRate: 2, accuracy: 0.8, mass: 999999 };
-    const legacy = JSON.stringify([{ id: 'old-design', name: 'Архив', hull: { size: 'corvette' }, created: now, modified: now,
-      slots: [{ id: 'weapon_1', equipment: oldWeapon }, { id: 'sensor_1' }] }]);
-    store.setItem('orion_ship_configs', legacy);
+    const oldKeys = ['orion_shipyard_v2', 'orion_shipyard_v1', 'orion_ship_configs', 'orion_components'];
+    oldKeys.forEach(key => store.setItem(key, `unreadable original ${key}`));
+    const before = Array.from(store.data), get = vi.spyOn(store, 'getItem');
     const repository = new ShipDesignManager(store);
-    const design = repository.load().designs[0];
-    expect(design.slots[0].component?.kind).toBe('beam');
-    expect(calculateShipStats(design).mass).toBe(95);
-    repository.saveDesign(design);
-    expect(store.getItem('orion_ship_configs')).toBe(legacy);
+    expect(ShipDesignManager.STORAGE_KEY).toBe('orion_shipyard_v5');
+    expect(repository.load()).toEqual({ schemaVersion: 5, designs: [], components: [] });
+    repository.saveDesign(createDesign('corvette', true));
+    expect(get.mock.calls).toEqual([[ShipDesignManager.STORAGE_KEY], [ShipDesignManager.STORAGE_KEY]]);
+    expect(Array.from(store.data).filter(([key]) => key !== ShipDesignManager.STORAGE_KEY)).toEqual(before);
   });
 
-  it('refuses legacy modules with unsupported mechanics instead of silently dropping them', () => {
-    expect(() => migrateLegacyComponent({ id: 'x', name: 'Броня', armorPoints: 100, repairRate: 2,
-      beamResistance: 0, projectileResistance: 0 })).toThrow('ручного переноса');
+  it.each([1, 2, 3, 999])('explicitly refuses library version %s before any IO', schemaVersion => {
+    const store = storage(), get = vi.spyOn(store, 'getItem'), set = vi.spyOn(store, 'setItem');
+    const repository = new ShipDesignManager(store);
+    const json = JSON.stringify({ schemaVersion, designs: [], components: [] });
+    expect(() => repository.decode(json)).toThrow('Версия формата библиотеки не поддерживается');
+    expect(() => repository.importJSON(json)).toThrow('Версия формата библиотеки не поддерживается');
+    expect(get).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled();
+  });
+
+  it.each(['design version', 'missing variant', 'unknown variant'])('does not repair %s inside the current library', damage => {
+    const store = storage(), repository = new ShipDesignManager(store), design = createDesign('corvette', true);
+    const component = design.slots.find(slot => slot.component)?.component;
+    if (!component) throw Error('Expected component');
+    const input = { schemaVersion: 5, designs: [design], components: [] };
+    if (damage === 'design version') Reflect.set(design, 'schemaVersion', 2);
+    if (damage === 'missing variant') Reflect.deleteProperty(component, 'technologyVariant');
+    if (damage === 'unknown variant') Reflect.set(component, 'technologyVariant', 'future');
+    expect(() => repository.importJSON(JSON.stringify(input))).toThrow();
+    expect(store.data.size).toBe(0);
+  });
+
+  it('preserves explicit compact variants rather than granting or discarding them', () => {
+    const repository = new ShipDesignManager(storage()), design = createDesign('corvette', true);
+    const component = createComponent('beam'); component.technologyVariant = 'compact';
+    design.slots[0].component = component;
+    repository.saveDesign(design); repository.saveComponents([component]);
+    const restored = new ShipDesignManager(storage()); restored.importJSON(repository.exportJSON());
+    expect(restored.load()).toEqual(repository.load());
+    expect(restored.load().components[0].technologyVariant).toBe('compact');
+    expect(restored.load().designs[0].slots[0].component?.technologyVariant).toBe('compact');
+  });
+
+  it('keeps strict unique IDs and the 100-design/200-component limits on current imports', () => {
+    const store = storage(), repository = new ShipDesignManager(store);
+    const design = createDesign(), component = createComponent('beam');
+    const current = { schemaVersion: 5,
+      designs: Array.from({ length: 100 }, (_, index) => ({ ...design, id: `design-${index}` })),
+      components: Array.from({ length: 200 }, (_, index) => ({ ...component, id: `component-${index}` })) };
+    repository.importJSON(JSON.stringify(current)); expect(repository.load()).toEqual(current);
+    const before = Array.from(store.data), set = vi.spyOn(store, 'setItem');
+    for (const input of [
+      { ...current, designs: [...current.designs, { ...design, id: 'extra-design' }] },
+      { ...current, components: [...current.components, { ...component, id: 'extra-component' }] },
+      { ...current, designs: [design, design] },
+      { ...current, components: [component, component] },
+      { ...current, extra: true }
+    ]) expect(() => repository.importJSON(JSON.stringify(input))).toThrow();
+    expect(set).not.toHaveBeenCalled(); expect(Array.from(store.data)).toEqual(before);
+  });
+
+  it('does not commit earlier appended records when a later component conflicts', () => {
+    const store = storage(), repository = new ShipDesignManager(store), component = createComponent('beam');
+    repository.saveComponents([component]); const before = Array.from(store.data), set = vi.spyOn(store, 'setItem');
+    expect(() => repository.importJSON(JSON.stringify({ schemaVersion: 5, designs: [createDesign()],
+      components: [{ ...component, name: 'Conflict' }] }))).toThrow('уже существует');
+    expect(set).not.toHaveBeenCalled(); expect(Array.from(store.data)).toEqual(before);
+  });
+
+  it('measures the 5MB limit in UTF-8 before parsing and before writing', () => {
+    const store = storage(), repository = new ShipDesignManager(store);
+    const json = '{"schemaVersion":5,"designs":[],"components":[]}';
+    const exact = json + ' '.repeat(5_000_000 - new TextEncoder().encode(json).byteLength);
+    expect(repository.decode(exact)).toEqual({ schemaVersion: 5, designs: [], components: [] });
+    const parse = vi.spyOn(JSON, 'parse');
+    for (const text of [exact + ' ', 'я'.repeat(2_500_000) + '!']) expect(() => repository.decode(text)).toThrow('5 МБ');
+    expect(parse).not.toHaveBeenCalled(); parse.mockRestore();
+    const design = createDesign();
+    design.createdAt = '2026-10-25T00:00:00.' + '0'.repeat(5_000_000) + 'Z';
+    expect(() => repository.saveDesign(design)).toThrow('5 МБ');
+    expect(store.data.size).toBe(0);
   });
 });

@@ -1,9 +1,9 @@
 import type Phaser from 'phaser';
 import type { ConquestResult } from '../domain/conquest';
 import { MAX_CAMPAIGN_PROJECTS, type CampaignProject, type ProjectCommand } from '../domain/campaignProjects';
-import { designSchema, createDesign, createComponentWithId, acceptsComponent, HULLS,
+import { designSchema, createDesign, createComponentWithId, acceptsComponent, HULLS, withTacticalVariant,
   type ComponentKind, type ShipDesign } from '../domain/shipDesign';
-import { getResearchAccess, isCampaignComponentVariantAvailable, isCampaignDraftAvailable } from '../domain/campaignResearch';
+import { getResearchAccess, isCampaignComponentVariantAvailable, isCampaignDraftAvailable, hasCompactEquipment } from '../domain/campaignResearch';
 import { hasUnsavedDesign } from '../domain/shipDraft';
 import { ShipBuilderPanel } from './ShipBuilderPanel';
 import { button, panelBackground, text } from './ShipyardWidgets';
@@ -71,6 +71,13 @@ export class CampaignProjectPanel {
       options.components.filter(kind => acceptsComponent(slot, createComponentWithId(kind,
         `campaign-${hull.id}-${slot.id}-${kind}`))).map(kind =>
         createComponentWithId(kind, `campaign-${hull.id}-${slot.id}-${kind}`))));
+    if (hasCompactEquipment(options.research, options.tree)) this.components = this.components.flatMap(component =>
+      [component, { ...component, id: `${component.id}-compact`, technologyVariant: 'compact' }]);
+    this.components = this.components.flatMap(component => {
+      const tactical = withTacticalVariant(component);
+      return tactical.tacticalVariant !== 'standard' && isCampaignComponentVariantAvailable(tactical, options.research, options.tree)
+        ? [component, { ...tactical, id: `${component.id}-${tactical.tacticalVariant}` }] : [component];
+    });
     this.editor.setAvailableComponents(this.components);
     this.render();
   }

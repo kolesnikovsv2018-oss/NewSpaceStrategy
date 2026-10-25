@@ -41,6 +41,15 @@ const completedProductionSchema = z.object({
 }).strict();
 export type ColonyProductionOrder = z.infer<typeof productionOrderSchema>;
 export type ColonyCompletedProduction = z.infer<typeof completedProductionSchema>;
+const workFields = {
+  id: orderIdSchema, factionId: factionIdSchema, systemId: systemIdSchema,
+  cost: treasurySchema, productionCost: amountSchema.positive(), productionProgress: amountSchema
+};
+export const colonyProjectSchema = z.discriminatedUnion('kind', [
+  z.object({ ...workFields, kind: z.literal('terraform'), source: z.literal('toxic'), target: z.literal('habitable') }).strict(),
+  z.object({ ...workFields, kind: z.literal('refit'), shipId: orderIdSchema, design: flightDesignSchema }).strict()
+]).refine(project => project.productionProgress < project.productionCost, 'Проект уже завершён');
+export type ColonyProject = z.infer<typeof colonyProjectSchema>;
 
 const productionSchema = z.object({
   orders: z.array(productionOrderSchema).max(MAX_PRODUCTION_RECORDS * 2),
@@ -73,6 +82,7 @@ const productionSchema = z.object({
 export const colonyOutputStateSchema = z.object({
   assignments: z.record(systemIdSchema, workforceSchema),
   reserves: z.object({ blue: reserveSchema, red: reserveSchema }).strict(),
+  projects: z.array(colonyProjectSchema).max(MAX_PRODUCTION_RECORDS * 2),
   production: productionSchema
 }).strict();
 export type ColonyOutputState = z.infer<typeof colonyOutputStateSchema>;
@@ -89,12 +99,19 @@ export function getColonyProductionQuote(design: unknown, rules: ColonyOutputRul
 
 export function getColonyProductionRefund(orderInput: ColonyProductionOrder): Treasury {
   const order = productionOrderSchema.parse(orderInput);
-  const unused = order.productionCost - order.productionProgress;
-  const share = (cost: number) => Number(BigInt(cost) * BigInt(unused) / BigInt(order.productionCost));
+  return getColonyProjectRefund(order);
+}
+
+export function getColonyProjectRefund(project: Pick<ColonyProject, 'cost' | 'productionCost' | 'productionProgress'>): Treasury {
+  const unused = project.productionCost - project.productionProgress;
   return {
-    credits: share(order.cost.credits),
-    minerals: share(order.cost.minerals)
+    credits: Number(BigInt(project.cost.credits) * BigInt(unused) / BigInt(project.productionCost)),
+    minerals: Number(BigInt(project.cost.minerals) * BigInt(unused) / BigInt(project.productionCost))
   };
+}
+
+export function colonyWorkQueue(state: ColonyOutputState, systemId: SystemId) {
+  return [...state.production.orders, ...state.projects].filter(work => work.systemId === systemId).sort((a, b) => a.id - b.id);
 }
 
 export function createColonyOutputState(galaxy: CampaignState, population: PopulationState): ColonyOutputState {
@@ -103,7 +120,7 @@ export function createColonyOutputState(galaxy: CampaignState, population: Popul
     return [system.id, { industry: workers, research: 0, culture: 0 }];
   }));
   return { assignments, reserves: { blue: { research: 0, culture: 0 }, red: { research: 0, culture: 0 } },
-    production: { orders: [], completed: [] } };
+    production: { orders: [], completed: [] }, projects: [] };
 }
 
 export function validateColonyOutputState(input: unknown, galaxy: CampaignState, population: PopulationState,
@@ -127,11 +144,23 @@ export function validateColonyOutputState(input: unknown, galaxy: CampaignState,
     }
   }
   const ids = new Set<number>();
-  for (const record of [...output.production.orders, ...output.production.completed]) {
+  for (const record of [...output.production.orders, ...output.production.completed, ...output.projects]) {
     const colony = galaxy.systems.find(system => system.id === record.systemId);
     if (!colony || colony.ownerId !== record.factionId || record.id > sessionLastOrderId ||
       ids.has(record.id)) throw new Error('Производственная запись не согласована с владельцем или счётчиком');
     ids.add(record.id);
+  }
+  for (const system of habitable) {
+    const queue = colonyWorkQueue(output, system.id);
+    if (queue.length > MAX_COLONY_QUEUE || queue.slice(1).some(work => work.productionProgress !== 0)) {
+      throw new Error('Нарушена общая промышленная FIFO-очередь');
+    }
+  }
+  for (const faction of factionIdSchema.options) {
+    if ([...output.production.orders, ...output.production.completed, ...output.projects]
+      .filter(work => work.factionId === faction).length > MAX_PRODUCTION_RECORDS) {
+      throw new Error('Превышен общий предел производственных записей');
+    }
   }
   for (const order of output.production.orders) {
     const quote = getColonyProductionQuote(order.design, rules);
@@ -204,7 +233,7 @@ export function getColonyOutputForecast(galaxy: CampaignState, population: Popul
   const rows = colonies.map(system => {
     const workforce = output.assignments[system.id];
     const totalAssigned = workforce.industry + workforce.research + workforce.culture;
-    const head = output.production.orders.find(order => order.factionId === faction && order.systemId === system.id);
+    const head = colonyWorkQueue(output, system.id)[0];
     const worldType = getColonyWorldType(galaxy, system.id, environment);
     const production = calculateColonyValue(rules.pointsPerWorker, workforce.industry, 'production-output', worldType, effects);
     const science = calculateColonyValue(rules.pointsPerWorker, workforce.research, 'science-output', worldType, effects);
@@ -259,11 +288,22 @@ export function advanceColonyOutput(input: unknown, galaxy: CampaignState, popul
     state: ColonyOutputState;
     forecast: ColonyOutputForecast;
     completedIds: number[];
+    completedProjects: ColonyProject[];
   } {
   const state = colonyOutputStateSchema.parse(input);
   const forecast = getColonyOutputForecast(galaxy, population, state, faction, rules, shipCount, effects, environment);
   const completedIds: number[] = [];
+  const completedProjects: ColonyProject[] = [];
   for (const row of forecast.production) {
+    const project = state.projects.find(item => item.id === row.orderId);
+    if (project) {
+      const progress = Math.min(project.productionCost, project.productionProgress + row.productionPoints);
+      if (progress === project.productionCost) {
+        completedProjects.push(structuredClone(project));
+        state.projects = state.projects.filter(item => item.id !== project.id);
+      } else project.productionProgress = progress;
+      continue;
+    }
     const order = state.production.orders.find(item => item.factionId === faction && item.systemId === row.systemId);
     if (!order || row.productionStatus === 'paused' || row.productionStatus === 'idle') continue;
     order.productionProgress = Math.min(order.productionCost, order.productionProgress + row.productionPoints);
@@ -276,7 +316,7 @@ export function advanceColonyOutput(input: unknown, galaxy: CampaignState, popul
   for (const kind of ['research', 'culture'] as const) {
     state.reserves[faction][kind] = forecast.reserves[kind].after;
   }
-  return { state, forecast, completedIds };
+  return { state, forecast, completedIds, completedProjects };
 }
 
 export function emptyWorkforce(): Workforce { return { industry: 0, research: 0, culture: 0 }; }

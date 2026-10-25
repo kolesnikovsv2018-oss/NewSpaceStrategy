@@ -3,13 +3,16 @@ import { BattleManager } from '../entities/BattleManager';
 import { CombatShipFactory, fleetCompositionSchema } from '../entities/CombatShipFactory';
 import { COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from './combatSimulation';
 import { createSeededRandomStream } from './seededRandom';
+import { designSchema, validateDesign } from './shipDesign';
 
 const nonEmptyCompositionSchema = fleetCompositionSchema.refine(
   composition => Object.values(composition).some(count => (count ?? 0) > 0), 'Флот не может быть пустым');
+const lineupSchema = z.union([nonEmptyCompositionSchema, z.array(designSchema.refine(
+  design => validateDesign(design, 'battle').length === 0, 'Недопустимый боевой проект')).min(1).max(128)]);
 
 export const combatSeriesRequestSchema = z.object({
-  blue: nonEmptyCompositionSchema,
-  red: nonEmptyCompositionSchema,
+  blue: lineupSchema,
+  red: lineupSchema,
   seeds: z.array(z.number().int().min(1).max(0xffffffff)).min(1).max(100)
 }).strict();
 
@@ -27,6 +30,7 @@ export interface CombatSeriesBattle {
 }
 
 export interface CombatSeriesResult {
+  tacticalRules: 'design-combat-v1';
   battles: CombatSeriesBattle[];
   summary: {
     blueWins: number;
@@ -53,6 +57,7 @@ export interface PairedCombatSeedResult {
 }
 
 export interface PairedCombatSeriesResult {
+  tacticalRules: 'design-combat-v1';
   pairs: PairedCombatSeedResult[];
   summary: {
     seeds: number;
@@ -70,8 +75,8 @@ export interface PairedCombatSeriesResult {
 }
 
 const pairedCombatSeriesRequestSchema = z.object({
-  first: nonEmptyCompositionSchema,
-  second: nonEmptyCompositionSchema,
+  first: lineupSchema,
+  second: lineupSchema,
   seeds: z.array(z.number().int().min(1).max(0xffffffff)).min(30).max(100)
     .refine(seeds => new Set(seeds).size === seeds.length, 'Seed в paired series должны быть уникальными')
 }).strict();
@@ -82,8 +87,11 @@ export function runCombatSeries(input: unknown, options: CombatSeriesOptions = {
     const randomForShip = (factionId: string, index: number) => createSeededRandomStream(seed,
       `${options.randomStreamLabels?.[factionId as 'blue' | 'red'] ?? factionId}:${index}`);
     const firstFactionId = createSeededRandomStream(seed, 'initiative')() < 0.5 ? 'blue' : 'red';
-    const blue = CombatShipFactory.createFleet('blue', request.blue, { randomForShip, idPrefix: `series-${seed}` });
-    const red = CombatShipFactory.createFleet('red', request.red, { randomForShip, idPrefix: `series-${seed}` });
+    const fleet = (factionId: 'blue' | 'red', lineup: z.infer<typeof lineupSchema>) => Array.isArray(lineup)
+      ? lineup.map((design, index) => CombatShipFactory.createFromDesign(design, factionId,
+        { random: randomForShip(factionId, index), id: `series-${seed}-${factionId}-${index}` }))
+      : CombatShipFactory.createFleet(factionId, lineup, { randomForShip, idPrefix: `series-${seed}` });
+    const blue = fleet('blue', request.blue), red = fleet('red', request.red);
     const positionFleet = (ships: typeof blue, faction: 'blue' | 'red') => ships.forEach((ship, index) => {
       const column = index % 8;
       const row = Math.floor(index / 8);
@@ -134,6 +142,7 @@ export function runCombatSeries(input: unknown, options: CombatSeriesOptions = {
 
   const total = battles.length;
   return {
+    tacticalRules: 'design-combat-v1',
     battles,
     summary: {
       blueWins: battles.filter(battle => battle.winner === 'blue').length,
@@ -189,7 +198,7 @@ export function runPairedCombatSeries(input: unknown): PairedCombatSeriesResult 
   ]);
 
   return {
-    pairs,
+    tacticalRules: 'design-combat-v1', pairs,
     summary: {
       seeds: pairs.length,
       battles: pairBattles.length,

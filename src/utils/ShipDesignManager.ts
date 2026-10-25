@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { componentSchema, designSchema, createDesign, validateDesign, v1ComponentSchema, v1DesignSchema, migrateV1Design,
+import { componentSchema, designSchema, validateDesign,
   type ComponentDefinition, type ShipDesign } from '../domain/shipDesign';
 
 const workspaceSchema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(5),
   designs: z.array(designSchema).max(100),
   components: z.array(componentSchema).max(200)
 }).strict().superRefine((state, ctx) => {
@@ -14,9 +14,6 @@ const workspaceSchema = z.object({
   }
 });
 export type ShipyardLibrary = z.infer<typeof workspaceSchema>;
-const v1WorkspaceSchema = z.object({ schemaVersion: z.literal(1),
-  designs: z.array(v1DesignSchema).max(100), components: z.array(v1ComponentSchema).max(200)
-}).strict();
 export interface StoragePort {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -27,70 +24,21 @@ function assertDraft(design: ShipDesign): void {
   if (errors.length) throw new Error(errors.map(error => error.message).join('\n'));
 }
 
-/** Only the old unversioned editor format is inferred. Unsupported data is never silently lost. */
-export function migrateLegacyComponent(input: unknown): ComponentDefinition {
-  const old = z.record(z.unknown()).parse(input);
-  const identity = { id: old.id, name: old.name };
-  const weapon = { damage: old.damage, range: old.range, fireRate: old.fireRate, accuracy: old.accuracy };
-  if (old.weaponType === 'beam') return componentSchema.parse({ ...identity, kind: 'beam', ...weapon });
-  if (old.weaponType === 'projectile') {
-    const projectile = z.record(z.unknown()).parse(old.projectile);
-    return componentSchema.parse({ ...identity, kind: 'projectile', ...weapon,
-      damage: projectile.damage, range: projectile.range, ammoCapacity: old.ammoCapacity });
+function assertSize(json: string): void {
+  if (json.length > 5_000_000 || new TextEncoder().encode(json).byteLength > 5_000_000) {
+    throw new Error('Файл библиотеки превышает 5 МБ UTF-8');
   }
-  if ('thrust' in old) return componentSchema.parse({ ...identity, kind: 'engine', thrust: old.thrust,
-    maxSpeed: old.maxSpeed, maneuverability: old.maneuverability, powerGeneration: old.powerGeneration });
-  if ('rechargeRate' in old) return componentSchema.parse({ ...identity, kind: 'shield', capacity: old.capacity,
-    rechargeRate: old.rechargeRate, rechargeDelay: old.rechargeDelay, beamResistance: old.beamResistance });
-  if ('armorPoints' in old) {
-    if (Number(old.repairRate ?? 0) > 0 || Number(old.durability ?? 0) > 0) {
-      throw new Error('Старая броня с прочностью/саморемонтом требует ручного переноса; исходные данные сохранены');
-    }
-    return componentSchema.parse({ ...identity, kind: 'armor', armorPoints: old.armorPoints,
-      beamResistance: old.beamResistance, projectileResistance: old.projectileResistance });
-  }
-  throw new Error('Не поддерживается тип старого компонента; исходные данные не изменены');
-}
-
-export function migrateLegacyDesign(input: unknown): ShipDesign {
-  const old = z.object({ id: z.string(), name: z.string(), hull: z.object({ size: z.enum(['fighter', 'corvette', 'frigate', 'destroyer', 'cruiser', 'battleship']) }),
-    created: z.string().datetime(), modified: z.string().datetime(),
-    slots: z.array(z.object({ id: z.string(), equipment: z.unknown().optional() })) }).parse(input);
-  const design = createDesign(old.hull.size);
-  Object.assign(design, { id: old.id, name: old.name, createdAt: old.created, updatedAt: old.modified });
-  const ids: Record<string, string> = { weapon_1: 'beam_1', weapon_2: 'beam_2', projectile_weapon_1: 'projectile_1',
-    engine_1: 'engine_1', shield_1: 'shield_1', armor_1: 'armor_1' };
-  const installed = new Set<string>();
-  for (const oldSlot of old.slots) {
-    if (oldSlot.equipment == null) continue;
-    const slot = design.slots.find(item => item.id === ids[oldSlot.id]);
-    if (!slot || installed.has(slot.id)) throw new Error(`Не удаётся перенести слот ${oldSlot.id}; исходные данные сохранены`);
-    installed.add(slot.id);
-    slot.component = migrateLegacyComponent(oldSlot.equipment);
-  }
-  assertDraft(design);
-  return designSchema.parse(design);
 }
 
 /** One versioned document makes each save atomic. Corrupt data is never overwritten with defaults. */
 export class ShipDesignManager {
-  static readonly STORAGE_KEY = 'orion_shipyard_v2';
-  static readonly V1_STORAGE_KEY = 'orion_shipyard_v1';
+  static readonly STORAGE_KEY = 'orion_shipyard_v5';
   constructor(private readonly providedStorage?: StoragePort) {}
   private get storage(): StoragePort { return this.providedStorage ?? globalThis.localStorage; }
 
   load(): ShipyardLibrary {
     const raw = this.storage.getItem(ShipDesignManager.STORAGE_KEY);
-    if (raw !== null) return this.decode(raw);
-    const v1 = this.storage.getItem(ShipDesignManager.V1_STORAGE_KEY);
-    if (v1 !== null) return this.decode(v1);
-    const oldDesigns = this.storage.getItem('orion_ship_configs');
-    const oldComponents = this.storage.getItem('orion_components');
-    // Retain old keys unchanged even after the first successful new save.
-    return this.check({ schemaVersion: 2,
-      designs: oldDesigns === null ? [] : z.array(z.unknown()).max(100).parse(JSON.parse(oldDesigns)).map(migrateLegacyDesign),
-      components: oldComponents === null ? [] : z.array(z.unknown()).max(200).parse(JSON.parse(oldComponents)).map(migrateLegacyComponent)
-    });
+    return raw === null ? this.check({ schemaVersion: 5, designs: [], components: [] }) : this.decode(raw);
   }
 
   private check(input: unknown): ShipyardLibrary {
@@ -100,13 +48,10 @@ export class ShipDesignManager {
   }
 
   decode(json: string): ShipyardLibrary {
-    if (json.length > 5_000_000) throw new Error('Файл библиотеки превышает 5 МБ');
+    assertSize(json);
     const input: unknown = JSON.parse(json);
     const version = z.object({ schemaVersion: z.number() }).parse(input).schemaVersion;
-    if (version === 1) {
-      const old = v1WorkspaceSchema.parse(input);
-      return this.check({ ...old, schemaVersion: 2, designs: old.designs.map(migrateV1Design) });
-    }
+    if (version !== 5) throw new Error('Версия формата библиотеки не поддерживается');
     return this.check(input);
   }
 
@@ -147,6 +92,8 @@ export class ShipDesignManager {
   }
 
   private write(library: ShipyardLibrary): void {
-    this.storage.setItem(ShipDesignManager.STORAGE_KEY, JSON.stringify(this.check(library)));
+    const json = JSON.stringify(this.check(library));
+    assertSize(json);
+    this.storage.setItem(ShipDesignManager.STORAGE_KEY, json);
   }
 }

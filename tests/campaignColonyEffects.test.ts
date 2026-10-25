@@ -7,6 +7,7 @@ import { researchTreeSchema } from '../src/domain/campaignResearch';
 import { getConquestResearchUtility, planConquestAction } from '../src/domain/conquestAi';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { createCombatDesign } from '../src/domain/combatPresets';
+import { createDesign } from '../src/domain/shipDesign';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { MAX_TURN } from '../src/domain/campaignSession';
 
@@ -146,7 +147,7 @@ it('applies industry/culture once to the real FIFO and reserve, not to a waiting
   complete(state, ['engineering', 'automation', 'cultural-practices']);
   state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 5, research: 0, culture: 5 } });
   for (let index = 0; index < 2; index++) state = apply(state, {
-    kind: 'enqueueProduction', systemId: 'sol', design: createCombatDesign('fighter')
+    kind: 'enqueueProduction', systemId: 'sol', design: createDesign('fighter', true)
   });
   const forecast = getConquestView(state, 'blue').colonyOutput.forecast;
   const next = apply(state, { kind: 'endTurn' });
@@ -230,6 +231,6 @@ it('AI measures own marginal utility and gives no invented gain at capacity or r
   state.colonyOutput.assignments.sol = { industry: 4000, research: 1000, culture: 0 };
   complete(state, ['engineering', 'applied', 'support', 'ordnance', 'capital']);
   expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({
-    kind: 'research', technologyId: 'scientific-method'
+    kind: 'research', technologyId: 'tactical-propulsion'
   });
 });

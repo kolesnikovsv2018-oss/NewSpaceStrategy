@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { campaignSessionSchema } from '../src/domain/campaignSession';
 import { campaignRunSchema } from '../src/domain/campaignRun';
 import { flightDesignSchema, productionStateSchema } from '../src/domain/production';
-import { encodeCampaignSave } from '../src/domain/campaignSave';
 import { decodeCampaignRunSave, encodeCampaignRunSave, type CampaignRunSaveErrorCode,
   type DecodeCampaignRunSaveResult, type EncodeCampaignRunSaveResult } from '../src/domain/campaignRunSave';
 import { freeze, rich } from './fixtures/campaignAi';
@@ -19,17 +18,17 @@ function reject(result: DecodeCampaignRunSaveResult | EncodeCampaignRunSaveResul
 }
 
 describe('FAULT ONLY: exception branches, not evidence of real schema/size validation', () => {
-  describe.each(['encode', 'decode2', 'migrate1'] as const)('%s', operation => {
+  describe.each(['encode', 'decode5'] as const)('%s', operation => {
     it.each(['session', 'production', 'flight'] as const)('catches actual nested %s refinement exceptions, no partial result or log', layer => {
       const run = { session: rich(2, 3), control: computer }, before = structuredClone(run); freeze(run);
-      const newSave = encodeCampaignRunSave(run), oldSave = encodeCampaignSave(run.session);
-      if (!newSave.ok || !oldSave.ok) throw new Error('Expected valid fixtures');
+      const newSave = encodeCampaignRunSave(run);
+      if (!newSave.ok) throw new Error('Expected valid fixture');
       const effect = layer === 'session' ? campaignSessionSchema._def.effect : layer === 'production'
         ? productionStateSchema._def.effect : flightDesignSchema._def.effect;
       if (effect.type !== 'refinement') throw new Error('Expected nested refinement');
       const refine = vi.spyOn(effect, 'refinement').mockImplementation(privateError);
       const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error')];
-      reject(operation === 'encode' ? encodeCampaignRunSave(run) : decodeCampaignRunSave(operation === 'decode2' ? newSave.json : oldSave.json), 'INVALID_STATE');
+      reject(operation === 'encode' ? encodeCampaignRunSave(run) : decodeCampaignRunSave(newSave.json), 'INVALID_STATE');
       expect(refine).toHaveBeenCalledTimes(1); expect(run).toEqual(before);
       logs.forEach(log => expect(log).not.toHaveBeenCalled());
     });
@@ -59,23 +58,23 @@ describe('FAULT ONLY: exception branches, not evidence of real schema/size valid
     const parse = vi.spyOn(JSON, 'parse').mockImplementation(privateError), run = vi.spyOn(campaignRunSchema, 'safeParse');
     reject(decodeCampaignRunSave('{}'), 'INVALID_SAVE'); expect(parse).toHaveBeenCalledTimes(1); expect(run).not.toHaveBeenCalled();
   });
-  it.each([1, 2, 99])('schema%s control own undefined: explicit presence, not optional/default semantics', schemaVersion => {
+  it.each([1, 2, 3, 4, 5, 6, 7, 99])('schema%s control own undefined: explicit presence, not optional/default semantics', schemaVersion => {
     // JSON cannot encode undefined; inject parser output solely to exercise the presence guard.
-    const input = { format: 'orion-campaign', schemaVersion, rulesVersion: 1, session: null, control: undefined };
+    const input = { format: 'orion-campaign', schemaVersion, rulesVersion: 4, session: null, control: undefined };
     vi.spyOn(JSON, 'parse').mockReturnValue(input);
-    reject(decodeCampaignRunSave('{}'), schemaVersion === 99 ? 'UNSUPPORTED_SAVE_VERSION' : 'INVALID_SAVE');
+    reject(decodeCampaignRunSave('{}'), schemaVersion === 7 ? 'INVALID_SAVE' : 'UNSUPPORTED_SAVE_VERSION');
     expect(Object.prototype.hasOwnProperty.call(input, 'control')).toBe(true);
   });
-  it.each([1, 2, 99])('schema%s own session undefined is present, but missing session is always malformed', schemaVersion => {
-    const input = { format: 'orion-campaign', schemaVersion, rulesVersion: 1, session: undefined,
-      ...(schemaVersion === 2 ? { control: computer } : {}) };
+  it.each([1, 2, 3, 4, 5, 6, 7, 99])('schema%s own session undefined is present, but missing session is always malformed', schemaVersion => {
+    const input = { format: 'orion-campaign', schemaVersion, rulesVersion: 4, session: undefined,
+      ...(schemaVersion === 7 ? { control: computer } : {}) };
     const parse = vi.spyOn(JSON, 'parse').mockReturnValue(input);
-    reject(decodeCampaignRunSave('{}'), schemaVersion === 99 ? 'UNSUPPORTED_SAVE_VERSION' : 'INVALID_STATE');
+    reject(decodeCampaignRunSave('{}'), schemaVersion === 7 ? 'INVALID_STATE' : 'UNSUPPORTED_SAVE_VERSION');
     const { session: _session, ...missing } = input; parse.mockReturnValue(missing);
     reject(decodeCampaignRunSave('{}'), 'INVALID_SAVE');
   });
   it('contains control shape getter exception without promising arbitrary getter/proxy security', () => {
-    vi.spyOn(JSON, 'parse').mockReturnValue({ format: 'orion-campaign', schemaVersion: 2, rulesVersion: 1,
+    vi.spyOn(JSON, 'parse').mockReturnValue({ format: 'orion-campaign', schemaVersion: 7, rulesVersion: 4,
       session: null, control: { get mode(): never { return privateError(); } } });
     reject(decodeCampaignRunSave('{}'), 'INVALID_SAVE');
   });

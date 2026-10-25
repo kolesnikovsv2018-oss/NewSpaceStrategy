@@ -1,91 +1,222 @@
-version: 6
-id: orion-technologies-v6
+version: 10
+id: orion-technologies-v10
 initial:
-  hulls: [fighter, corvette, colonizer]
-  components: [engine, beam]
+  hulls:
+    - fighter
+    - corvette
+    - colonizer
+  components:
+    - engine
+    - beam
 nodes:
   - id: engineering
     name: Инженерные методы
     prerequisites: []
     researchCost: 2000
     effects:
-      - {kind: variant-tier, tier: 2}
-      - {kind: strategic-range, maxJumpDistance: 400}
+      - kind: variant-tier
+        tier: 2
+      - kind: strategic-range
+        maxJumpDistance: 400
   - id: applied
     name: Прикладные службы
     prerequisites: []
     researchCost: 2000
     effects:
-      - {kind: component-unlock, component: mining}
-      - {kind: component-unlock, component: repair}
-      - {kind: component-unlock, component: scanner}
-      - {kind: component-unlock, component: cargoExpansion}
+      - kind: component-unlock
+        component: mining
+      - kind: component-unlock
+        component: repair
+      - kind: component-unlock
+        component: scanner
+      - kind: component-unlock
+        component: cargoExpansion
   - id: support
     name: Флотская инфраструктура
     prerequisites: []
     researchCost: 3000
     effects:
-      - {kind: hull-unlock, hullId: frigate}
-      - {kind: component-unlock, component: shield}
-      - {kind: component-unlock, component: armor}
+      - kind: hull-unlock
+        hullId: frigate
+      - kind: component-unlock
+        component: shield
+      - kind: component-unlock
+        component: armor
   - id: ordnance
     name: Тяжёлое вооружение
-    prerequisites: [engineering, support]
+    prerequisites:
+      - engineering
+      - support
     researchCost: 6000
     effects:
-      - {kind: hull-unlock, hullId: destroyer}
-      - {kind: hull-unlock, hullId: cruiser}
-      - {kind: component-unlock, component: projectile}
-      - {kind: variant-tier, tier: 3}
-      - {kind: strategic-range, maxJumpDistance: 800}
+      - kind: hull-unlock
+        hullId: destroyer
+      - kind: hull-unlock
+        hullId: cruiser
+      - kind: component-unlock
+        component: projectile
+      - kind: variant-tier
+        tier: 3
+      - kind: strategic-range
+        maxJumpDistance: 800
   - id: capital
     name: Линейные корабли
-    prerequisites: [ordnance]
+    prerequisites:
+      - ordnance
     researchCost: 12000
     effects:
-      - {kind: hull-unlock, hullId: battleship}
-      - {kind: variant-tier, tier: 4}
-      - {kind: strategic-range, maxJumpDistance: 1500}
+      - kind: hull-unlock
+        hullId: battleship
+      - kind: variant-tier
+        tier: 4
+      - kind: strategic-range
+        maxJumpDistance: 1500
   - id: biology
     name: Биология
     prerequisites: []
     researchCost: 2000
     effects:
-      - {kind: colony-effect, effectId: biology-growth}
+      - kind: colony-effect
+        effectId: biology-growth
   - id: biosphere
     name: Биосфера
-    prerequisites: [biology]
+    prerequisites:
+      - biology
     researchCost: 4000
     effects:
-      - {kind: colony-effect, effectId: biosphere-capacity}
+      - kind: colony-effect
+        effectId: biosphere-capacity
   - id: automation
     name: Автоматизация
-    prerequisites: [engineering]
+    prerequisites:
+      - engineering
     researchCost: 3000
     effects:
-      - {kind: colony-effect, effectId: automation-output}
+      - kind: colony-effect
+        effectId: automation-output
   - id: scientific-method
     name: Научные методы
-    prerequisites: [applied]
+    prerequisites:
+      - applied
     researchCost: 3000
     effects:
-      - {kind: colony-effect, effectId: scientific-output}
+      - kind: colony-effect
+        effectId: scientific-output
   - id: cultural-practices
     name: Культурные практики
     prerequisites: []
     researchCost: 2000
     effects:
-      - {kind: colony-effect, effectId: cultural-output}
+      - kind: colony-effect
+        effectId: cultural-output
+  - id: miniaturization
+    name: Миниатюризация
+    prerequisites:
+      - engineering
+    researchCost: 4000
+    effects:
+      - kind: equipment-variant-unlock
+        variant: compact
+  - id: terraforming
+    name: Терраформирование
+    prerequisites:
+      - biosphere
+      - toxic-adaptation
+    researchCost: 6000
+    effects:
+      - kind: terraform-unlock
+        transitionId: toxic-to-habitable
   - id: toxic-adaptation
     name: Адаптация к токсичной среде
     prerequisites: []
     researchCost: 3000
     effects:
-      - {kind: colonization-unlock, worldType: toxic}
+      - kind: colonization-unlock
+        worldType: toxic
+  - id: tactical-propulsion
+    name: Тактическая тяга
+    prerequisites:
+      - engineering
+    researchCost: 3000
+    effects:
+      - kind: tactical-variant-unlock
+        variant: high-thrust
+  - id: focused-beams
+    name: Фокусировка лучей
+    prerequisites:
+      - engineering
+    researchCost: 4000
+    effects:
+      - kind: tactical-variant-unlock
+        variant: focused
+  - id: rapid-projectiles
+    name: Скорострельная артиллерия
+    prerequisites:
+      - ordnance
+    researchCost: 4000
+    effects:
+      - kind: tactical-variant-unlock
+        variant: rapid
+  - id: composite-armor
+    name: Композитная броня
+    prerequisites:
+      - support
+    researchCost: 3500
+    effects:
+      - kind: tactical-variant-unlock
+        variant: composite
+  - id: capacitor-shields
+    name: Ёмкостные щиты
+    prerequisites:
+      - support
+    researchCost: 4000
+    effects:
+      - kind: tactical-variant-unlock
+        variant: capacitor
+  - id: reinforced-hulls
+    name: Усиленный корпус
+    prerequisites:
+      - support
+    researchCost: 4000
+    effects:
+      - kind: hull-variant-unlock
+        variant: reinforced
+  - id: strategic-drive
+    name: Стратегический двигатель
+    prerequisites:
+      - engineering
+    researchCost: 3000
+    effects:
+      - kind: strategic-equipment-unlock
+        option: fast
+  - id: strategic-tank
+    name: Топливная автономность
+    prerequisites:
+      - engineering
+    researchCost: 3000
+    effects:
+      - kind: strategic-equipment-unlock
+        option: extended-tank
 variantPolicy:
   id: component-bands-v1
   tiers:
-    - {level: 1, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5}
-    - {level: 2, magnitude: 0.2, ratioStep: 0.1, ammo: 0.2, rechargeDelay: 1}
-    - {level: 3, magnitude: 0.3, ratioStep: 0.15, ammo: 0.3, rechargeDelay: 1.5}
-    - {level: 4, magnitude: 0.4, ratioStep: 0.2, ammo: 0.4, rechargeDelay: 2}
+    - level: 1
+      magnitude: 0.1
+      ratioStep: 0.05
+      ammo: 0.1
+      rechargeDelay: 0.5
+    - level: 2
+      magnitude: 0.2
+      ratioStep: 0.1
+      ammo: 0.2
+      rechargeDelay: 1
+    - level: 3
+      magnitude: 0.3
+      ratioStep: 0.15
+      ammo: 0.3
+      rechargeDelay: 1.5
+    - level: 4
+      magnitude: 0.4
+      ratioStep: 0.2
+      ammo: 0.4
+      rechargeDelay: 2

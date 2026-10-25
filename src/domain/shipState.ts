@@ -13,6 +13,7 @@ export interface ShipState {
   position: ShipPosition; // Тактические координаты; не световые годы.
   velocity: ShipPosition; // Тактические единицы / с симуляции.
   isMoving: boolean;
+  movementDirection?: ShipPosition;
   isDestroyed: boolean;
   energy: number; // ЭЕ, текущая энергия батареи.
   hull: number;
@@ -36,5 +37,6 @@ export function createDesignState(stats: ShipStats): ShipState {
 /** Detached snapshot for diagnostics/views. Not a battle-save format or a restore API. */
 export function snapshotShipState(state: ShipState): ShipState {
   return { ...state, position: { ...state.position }, velocity: { ...state.velocity },
+    ...(state.movementDirection ? { movementDirection: { ...state.movementDirection } } : {}),
     weapons: state.weapons.map(weapon => ({ ...weapon })), cargo: state.cargo.map(item => ({ ...item })) };
 }

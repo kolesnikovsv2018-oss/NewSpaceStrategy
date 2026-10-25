@@ -5,6 +5,65 @@ description: 'Боевая симуляция Orion, CombatShip, BattleManager, 
 
 # Orion: бой и визуализация
 
+## Актуальная отправная точка Н14
+
+Н14 не меняет design-combat-v1, fixed step/инициативу/RNG или тактику.
+Текущие ShipDesign5/library5/Conquest16/rules13/snapshot11/tree10/
+baseline12/map4, мирные6/7/8 rules4. resolver принимает военные
+strategicShipsSchema с fuel в тысячных, не мирную fuel0..3 schema.
+В пути нет присутствия/боя; реальный resolver включается только при
+последнем own-end arrival. Paid combat leg/codecs дают одинаковый
+arrival/бой после midway load; полный suite3835/71, strict/build173
+и настоящий desktop/mobile paid arrival-бой/reload проверены.
+Стратегическое оснащение меняет цену, не тактические ratings; refit
+сохраняет HP/ammo и не добавляет fuel. [Контракт](../../../docs/CAMPAIGN_TRAVEL.md),
+[приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md).
+Baseline18:4 completed65–66/14 timeout200, все repeat/checkpoint равны.
+Не переносить старые темпы Н13 и не выдавать timeout за победу.
+Полные58/quota/natural FPS не измерены.
+
+## История отправной точки Н13
+
+[Контракт](../../../docs/CAMPAIGN_COMBAT_TECHNOLOGIES.md),
+[приёмка16](../../../reports/2026-10-25/16-n13-combat-technologies.md).
+design-combat-v1 обязателен: ShipDesign4/library4/Conquest15/rules12,
+snapshot10/tree9/baseline11, мирные5/6/7 rules3. Initiative campaign-v2,
+fixed step0,05/120с, sequential damage и opt-in правила прежние.
+Engine/beam/projectile/armor/shield/hull variants исполняются реальными
+stats/runtime, compact независим, генерация не растёт от high-thrust.
+Проект a=thrust/полная масса, vNext=min(v+a×dt,vMax), сдвиг vNext×dt
+после оплаты; retarget сохраняет скорость, stop без инерции. Legacy прежний.
+No research reads в tactical update; refit сохраняет абсолютный HP/fuel,
+ammo только при effective-equal same slot.
+Paired series принимает также массивы design snapshots, тот же resolver,
+common lineup streams и real quotes. Три technology пары30 seed имеют
+equal credits/minerals385/22,381/23,385/29; scores0,433/1/0,467,
+side-bias0 и timeout0. Не универсальный баланс.
+Прежняя factory matrix100 seed изменилась от разгона:0,67/0,49/0,755,
+CI[0,586;0,754]/[0,398;0,582]/[0,677;0,833], bias0,02/−0,04/−0,01.
+Нельзя возвращать старые seed-исходы ослаблением новых формул.
+3818/70, strict/build173, новые effective/range/HP/energy/paid/refit/series
+регрессии в campaignCombatTechnologies; visuals проверяет advanced design
+на deltas25/50мс и1×/2×/4× полным result.18 paid baseline repeat/checkpoint,
+4 boundary, bounded40/256 и actual CSS1280×720/390×844 real campaign battle/
+reload/next oracle приняты. Browser zoom учитывать по фактическому innerWidth.
+Полные58/quota/natural FPS/physical touch не измерены.
+Нижние версии/статусы — история, не текущая отправная точка.
+
+## История отправной точки после Н12
+
+Н11/Н12 приняты: [refit/compact](../../../docs/CAMPAIGN_EQUIPMENT_REFIT.md).
+ShipDesign3/library3, save14/rules11, snapshot9/rules9/tree8/baseline10;
+мирные codecs4/5/6 rules2, только текущие readers без миграций.
+Refit использует общий FIFO; до post-encounter completion сражается
+старый design. Текущие HP/ammo/fuel не лечатся; destroyed/captured работа
+отменяется без refund. Compact меняет объём/цену, не тактику.
+Последующие старые номера форматов/приёмок — история.
+[Аудит Н13](../../../reports/2026-10-25/14-n13-readiness.md):
+724/20 и отдельный143/9, strict/build173; нового browser/full baseline нет.
+Н13 ещё не реализован: разгона и отдельных tactical variants нет,
+AI-score пока не ограничен общим энергобюджетом.
+
 ## Карта и ограничения
 
 Н03: [диагностика Conquest](../../../docs/CONQUEST_BASELINE.md) и `src/diagnostics/conquestBaseline.ts` не меняют симуляцию/AI. Утверждённые58 входов:54 paid6/40/256 и4 boundary; separate map/campaign seeds, canonical mirrored homes, lineup→faction, команды/метрики/state/current save. Все58 full repeat и save suffix/final совпали;19 регрессий включают intermediate save перед настоящим boundary-боем и rollback реального executor rejection (fault delivery отдельно). Symmetric1v1 даёт одну потерю, не гарантированную ничью; supply100v100 ammo0/fuel0/treasury0 —16 tactical timeouts без потерь, не оплаченная достижимая ветвь. Strategic timeout не победа; отсутствующие mechanics/codes имеют unavailable, не0. `yarn baseline:conquest --output ./baseline-new.json`, повтор через Vite SSR без Phaser; [отчёт07](../../../reports/2026-10-10/07-n03-baseline-metrics.md). Wall-clock/FPS/browser не измерялись;3 seed-пары и mirrors не универсальный баланс/CI.

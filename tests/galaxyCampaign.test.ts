@@ -159,7 +159,9 @@ describe('generated campaign snapshots', () => {
     for (const target of nearest) {
       const start = state.session.ships.find(ship => ship.id === memberIds[0])!.systemId;
       state = command(state, { kind: 'sendFleet', fleetId: 1, systemId: start, destinationId: target.id });
-      expect(state.session.ships.filter(ship => memberIds.includes(ship.id)).every(ship => ship.fuel === 2)).toBe(true);
+      const from = snapshot.worlds.find(world => world.id === start)!;
+      const used = Math.ceil(Math.hypot(from.x - target.x, from.y - target.y) * 5);
+      expect(state.session.ships.filter(ship => memberIds.includes(ship.id)).every(ship => ship.fuel === 3000 - used)).toBe(true);
       const restored = decodeConquestSave(encodeConquestSave(state));
       expect(round(restored)).toEqual(round(state));
       state = round(state);
@@ -219,8 +221,8 @@ describe('generated campaign snapshots', () => {
       const state = createConquest(undefined, undefined, 99, snapshot);
       state.session.production.lastOrderId = 2;
       state.session.ships = [
-        { id: 1, factionId: 'blue', systemId: 'world-003', fuel: 3, design },
-        { id: 2, factionId: 'red', systemId: 'world-003', fuel: 3, design: weak }
+        { id: 1, factionId: 'blue', systemId: 'world-003', fuel: 3000, design },
+        { id: 2, factionId: 'red', systemId: 'world-003', fuel: 3000, design: weak }
       ];
       state.operations = { '1': createOperationalState(design), '2': { ...createOperationalState(weak), hull: 1 } };
       const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
@@ -246,7 +248,7 @@ describe('generated campaign snapshots', () => {
     design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
     design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('scanner', 'scanner');
     state.session.production.lastOrderId = 1;
-    state.session.ships = [{ id: 1, factionId: 'blue', systemId: barren.id, fuel: 3, design }];
+    state.session.ships = [{ id: 1, factionId: 'blue', systemId: barren.id, fuel: 3000, design }];
     state.operations = { '1': createOperationalState(design) };
     let checked = conquestSchema.parse(state);
     const view = getConquestView(checked, 'blue');

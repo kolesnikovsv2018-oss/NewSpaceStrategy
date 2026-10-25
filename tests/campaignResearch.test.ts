@@ -16,7 +16,7 @@ describe('campaign research points', () => {
     expect(parseResearchTreeYaml(readFileSync(new URL('../docs/research-default.yaml', import.meta.url), 'utf8'))).toEqual(tree);
     expect(parseResearchTreeYaml(JSON.stringify(tree))).toEqual(tree);
     expect(await loadResearchTree({ load: async () => tree })).toEqual(tree);
-    for (const version of [1, 2, 3, 4, 5, 7]) {
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]) {
       const old = { ...tree, version };
       expect(researchTreeSchema.safeParse(old).success).toBe(false);
       expect(() => parseResearchTreeYaml(JSON.stringify(old))).toThrow();
@@ -130,20 +130,21 @@ describe('campaign research points', () => {
     expect(calculateResearchTurn(state, tree, 500, 500, 1000, true).timing).toEqual({ status: 'progressing', remainingOwnTurns: 3 });
   });
 
-  it('checks hull and every family before preset exemptions', () => {
+  it('checks hull, every family and numeric bands for presets without exemption', () => {
     const tree = getDefaultResearchTree(), state = createResearchState();
-    expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCombatDesign('fighter'), state, tree)).toBe(false);
+    expect(isCampaignDesignAvailable(createDesign('fighter', true), state, tree)).toBe(true);
     expect(isCampaignDesignAvailable(createCombatDesign('frigate'), state, tree)).toBe(false);
     expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(false);
     state.completed.push('support');
-    expect(isCampaignDesignAvailable(createCombatDesign('frigate'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCombatDesign('frigate'), state, tree)).toBe(false);
     expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(false);
     state.completed.push('applied');
-    expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(createCivilianDesign('miner'), state, tree)).toBe(false);
     expect(getResearchAccess(state, tree).components).toContain('repair');
   });
 
-  it('keeps exact preset exemptions but never grants them to edited numeric variants', () => {
+  it('never grants exact or historical presets an exemption from research bands', () => {
     const tree = getDefaultResearchTree(), state = { ...createResearchState(), completed: tree.nodes.map(node => node.id) };
     const current = createCombatDesign('dreadnought'), historical = createCombatDesign('dreadnought');
     for (const slot of historical.slots) {
@@ -151,8 +152,8 @@ describe('campaign research points', () => {
       if (slot.component?.kind === 'projectile') slot.component = { ...slot.component, accuracy: 0.8 };
     }
     expect(isCombatPresetDesign(current)).toBe(true);
-    expect(isCampaignDesignAvailable(current, state, tree)).toBe(true);
-    expect(isCampaignDesignAvailable(historical, state, tree)).toBe(true);
+    expect(isCampaignDesignAvailable(current, state, tree)).toBe(false);
+    expect(isCampaignDesignAvailable(historical, state, tree)).toBe(false);
     const beam = current.slots.find(slot => slot.id === 'beam_1')!.component;
     if (beam?.kind !== 'beam') throw new Error('Invalid beam fixture');
     const changed = installComponent(current, 'beam_1', { ...beam, accuracy: 0.99 });

@@ -1,6 +1,16 @@
 export const COMBAT_SIMULATION_STEP = 0.05;
 export const COMBAT_SIMULATION_MAX_SECONDS = 120;
 export const COMBAT_SIMULATION_MAX_STEPS = COMBAT_SIMULATION_MAX_SECONDS / COMBAT_SIMULATION_STEP;
+export const TACTICAL_RULES_VERSION = 'design-combat-v1';
+
+export function getCombatApproachSeconds(distance: number, speed: number, acceleration: number): number {
+  if (![distance, speed, acceleration].every(value => Number.isFinite(value) && value >= 0)) throw new RangeError('Недопустимый разгон');
+  if (distance === 0) return 0;
+  if (speed === 0 || acceleration === 0) return COMBAT_SIMULATION_MAX_SECONDS;
+  const rampSeconds = speed / acceleration, rampDistance = speed * rampSeconds / 2;
+  return Math.min(COMBAT_SIMULATION_MAX_SECONDS, distance <= rampDistance
+    ? Math.sqrt(2 * distance / acceleration) : rampSeconds + (distance - rampDistance) / speed);
+}
 
 function cooldownTolerance(period: number, step: number): number {
   if (!Number.isFinite(period) || period <= 0 || !Number.isFinite(step) || step <= 0) {

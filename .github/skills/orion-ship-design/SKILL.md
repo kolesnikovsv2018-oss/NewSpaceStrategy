@@ -7,6 +7,70 @@ description: 'Модель кораблей, оборудование, верф�
 
 ## Conquest: исследования и проекты
 
+**Текущий Н14:** [контракт](../../../docs/CAMPAIGN_TRAVEL.md),
+[приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md).
+ShipDesign5/library5, Conquest16/13, snapshot11/tree10/baseline12/map4,
+мирные6/7/8 rules4. strategicEquipment обязателен, отдельные drive/jump/
+tank без слотов. campaignTravel даёт возможности/quote; общая цена
+добавляет credits×100 к stats.cost, но не mass/volume/тактику/минералы.
+Research разрешает выбор, не мутирует экземпляры; refit сохраняет
+абсолютное fuel, не допускает меньший бак и не заправляет большой.
+В free/campaign editor выбор через «Характеристики → Стратегическое
+оснащение». Dirty/library/codec сохраняют все поля current design5.
+Конкретные formulas/цены — в travel-контракте; legacy fuel3/arrival1
+в мирной кампании не заменяются военными тысячными.
+Новые9 campaignStrategicTravel regressions: цифры/caps/группы/платные
+research/build/refit/оба стартовых мира/in-flight science/mining/
+real arrival-battle save oracle.3835/71, strict/build173, actual
+CSS desktop/mobile paid cycle/reload, free5 и мирный save8 проверены.
+Baseline18:4 completed65–66/14 timeout200, repeat/checkpoint совпали;
+не универсальный баланс. Полные58/quota/FPS не измерены.
+Нижние записи Н13/Н12 — история; актуальная матрица здесь.
+
+**История Н13:** [тактические варианты](../../../docs/CAMPAIGN_COMBAT_TECHNOLOGIES.md),
+[отчёт16](../../../reports/2026-10-25/16-n13-combat-technologies.md).
+ShipDesign4/library4, save15/rules12, snapshot10/tree9/baseline11;
+мирные5/6/7 rules3. tacticalRules=design-combat-v1/hullVariant обязательны,
+component tacticalVariant зависит от kind; compact независим.
+calculateComponent возвращает effective без variant markers, ShipStats
+потребляет его один раз. Engine/armor/shield mass/cost множат базовый
+расчёт, оружие считается из effective ratings; десятые V и явный ceil.
+Effective caps проверяются общим validator, стандартные уже проверены
+исходной schema. Не добавлять повторный parse/расчёт каждого standard
+компонента: это уже вызвало baseline-test timeout, устранён без повышения
+deadline. Прочность reinforced не лечит HP; refit сравнивает effective
+projectile ratings, compact-only сохраняет ammo. Legacy мгновенное движение
+прежнее; проект a=thrust/totalMass, cargo не разгоняет бесплатно.
+describeDesign/страница «Характеристики» дают реальные ratings/DPS caveats.
+AI shield/hull варианты входят в общий≤48 бюджет, no auto-refit.
+3818/70, strict/build173, actual desktop/mobile paid editor/refit/battle/
+reload/full next, free yard/library4 и мирный paid save7/reload приняты.
+Далее Н14/Н15; ниже история Н12 и прежних этапов.
+
+**История Н12:** [effective design/refit](../../../docs/CAMPAIGN_EQUIPMENT_REFIT.md).
+ShipDesign3, обязательный component.technologyVariant standard/compact;
+calculateComponent/ShipStats дают equipmentVolume отдельно от cargo/mass/
+slot size. Miniaturization4000 после engineering: V×4/5, component cost×5/4
+ceil, масса/ratings прежние. Campaign preset exemption удалён.
+Refit только того же корпуса/own colony/без transit и группы; quote
+пересчитывается, оплачивается и проходит общий FIFO Н11. Резервированный
+ship нельзя отправить/включить в группу. Старый design сражается до
+post-encounter completion; HP/fuel не растут, новый projectile пуст,
+compact-only same ratings/slot сохраняет ammo. Captured/destroyed jobs
+отменяются без refund; обычный cancel возвращает unused долю.
+Library3 пишет только orion_shipyard_v3, прежних readers/migrations нет.
+Save14/11/snapshot9/tree8/baseline10; мирные codecs4/5/6 rules2.
+3791/69, strict/build173 и actual desktop/mobile paid editor/refit/battle/
+reload oracle, отдельная free yard/library3 приняты. Н13/Н14 не реализованы.
+Нижние номера/описания прежних приёмок — история и не текущая схема.
+
+Подготовка Н11/Н12: `ShipBuilderPanel.campaignComponentVariants` проверяет
+независимый кандидат общим draft validator до добавления в picker, без
+бросающего пробного installComponent. Конечная установка повторно проверяется.
+Регрессия в shipyardDraft и настоящий Phaser1280×720/390×844 подтверждают
+открытие picker/отказ невместимого scanner без изменения draft; это
+диагностический UI smoke, не оплаченная кампанийная приёмка новых этапов.
+
 S3/S4 и Н05–Н10 приняты в ограниченных границах. После Н10 военный IO — save12/rules9, snapshot7/rules7/tree6/map3/baseline8, без миграций. Мирная MainScene/save3 прежняя.
 
 Н10: [планетология](../../../docs/CAMPAIGN_PLANETOLOGY.md), [отчёт09](../../../reports/2026-10-25/09-n10-planetology.md). Отдельные runtime environment и own surveys; мгновенный survey10/5 с кораблём/дистанционным scanner, toxic K6000/absolute12000, root adaptation3000. Только явный colonize с конкретным colonizer после survey/unlock расходует корабль;20/10 и1000 жителей из своей колонии прежние. Вооружённое прибытие не основывает новый мир; occupation сохраняет жителей и управление без адаптации. Mining требует изученный barren, не раскрывает тип прогнозом. Пять бонусов Н09 действуют на habitable/toxic через worldTypes, biosphere даёт8000, caps/S0 прежние. 3561/67, final75/5, strict/build174; browser desktop/mobile paid survey/adaptation/colonize, три reload/next oracle, baseline18 и paid AI8 приняты. Далее Н11/Н12; нижние версии/«Н10 не реализован» в записях Д08/Н09 — история, не текущий статус. Полный Н14 ещё не закрыт.
@@ -235,4 +299,4 @@ ComponentDefinition → ShipDesign → расчёт ShipStats → независ
 
 [Н05а — конструктор внутри кампании](../../../plans/tasks-2026-10-09/n05a-campaign-shipyard.md) принят 2026-10-10; [контракт](../../../docs/CAMPAIGN_PROJECTS.md), [отчёт10](../../../reports/2026-10-10/10-n05a-campaign-shipyard.md). `Conquest.projects` содержит по25 независимых чертежей каждой стороны с отдельными монотонными ID1..1e9; мирная session/save не расширены. Команды каталога проходят полные права/expectedTurn/completed и `isCampaignDraftAvailable`; draft/flight/battle разделены, заказ повторно требует flight/research и реальную оплату. Новый save6/rules3, baseline2; прежние военные конверты отвергаются. CampaignProjectPanel переиспользует ShipBuilderPanel через явный контекст, без подмены библиотеки; компонентные варианты проверяются отдельно от точного preset exemption. Free shipyard находится в демонстрациях. `campaignProjects.test.ts`:18 регрессий, включая оба каталога/25+1/ID/privacy/frozen/точные numeric bounds/earned research и paid generated FIFO→delete→deploy→travel→real battle/codec; full3427/61, strict/build167 прошли. Browser подтвердил полный оплаченный цикл на1280×720/390×844, actual reload FIFO/в пути/после боя и next-command oracle. Исправлены обновление родительского Save после child-edit, синхронный resize без потери dirty и перекрытие mobile-toolbar; регрессии в `conquestScene.test.ts`. Браузер использовал события кнопок/scene-команды, отдельно mouse smoke; не полный mouse E2E/quota/FPS. Н12 расширяет этот же путь вариантами/объёмом/refit, не создаёт параллельный редактор.
 
-При сверке заданий уточнено: Н05а сохраняет актуальные research/production policy, если независимая научная ветвь уже принята; не возвращает старые turns. Н12 работает с production points Н07, persisted HP/ammo/fuel, не требует сохранять тактический cooldown. Н13 и Н14 независимы после Н12; Н14 сам вводит отсутствующую длину линий и подключает metric checker к действующему общему генератору. Это плановые границы, не изменения runtime.
+При сверке заданий уточнено: Н05а сохраняет актуальные research/production policy, если независимая научная ветвь уже принята; не возвращает старые turns. Н12 работает с production points Н07, persisted HP/ammo/fuel, не требует сохранять тактический cooldown. Н13 и Н14 независимы после Н12; Н14 расширяет прямую метрику Д08 проектными speed/jump/fuel и подключает общий quote к действующему генератору/checker, без возврата линий. Это плановые границы, не изменения runtime.

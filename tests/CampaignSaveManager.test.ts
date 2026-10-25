@@ -13,7 +13,7 @@ import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignMana
 const KEY = 'orion_campaign_v1'; // Independent assertion of the public slot, not the implementation constant.
 const sides = ['blue', 'red'] as const;
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
-const documentFor = (session: unknown, schemaVersion = 1, rulesVersion = 1) =>
+const documentFor = (session: unknown, schemaVersion = 6, rulesVersion = 4) =>
   JSON.stringify({ format: 'orion-campaign', schemaVersion, rulesVersion, session });
 
 // Never resolve the host's real localStorage, including in tests of the default adapter.
@@ -193,7 +193,11 @@ describe('one read, real codec failures, no repair or fallback', () => {
     ['library document', () => '{"schemaVersion":2,"designs":[],"components":[]}', 'INVALID_SAVE'],
     ['missing session before future version', () => '{"format":"orion-campaign","schemaVersion":9,"rulesVersion":1}', 'INVALID_SAVE'],
     ['future schema before rules/state', () => documentFor(null, 2, 3), 'UNSUPPORTED_SAVE_VERSION'],
-    ['future rules before state', () => documentFor(null, 1, 2), 'UNSUPPORTED_RULES_VERSION'],
+    ['future rules before state', () => documentFor(null, 6, 99), 'UNSUPPORTED_RULES_VERSION'],
+    ...[1, 2, 3, 4, 5, 7, 8].map((version): [string, () => string, CampaignSaveErrorCode] => [
+      `retired or other codec schema${version}`, () => documentFor(null, version), 'UNSUPPORTED_SAVE_VERSION'
+    ]),
+    ['retired rules before state', () => documentFor(null, 6, 1), 'UNSUPPORTED_RULES_VERSION'],
     ['null state', () => documentFor(null), 'INVALID_STATE'],
     ['incomplete session', () => documentFor({ turn: 1 }), 'INVALID_STATE'],
     ['partial group transit', () => { const state = diagnostic(); delete state.ships[0].transit; return documentFor(state); }, 'INVALID_STATE'],

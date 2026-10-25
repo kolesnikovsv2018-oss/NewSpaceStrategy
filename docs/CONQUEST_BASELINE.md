@@ -1,5 +1,18 @@
 # Контрольная матрица Conquest — Н03
 
+После Н14 актуален baseline12/save16/rules13/tree10, map4, design-combat-v1.
+Проверены18 six-world до200 окон с repeat/checkpoint:4 completed65–66,
+14 timeout200; четыре boundary до8 и bounded40/256 по16 окон.
+Все24 repeat/checkpoint совпали, executor-error нет.
+Полная58-матрица заново не измерена. Промышленность общая с terraform/refit.
+
+Скорость/оснащение теперь закреплены в проекте. Поэтому прежние сроки
+27–35 окон Н13 не являются нормативом новой policy. Timeout не выдаёт
+победу;14/18 цензурированных партий — существенное ограничение текущего
+AI/баланса, а не доказательство завершения или универсального паритета.
+Unit-регрессия18 открытий ограничена16 окнами; полный200-window прогон
+с повтором/checkpoint выполнен отдельно реальным runner, не заглушкой.
+
 ## Назначение и повторение
 
 Это диагностика нынешнего Conquest, не публичный режим «все AI» и не гарантия
@@ -73,8 +86,8 @@ Boundary отделены полем `kind`:
 
 ## Формат и смысл метрик
 
-Выход `orion-conquest-baseline`, schemaVersion5 содержит `summary`, `verification`,
-`runs`. Каждая запись сохраняет входы, версии baseline6/save10/rules7/tree4/battlePolicy,
+Выход `orion-conquest-baseline`, schemaVersion11 содержит `summary`, `verification`,
+`runs`. Каждая запись сохраняет входы, версии baseline11/save15/rules12/tree9/battlePolicy/tacticalRules,
 карту, lineup→faction, полный finalState, журнал команд, промежуточный текущий save
 и метрики. `productionPoints`, `researchPoints` и `culturePoints` — фактически произведённые
 за наблюдавшиеся собственные ходы очки, а не остатки после расходов.

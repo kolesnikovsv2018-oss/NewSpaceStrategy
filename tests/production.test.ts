@@ -6,10 +6,10 @@ import { advanceProduction, createProductionState, getProductionQuote, getProduc
   MAX_ORDER_ID, MAX_PRODUCTION_RECORDS, productionStateSchema } from '../src/domain/production';
 
 function design(short = false): ShipDesign {
-  return { schemaVersion: 2, id: 'test-design', name: 'Заказ', hullId: 'fighter',
+  return { tacticalRules: 'design-combat-v1', hullVariant: 'standard', strategicEquipment: { policy: 'project-travel-v1', drive: 'standard', jump: 'standard', tank: 'standard' }, schemaVersion: 5, id: 'test-design', name: 'Заказ', hullId: 'fighter',
     createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
     slots: HULLS.fighter.slots.map(slot => ({ id: slot.id, component: slot.id === 'engine_1'
-      ? { id: 'engine', name: 'Двигатель', kind: 'engine', thrust: short ? 10 : 1000,
+      ? { tacticalVariant: 'standard', id: 'engine', name: 'Двигатель', kind: 'engine', technologyVariant: 'standard', thrust: short ? 10 : 1000,
         maxSpeed: short ? 10 : 200, maneuverability: 0.7, powerGeneration: short ? 1 : 600 } : null })) };
 }
 function funded(): CampaignSession {

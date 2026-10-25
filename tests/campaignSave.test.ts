@@ -11,7 +11,8 @@ import { MAX_FLEET_ID } from '../src/domain/campaignFleets';
 import { MAX_ORDER_ID } from '../src/domain/production';
 import { createCombatDesign } from '../src/domain/combatPresets';
 import { createCivilianDesign } from '../src/domain/civilianPresets';
-import { designSchema, validateDesign, v1DesignSchema, type ShipDesign } from '../src/domain/shipDesign';
+import { designSchema, validateDesign, type ShipDesign } from '../src/domain/shipDesign';
+import { createV1Design } from './fixtures/v1Design';
 import { ShipDesignManager, type StoragePort } from '../src/utils/ShipDesignManager';
 import { loadProductionCatalog } from '../src/utils/ProductionCatalog';
 import * as productionCatalog from '../src/utils/ProductionCatalog';
@@ -21,7 +22,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const sides = ['blue', 'red'] as const;
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 const envelope = (session: unknown = createCampaignSession()) => ({
-  format: 'orion-campaign', schemaVersion: 1, rulesVersion: 1, session
+  format: 'orion-campaign', schemaVersion: 6, rulesVersion: 4, session
 });
 const documentFor = (session: unknown) => JSON.stringify(envelope(session));
 function freeze(value: unknown): void {
@@ -113,9 +114,23 @@ function put(target: unknown, path: readonly (string | number)[], value: unknown
 function omit(target: unknown, key: string): void { delete (target as Record<string, unknown>)[key]; }
 
 describe('campaign save public contract and envelope priority', () => {
-  it('exports the exact v1/rules1/UTF-8 limit and discriminated result/error unions', () => {
+  it('roundtrips explicit standard/compact component snapshots without a campaign grant', () => {
+    const state = createCampaignSession(), design = createCombatDesign('fighter');
+    const beam = design.slots.find(slot => slot.component?.kind === 'beam')?.component;
+    if (!beam) throw Error('Expected beam');
+    beam.technologyVariant = 'compact';
+    state.production.lastOrderId = 2;
+    state.production.completed = [{ id: 2, factionId: 'blue', systemId: 'sol', design: structuredClone(design) }];
+    state.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design }];
+    const restored = roundtrip(state);
+    expect(restored).toEqual(state);
+    expect(restored.ships[0].design.slots.find(slot => slot.component?.kind === 'beam')?.component?.technologyVariant).toBe('compact');
+    expect(restored.ships[0].design.slots.find(slot => slot.component?.kind === 'engine')?.component?.technologyVariant).toBe('standard');
+  });
+
+  it('exports the exact schema4/rules2/UTF-8 limit and discriminated result/error unions', () => {
     expect([CAMPAIGN_SAVE_FORMAT, CAMPAIGN_SAVE_SCHEMA_VERSION, CAMPAIGN_RULES_VERSION, MAX_CAMPAIGN_SAVE_BYTES])
-      .toEqual(['orion-campaign', 1, 1, 5_000_000]);
+      .toEqual(['orion-campaign', 6, 4, 5_000_000]);
     expectTypeOf<CampaignSaveErrorCode>().toEqualTypeOf<'INVALID_SAVE' | 'SAVE_TOO_LARGE' |
       'UNSUPPORTED_SAVE_VERSION' | 'UNSUPPORTED_RULES_VERSION' | 'INVALID_STATE'>();
     expectTypeOf<CampaignSaveFailure>().toEqualTypeOf<{ ok: false; code: CampaignSaveErrorCode; message: string }>();
@@ -137,7 +152,7 @@ describe('campaign save public contract and envelope priority', () => {
     rejected(decodeCampaignSave(input), 'INVALID_SAVE');
   });
   it.each(['format', 'schemaVersion', 'rulesVersion', 'session'])('requires envelope key %s even with future versions', key => {
-    const input = { ...envelope(null), schemaVersion: 2, rulesVersion: 2 }; omit(input, key);
+    const input = { ...envelope(null), schemaVersion: 2, rulesVersion: 4 }; omit(input, key);
     rejected(decodeCampaignSave(JSON.stringify(input)), 'INVALID_SAVE');
   });
   it.each([null, 1, '', 'orion-shipyard', 'ORION-CAMPAIGN'])('rejects format %j before versions', format => {
@@ -148,35 +163,38 @@ describe('campaign save public contract and envelope priority', () => {
   });
   describe.each(['schemaVersion', 'rulesVersion'] as const)('%s', key => {
     it.each([undefined, null, '1', true, 0, -1, 0.5, 1.5, [], {}])('rejects non-positive-integer version %j as shape', version => {
-      const input = { ...envelope(null), schemaVersion: 2, rulesVersion: 2, [key]: version };
+      const input = { ...envelope(null), schemaVersion: 2, rulesVersion: 4, [key]: version };
       rejected(decodeCampaignSave(JSON.stringify(input)), 'INVALID_SAVE');
     });
-    it.each([2, 999, Number.MAX_SAFE_INTEGER])('rejects unsupported positive version %s before null session', version => {
+    it.each([1, 999, Number.MAX_SAFE_INTEGER])('rejects unsupported positive version %s before null session', version => {
       rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), [key]: version })),
         key === 'schemaVersion' ? 'UNSUPPORTED_SAVE_VERSION' : 'UNSUPPORTED_RULES_VERSION');
     });
     it('rejects an overflowing JSON number as malformed shape, not an unsupported version', () => {
-      const text = JSON.stringify(envelope()).replace(`"${key}":1`, `"${key}":1e400`);
+      const text = JSON.stringify(envelope()).replace(`"${key}":${key === 'schemaVersion' ? 6 : 4}`, `"${key}":1e400`);
       rejected(decodeCampaignSave(text), 'INVALID_SAVE');
     });
   });
   it('checks schema before rules before the contents of a present session', () => {
-    rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), schemaVersion: 2, rulesVersion: 3 })), 'UNSUPPORTED_SAVE_VERSION');
-    rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), rulesVersion: 3 })), 'UNSUPPORTED_RULES_VERSION');
+    rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), schemaVersion: 2, rulesVersion: 4 })), 'UNSUPPORTED_SAVE_VERSION');
+    rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), rulesVersion: 99 })), 'UNSUPPORTED_RULES_VERSION');
     rejected(decodeCampaignSave(documentFor(null)), 'INVALID_STATE');
     rejected(decodeCampaignSave(documentFor({})), 'INVALID_STATE');
     rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), schemaVersion: 2, rulesVersion: '3' })), 'INVALID_SAVE');
   });
-  it('rejects actual library v1/v2, standalone designs and raw session/view without migration', () => {
+  it.each([1, 2, 3, 4, 5, 7, 8])('rejects retired or other codec schema%s before rules/session', schemaVersion => {
+    rejected(decodeCampaignSave(JSON.stringify({ ...envelope(null), schemaVersion, rulesVersion: 99 })), 'UNSUPPORTED_SAVE_VERSION');
+  });
+  it('rejects actual library v1/v2/v3, standalone designs and raw session/view without migration', () => {
     const design = createCombatDesign('fighter');
-    const old = v1DesignSchema.parse({ ...design, schemaVersion: 1,
-      slots: design.slots.filter(slot => !slot.id.startsWith('service_')) });
+    const old = createV1Design();
     const repository = new ShipDesignManager({ getItem: () => null, setItem: () => { throw new Error('Unexpected write'); } });
     const legacyLibrary = JSON.stringify({ schemaVersion: 1, designs: [old], components: [] });
-    expect(repository.decode(legacyLibrary).designs[0].schemaVersion).toBe(2); // Valid library, not junk JSON.
+    expect(() => repository.decode(legacyLibrary)).toThrow('Версия формата библиотеки не поддерживается');
     const migrate = vi.spyOn(repository, 'decode');
     const load = vi.spyOn(ShipDesignManager.prototype, 'load');
-    for (const input of [legacyLibrary, JSON.stringify({ schemaVersion: 2, designs: [design], components: [] }),
+    for (const input of [legacyLibrary, JSON.stringify({ schemaVersion: 2, designs: [old], components: [] }),
+      JSON.stringify({ schemaVersion: 6, designs: [design], components: [] }),
       JSON.stringify(design), JSON.stringify(old), JSON.stringify(createCampaignSession()),
       JSON.stringify(getCampaignSessionView(createCampaignSession(), 'blue'))]) {
       rejected(decodeCampaignSave(input), 'INVALID_SAVE');
@@ -200,6 +218,15 @@ const corruptions: Corruption[] = [
   ['uninhabitable owned system', s => { const r = s.galaxy.systems.find(x => x.id === 'rift')!; r.ownerId = 'blue'; r.exploredBy = ['blue']; }],
   ['foreign faction ID', s => put(s.ships[0], ['factionId'], 'neutral')],
   ['missing fuel', s => omit(s.ships[0], 'fuel')],
+  ...(['ship', 'order', 'completed'] as const).flatMap((kind): Corruption[] =>
+    (['retired design2', 'missing variant', 'unknown variant'] as const).map(damage => [`${kind} ${damage}`, s => {
+      const design = kind === 'ship' ? s.ships[0].design : kind === 'order' ? s.production.orders[0].design : s.production.completed[0].design;
+      const component = design.slots.find(slot => slot.component)?.component;
+      if (!component) throw Error('Expected component');
+      if (damage === 'retired design2') Reflect.set(design, 'schemaVersion', 2);
+      if (damage === 'missing variant') Reflect.deleteProperty(component, 'technologyVariant');
+      if (damage === 'unknown variant') Reflect.set(component, 'technologyVariant', 'future');
+    }])),
   ['missing fleet items', s => omit(s.fleets, 'items')],
   ['missing fleet counter', s => omit(s.fleets, 'lastFleetId')],
   ['duplicate ship ID', s => { s.ships[1].id = s.ships[0].id; }],

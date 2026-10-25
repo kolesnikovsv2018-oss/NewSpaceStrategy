@@ -9,7 +9,7 @@ import { createOperationalState } from '../domain/campaignOperations';
 import { getColonyProductionQuote } from '../domain/campaignOutput';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
 
-export const BASELINE_VERSION = 8;
+export const BASELINE_VERSION = 12;
 export const BASELINE_SEEDS = [
   { mapSeed: 41, campaignSeed: 101 },
   { mapSeed: 12345, campaignSeed: 67890 },
@@ -60,7 +60,7 @@ export interface CommandRecord {
 }
 export interface BaselineRun {
   input: BaselineInput;
-  versions: { baseline: 8; save: 12; rules: 9; battlePolicy: Conquest['battlePolicy']; tree: 6 };
+  versions: { baseline: 12; save: 16; rules: 13; battlePolicy: Conquest['battlePolicy']; tree: 10; tacticalRules: 'design-combat-v1' };
   map: GalaxyMap;
   lineups: { first: CampaignFactionId; second: CampaignFactionId };
   controllers: 'diagnostic-all-ai-command-runner';
@@ -131,7 +131,7 @@ export function createBaselineStart(input: BaselineInput): { state: Conquest; ma
       for (let index = 0; index < count; index++) {
         const id = state.session.ships.length + 1;
         state.session.ships.push({ id, factionId: side, systemId, design: structuredClone(design),
-          fuel: options.kind === 'supply-boundary' ? 0 : 3 });
+          fuel: options.kind === 'supply-boundary' ? 0 : 3000 });
         const operation = createOperationalState(design);
         if (options.kind === 'supply-boundary') operation.ammunition.forEach(weapon => { weapon.amount = 0; });
         state.operations[String(id)] = operation;
@@ -272,7 +272,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
   const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
   const result: BaselineRun = {
-    input: options, versions: { baseline: 8, save: 12, rules: 9, battlePolicy: state.battlePolicy, tree: 6 },
+    input: options, versions: { baseline: 12, save: 16, rules: 13, battlePolicy: state.battlePolicy, tree: 10, tacticalRules: 'design-combat-v1' },
     map: start.map, lineups: { first, second: first === 'blue' ? 'red' : 'blue' },
     controllers: 'diagnostic-all-ai-command-runner', status: 'timeout', outcome: getConquestOutcome(state),
     turnsExecuted: resume?.turnsExecuted ?? 0, commands: [], metrics: { blue: sideMetrics(), red: sideMetrics() },

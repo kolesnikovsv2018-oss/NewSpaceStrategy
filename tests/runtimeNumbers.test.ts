@@ -69,7 +69,7 @@ describe.each(factories)('$name numeric runtime boundaries', ({ create }) => {
     expect(ship.startMoving(-100, -100)).toBe(true); // Coordinates are signed, unlike energy and time.
     expect(ship.velocity.x).toBeLessThan(0);
     expect(ship.startMoving(1e200, 1e200)).toBe(true); // Math.hypot avoids squared-distance overflow.
-    expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(ship.getCurrentMaxSpeed());
+    expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(ship.getAcceleration() === undefined ? ship.getCurrentMaxSpeed() : Math.hypot(2, 3));
   });
 });
 

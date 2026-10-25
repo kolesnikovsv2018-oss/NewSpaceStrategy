@@ -17,7 +17,8 @@ import { MAX_CAMPAIGN_SHIPS, campaignShipsSchema } from '../src/domain/campaignS
 import { MAX_COLONY_QUEUE, MAX_ORDER_ID, MAX_PRODUCTION_RECORDS, productionStateSchema } from '../src/domain/production';
 import { createCivilianDesign } from '../src/domain/civilianPresets';
 import { createCombatDesign } from '../src/domain/combatPresets';
-import { designSchema, validateDesign, v1DesignSchema } from '../src/domain/shipDesign';
+import { designSchema, validateDesign } from '../src/domain/shipDesign';
+import { createV1Design } from './fixtures/v1Design';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { ShipDesignManager } from '../src/utils/ShipDesignManager';
 import * as catalog from '../src/utils/ProductionCatalog';
@@ -28,7 +29,7 @@ const local = { mode: 'local' } as const;
 const computer = { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } as const;
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 const envelope = (session: unknown = createCampaignSession(), control: unknown = local) => ({
-  format: CAMPAIGN_SAVE_FORMAT, schemaVersion: 2, rulesVersion: 1, session, control
+  format: CAMPAIGN_SAVE_FORMAT, schemaVersion: 7, rulesVersion: 4, session, control
 });
 const documentFor = (run: CampaignRun) => JSON.stringify(envelope(run.session, run.control));
 function encoded(run: unknown): string {
@@ -65,9 +66,9 @@ function put(value: unknown, path: readonly (string | number)[], replacement: un
 }
 
 describe('run codec exports, exact envelope and ordered refusals', () => {
-  it('exports distinct schema2, unchanged legacy1/rules1/budget and typed result unions', () => {
+  it('exports distinct run5/state4/rules2/budget and typed result unions', () => {
     expect([CAMPAIGN_RUN_SAVE_SCHEMA_VERSION, CAMPAIGN_SAVE_SCHEMA_VERSION, CAMPAIGN_RULES_VERSION,
-      CAMPAIGN_SAVE_FORMAT, MAX_CAMPAIGN_SAVE_BYTES]).toEqual([2, 1, 1, 'orion-campaign', 5_000_000]);
+      CAMPAIGN_SAVE_FORMAT, MAX_CAMPAIGN_SAVE_BYTES]).toEqual([7, 6, 4, 'orion-campaign', 5_000_000]);
     expectTypeOf<CampaignRunSaveErrorCode>().toEqualTypeOf<'INVALID_SAVE' | 'SAVE_TOO_LARGE' | 'INVALID_STATE' |
       'UNSUPPORTED_SAVE_VERSION' | 'UNSUPPORTED_RULES_VERSION' | 'UNSUPPORTED_AI_POLICY'>();
     expectTypeOf<CampaignRunSaveFailure>().toEqualTypeOf<{ ok: false; code: CampaignRunSaveErrorCode; message: string }>();
@@ -106,23 +107,23 @@ describe('run codec exports, exact envelope and ordered refusals', () => {
       reject(decodeCampaignRunSave(JSON.stringify({ ...envelope(null, null), schemaVersion: 99, rulesVersion: 99, [key]: version })), 'INVALID_SAVE');
     });
     it.each(['1e400', '-1e400'])('rejects JSON overflow %s as malformed shape', value => {
-      const json = JSON.stringify(envelope()).replace(`"${key}":${key === 'schemaVersion' ? 2 : 1}`, `"${key}":${value}`);
+      const json = JSON.stringify(envelope()).replace(`"${key}":${key === 'schemaVersion' ? 7 : 4}`, `"${key}":${value}`);
       reject(decodeCampaignRunSave(json), 'INVALID_SAVE');
     });
   });
-  it.each([3, 99, Number.MAX_SAFE_INTEGER])('unknown schema %s precedes missing/invalid/unknown control and session', schemaVersion => {
+  it.each([1, 2, 3, 4, 5, 6, 8, 99, Number.MAX_SAFE_INTEGER])('unsupported schema %s precedes missing/invalid/unknown control and session', schemaVersion => {
     for (const control of [undefined, null, {}, { mode: 'human-vs-ai', aiPolicy: 'future' }]) {
       reject(decodeCampaignRunSave(JSON.stringify({ ...envelope(null, control), control, schemaVersion, rulesVersion: 99 })), 'UNSUPPORTED_SAVE_VERSION');
     }
   });
-  it.each([1, 2])('schema%s unsupported rules precedes version-specific control and null session', schemaVersion => {
-    for (const rulesVersion of [2, 99, Number.MAX_SAFE_INTEGER]) for (const control of [undefined, null, { mode: 'human-vs-ai', aiPolicy: 'future' }]) {
+  it.each([7])('schema%s unsupported rules precedes control and null session', schemaVersion => {
+    for (const rulesVersion of [1, 99, Number.MAX_SAFE_INTEGER]) for (const control of [undefined, null, { mode: 'human-vs-ai', aiPolicy: 'future' }]) {
       reject(decodeCampaignRunSave(JSON.stringify({ ...envelope(null), control, schemaVersion, rulesVersion })), 'UNSUPPORTED_RULES_VERSION');
     }
   });
-  it.each([1, 2])('strict version-specific presence for schema%s, no control default', schemaVersion => {
+  it.each([7])('strict presence for schema%s, no control default', schemaVersion => {
     const input = { ...envelope(null), schemaVersion };
-    if (schemaVersion === 2) omit(input, 'control');
+    omit(input, 'control');
     reject(decodeCampaignRunSave(JSON.stringify(input)), 'INVALID_SAVE');
   });
   const invalidControls: unknown[] = [null, 1, 'local', [], {}, { mode: 'LOCAL' }, { mode: 'ai' }, { mode: 'local', aiPolicy: 'expansion-v1' },
@@ -155,26 +156,25 @@ describe('run codec exports, exact envelope and ordered refusals', () => {
   });
 });
 
-describe('explicit strict 1/1 migration only; legacy APIs remain state-only', () => {
-  it.each([1, 2])('legacy parity %s restores LOCAL, never inherits a prior AI configuration', turn => {
+describe('current format only; independent state API remains state-only', () => {
+  it.each([1, 2])('state-only document at parity %s never acquires control or inherits prior AI', turn => {
     const session = rich(turn, 3), old = encodeCampaignSave(session);
     if (!old.ok) throw new Error(old.code);
     const oldBytes = old.json, read = vi.spyOn(legacy, 'decodeCampaignSave');
-    const first = decoded(oldBytes); expect(read).toHaveBeenCalledTimes(1); expect(read).toHaveBeenCalledWith(oldBytes);
-    expect(first).toEqual({ session, control: local });
+    reject(decodeCampaignRunSave(oldBytes), 'UNSUPPORTED_SAVE_VERSION');
+    expect(read).not.toHaveBeenCalled();
     const ai = decoded(encoded({ session, control: computer }));
     expect(ai.control).toEqual(computer);
-    first.control.mode = 'human-vs-ai'; first.session.treasuries.red.credits = 0;
-    const second = decoded(oldBytes); expect(second).toEqual({ session, control: local });
+    reject(decodeCampaignRunSave(oldBytes), 'UNSUPPORTED_SAVE_VERSION');
     expect(old.json).toBe(oldBytes); expect(JSON.parse(oldBytes)).not.toHaveProperty('control');
-    const upgraded = encoded(second); // Only this explicit encode produces schema2, with no storage operation.
+    const second = { session, control: local }, upgraded = encoded(second);
     expect(JSON.parse(upgraded)).toEqual(envelope(session, local));
     expect(decoded(upgraded)).toEqual(second); expect(decodeCampaignSave(upgraded).ok).toBe(false);
     expect(decodeCampaignSave(oldBytes)).toEqual({ ok: true, state: session });
     expect(encodeCampaignSave(session)).toEqual(old);
   });
-  it.each([local, computer, null, {}, { mode: 'human-vs-ai', aiPolicy: 'future' }])('legacy1 with control %j is not a migration', control => {
-    reject(decodeCampaignRunSave(JSON.stringify({ ...envelope(null, control), schemaVersion: 1 })), 'INVALID_SAVE');
+  it.each([local, computer, null, {}, { mode: 'human-vs-ai', aiPolicy: 'future' }])('retired schema1 with control %j is unsupported', control => {
+    reject(decodeCampaignRunSave(JSON.stringify({ ...envelope(null, control), schemaVersion: 1 })), 'UNSUPPORTED_SAVE_VERSION');
   });
   it.each([local, computer])('old reader and unchanged manager reject new %j without discarding control', control => {
     const json = encoded({ session: rich(2, 3), control }), data = new Map([[CampaignSaveManager.STORAGE_KEY, json]]);
@@ -186,14 +186,14 @@ describe('explicit strict 1/1 migration only; legacy APIs remain state-only', ()
     expect(decoded(json).control).toEqual(control);
     expect(encodeCampaignSave({ session: createCampaignSession(), control }).ok).toBe(false);
   });
-  it('rejects real library v1/v2, standalone designs, bare run/session/view and missing fuel/fleets, no library migration', () => {
-    const design = createCombatDesign('fighter'), oldDesign = v1DesignSchema.parse({ ...design, schemaVersion: 1,
-      slots: design.slots.filter(slot => !slot.id.startsWith('service_')) });
+  it('rejects real library versions, standalone designs, bare run/session/view and missing fuel/fleets, no library migration', () => {
+    const design = createCombatDesign('fighter'), oldDesign = createV1Design();
     const repository = new ShipDesignManager({ getItem: () => null, setItem: () => { throw new Error('Unexpected write'); } });
     const library = JSON.stringify({ schemaVersion: 1, designs: [oldDesign], components: [] });
-    expect(repository.decode(library).designs[0].schemaVersion).toBe(2);
+    expect(() => repository.decode(library)).toThrow('Версия формата библиотеки не поддерживается');
     const migrate = vi.spyOn(ShipDesignManager.prototype, 'decode');
-    for (const input of [library, JSON.stringify({ schemaVersion: 2, designs: [design], components: [] }), JSON.stringify(design),
+    for (const input of [library, JSON.stringify({ schemaVersion: 2, designs: [oldDesign], components: [] }),
+      JSON.stringify({ schemaVersion: 6, designs: [design], components: [] }), JSON.stringify(design),
       JSON.stringify(oldDesign), JSON.stringify(createCampaignSession()), JSON.stringify(getCampaignSessionView(createCampaignSession(), 'blue')),
       JSON.stringify({ session: createCampaignSession(), control: local })]) reject(decodeCampaignRunSave(input), 'INVALID_SAVE');
     for (const damage of ['fuel', 'fleets', 'design']) {
@@ -201,8 +201,7 @@ describe('explicit strict 1/1 migration only; legacy APIs remain state-only', ()
       if (damage === 'fuel') omit(state.ships[0], 'fuel');
       if (damage === 'fleets') omit(state, 'fleets');
       if (damage === 'design') put(state.ships[0], ['design'], oldDesign);
-      const { control: _control, ...old } = { ...envelope(state), schemaVersion: 1 };
-      reject(decodeCampaignRunSave(JSON.stringify(old)), 'INVALID_STATE');
+      reject(decodeCampaignRunSave(JSON.stringify(envelope(state))), 'INVALID_STATE');
     }
     expect(migrate).not.toHaveBeenCalled();
   });
@@ -218,6 +217,15 @@ const corruptions: Corruption[] = [
   ['hidden owner unobserved', s => { s.galaxy.systems.find(x => x.id === 'vega')!.exploredBy = []; }],
   ['uninhabitable ownership', s => { known(s, 'rift', 'red', 'red'); }],
   ['hidden missing fuel', s => omit(s.ships[3], 'fuel')],
+  ...(['ship', 'order', 'completed'] as const).flatMap((kind): Corruption[] =>
+    (['retired design2', 'missing variant', 'unknown variant'] as const).map(damage => [`hidden ${kind} ${damage}`, s => {
+      const design = kind === 'ship' ? s.ships[3].design : kind === 'order' ? s.production.orders[4].design : s.production.completed[0].design;
+      const component = design.slots.find(slot => slot.component)?.component;
+      if (!component) throw Error('Expected component');
+      if (damage === 'retired design2') Reflect.set(design, 'schemaVersion', 2);
+      if (damage === 'missing variant') Reflect.deleteProperty(component, 'technologyVariant');
+      if (damage === 'unknown variant') Reflect.set(component, 'technologyVariant', 'future');
+    }])),
   ['hidden duplicate ship', s => { s.ships[4].id = 101; }],
   ['hidden ship above counter', s => { s.ships[5].id = 241; }],
   ['hidden ship overlaps order', s => { s.ships[5].id = 211; }],
@@ -284,18 +292,30 @@ const corruptions: Corruption[] = [
   ] satisfies [(string | number)[], unknown][]).map(([path, value]): Corruption => [`numeric ${path.join('.')}=${value}`, s => put(s, path, value)])
 ];
 
-describe.each(['encode', 'decode2', 'migrate1'] as const)('%s full-session regressions (real schemas; diagnostic, not paid)', operation => {
+describe.each(['encode', 'decode5', 'retired1'] as const)('%s full-session regressions (real schemas; diagnostic, not paid)', operation => {
   it.each(corruptions)('%s', (_label, corrupt) => {
     const session = rich(1, 3); corrupt(session);
     const run = { session, control: computer }, before = structuredClone(run); freeze(run);
     const { control: _control, ...old } = { ...envelope(session), schemaVersion: 1 };
-    reject(operation === 'encode' ? encodeCampaignRunSave(run) : decodeCampaignRunSave(operation === 'decode2'
-      ? documentFor(run) : JSON.stringify(old)), 'INVALID_STATE');
+    reject(operation === 'encode' ? encodeCampaignRunSave(run) : decodeCampaignRunSave(operation === 'decode5'
+      ? documentFor(run) : JSON.stringify(old)), operation === 'retired1' ? 'UNSUPPORTED_SAVE_VERSION' : 'INVALID_STATE');
     expect(run).toEqual(before);
   });
 });
 
 describe('full detached snapshots and existing canonicalization only', () => {
+  it('preserves explicit compact snapshots without applying campaign research or mutating standard siblings', () => {
+    const session = createCampaignSession(), design = createCombatDesign('fighter');
+    const beam = design.slots.find(slot => slot.component?.kind === 'beam')?.component;
+    if (!beam) throw Error('Expected beam');
+    beam.technologyVariant = 'compact'; session.production.lastOrderId = 1;
+    session.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design }];
+    const run = { session, control: computer }, restored = roundtrip(run);
+    expect(restored).toEqual(run);
+    expect(restored.session.ships[0].design.slots.find(slot => slot.component?.kind === 'beam')?.component?.technologyVariant).toBe('compact');
+    expect(restored.session.ships[0].design.slots.find(slot => slot.component?.kind === 'engine')?.component?.technologyVariant).toBe('standard');
+  });
+
   it.each([local, computer])('both parities, private sides and complete moving run %j', control => {
     for (const turn of [1, 2]) {
       const run = { session: rich(turn, 3), control }, restored = roundtrip(run);
@@ -394,15 +414,15 @@ describe('real UTF-8 5MB limit before parse / after compact stringify', () => {
     expect(campaignRunSchema.safeParse(run).success).toBe(true); expect(bytes(documentFor(run))).toBe(5_000_001);
     freeze(run); reject(encodeCampaignRunSave(run), 'SAVE_TOO_LARGE'); expect(design.createdAt.endsWith('00Z')).toBe(true);
   });
-  it('legacy has the same preparse cap; adding mandatory control may make explicit encode2 exceed it', () => {
+  it('other codec exact5MB is unsupported; oversized text still rejects before parse', () => {
     const session = createCampaignSession(), design = createCombatDesign('fighter'); design.createdAt = '2026-09-10T00:00:00.0Z';
     session.production.lastOrderId = 1; session.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design }];
     const old = encodeCampaignSave(session); if (!old.ok) throw new Error(old.code);
     design.createdAt = `2026-09-10T00:00:00.${'0'.repeat(5_000_000 - bytes(old.json) + 1)}Z`;
     const exact = encodeCampaignSave(session); if (!exact.ok) throw new Error(exact.code);
     expect(bytes(exact.json)).toBe(5_000_000);
-    const migrated = decoded(exact.json); expect(migrated).toEqual({ session, control: local });
-    reject(encodeCampaignRunSave(migrated), 'SAVE_TOO_LARGE');
+    reject(decodeCampaignRunSave(exact.json), 'UNSUPPORTED_SAVE_VERSION');
+    reject(encodeCampaignRunSave({ session, control: local }), 'SAVE_TOO_LARGE');
     const parse = vi.spyOn(JSON, 'parse'); reject(decodeCampaignRunSave(exact.json + ' '), 'SAVE_TOO_LARGE');
     expect(parse).not.toHaveBeenCalled(); expect(bytes(exact.json)).toBe(5_000_000);
   });
@@ -493,7 +513,7 @@ describe('pure boundary, real validation rather than exception injection', () =>
   it.each(['1e400', '-1e400'])('rejects real JSON session overflow %s', value => {
     reject(decodeCampaignRunSave(JSON.stringify(envelope()).replace('"credits":100', `"credits":${value}`)), 'INVALID_STATE');
   });
-  it('encode/decode/migrate do not call AI, commands, clocks, IO, catalog or scheduling', () => {
+  it('encode/decode and retired rejection do not call AI, commands, clocks, IO, catalog or scheduling', () => {
     const run = { session: rich(2, 3), control: computer }, json = encoded(run), old = encodeCampaignSave(run.session);
     if (!old.ok) throw new Error(old.code);
     const before = structuredClone(run); freeze(run);
@@ -510,8 +530,10 @@ describe('pure boundary, real validation rather than exception injection', () =>
     }
     for (const name of ['fetch', 'setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask']) vi.stubGlobal(name, forbidden);
     let results: unknown;
-    try { results = [encoded(run), decoded(json), decoded(old.json)]; } finally { vi.unstubAllGlobals(); }
-    expect(results).toEqual([json, before, { session: before.session, control: local }]);
+    try {
+      results = [encoded(run), decoded(json), decodeCampaignRunSave(old.json)];
+    } finally { vi.unstubAllGlobals(); }
+    expect(results).toEqual([json, before, expect.objectContaining({ ok: false, code: 'UNSUPPORTED_SAVE_VERSION' })]);
     spies.forEach(spy => expect(spy).not.toHaveBeenCalled()); expect(forbidden).not.toHaveBeenCalled(); expect(run).toEqual(before);
   });
 });

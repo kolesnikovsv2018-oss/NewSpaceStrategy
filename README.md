@@ -2,6 +2,12 @@
 
 Браузерный прототип 2D-стратегии в духе Master of Orion: пошаговая кампания на генерируемой галактике, исследования, проектирование и строительство кораблей, перелёты и автоматический бой флотов.
 
+Н14: [стратегическое оснащение и многотактовые перелёты](docs/CAMPAIGN_TRAVEL.md).
+Проект задаёт speed/jump/tank отдельно от тактики; research открывает
+выбор, build/refit оплачивает экземпляр. Расстояния, сроки и топливо
+рассчитываются одинаково в игре, UI, AI и генераторе.
+Текущие форматы — [матрица сохранений](docs/CAMPAIGN_SAVE.md).
+
 ## Стек и запуск
 
 TypeScript strict, Phaser 3, Vite 8, Vitest 5. Используется Yarn Classic 1.22.22 и единственный yarn.lock. Минимум Node 22.12; проверенный runtime — Node 24.22.1.
@@ -31,6 +37,15 @@ TypeScript strict, Phaser 3, Vite 8, Vitest 5. Используется Yarn Cla
 - reports — отчёты и доказательства проверок по датам.
 
 ## Текущее состояние
+
+**Н13,2026-10-25:** [исследуемая тактика](docs/CAMPAIGN_COMBAT_TECHNOLOGIES.md):
+engine/beam/projectile/armor/shield варианты, усиленный корпус, реальный
+разгон и paid refit без лечения. Current-only ShipDesign4/library4,
+Conquest15/rules12; мирные state5/run6/match7 rules3.
+3818 тестов/70 файлов, strict/build173, baseline и настоящий
+CSS1280×720/390×844 paid cycle/reload/next oracle.
+[Приёмка16](reports/2026-10-25/16-n13-combat-technologies.md).
+Далее Н14/Н15; нижние записи описывают исторические этапы.
 
 **Д08,2026-10-25:** [прямые перелёты и колонизатор](docs/CAMPAIGN_TRAVEL.md)
 подготовили Н10. Линий нет: дальность200→400→800→1500 открывается

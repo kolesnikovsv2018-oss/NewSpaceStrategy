@@ -12,7 +12,7 @@ describe('read-only production catalogue', () => {
   });
   it('reads incomplete drafts with an explanation but without allowing a production quote', () => {
     const ship = createDesign();
-    const storage = { getItem: vi.fn(() => JSON.stringify({ schemaVersion: 2, designs: [ship], components: [] })), setItem: vi.fn() };
+    const storage = { getItem: vi.fn(() => JSON.stringify({ schemaVersion: 5, designs: [ship], components: [] })), setItem: vi.fn() };
     const result = loadProductionCatalog(new ShipDesignManager(storage));
     expect(result.choices).toHaveLength(8); const saved = result.choices[7];
     expect(saved.source).toBe('Библиотека'); expect(saved.quote).toBeUndefined(); expect(saved.issue).toContain('двигатель');
@@ -20,7 +20,7 @@ describe('read-only production catalogue', () => {
   });
   it('keeps canonical snapshot independent of later library edits and subsequent catalogue loads', () => {
     const ship = createDesign('corvette', true);
-    const repository = { load: () => ({ schemaVersion: 2 as const, designs: [ship], components: [] }) };
+    const repository = { load: () => ({ schemaVersion: 5 as const, designs: [ship], components: [] }) };
     const first = loadProductionCatalog(repository); ship.name = 'Later';
     expect(first.choices[7].design.name).not.toBe('Later');
     const second = loadProductionCatalog(repository); expect(second.choices[7].design.name).toBe('Later');

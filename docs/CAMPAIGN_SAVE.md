@@ -1,5 +1,62 @@
 # S3.23–S3.25 — Сохранение кампании: контракт, кодек и репозиторий
 
+После Н14 военная кампания пишет/читает только save16/rules13 с обязательными
+стратегическими работами общего FIFO; [контракт](CAMPAIGN_TERRAFORMING.md).
+Мирные форматы приведены в текущей матрице ниже. Исторические номера ниже не являются
+версиями актуального Conquest.
+
+<a id="актуальный-мирный-формат-н12--2026-10-25"></a>
+<a id="актуальный-мирный-формат-н13--2026-10-25"></a>
+
+## Актуальные форматы Н14 — 2026-10-25
+
+Текущая матрица: ShipDesign5/library5 (`orion_shipyard_v5`),
+Conquest16/rules13, rules snapshot11/rules11/tree10/baseline12,
+map4/rules4/generator-v4/balanced-start-v4.
+Мирные state/run/match codecs6/7/8 rules4 изменены из-за nested design5,
+не из-за новых мирных перелётов. Только актуальные readers, без миграций.
+Нижние номера Н13/Н12 — исторические; эта матрица имеет приоритет.
+
+Военный transit хранит policy project-travel-v1, destination, исходное
+distance, capability snapshot, fuelCost, totalTurns и remainingTurns.
+Checker сверяет его с неизменной картой/проектом и минимальными
+возможностями группы. Новая наука/библиотека/last-map не меняют путь.
+Load не продвигает, не заправляет и не генерирует карту; AI-red paused.
+Снимки не сохраняются второй раз на fleet/в UI.
+
+Поддерживается **ровно одна версия каждого кодека**, без миграций,
+version-readers, делегирования старому decoder или fallback:
+
+| API | `schemaVersion` | `rulesVersion` | Поля после format/версий |
+| --- | --- | --- | --- |
+| `campaignSave` / `CampaignSaveManager` | 5 | 3 | session |
+| `campaignRunSave` / `CampaignRunSaveManager` | 6 | 3 | session, control |
+| `campaignMatchSave` / `CampaignMatchSaveManager` | 7 | 3 | session, control, scenario |
+
+MainScene использует только match7; общий ручной слот остаётся
+`orion_campaign_v1`. Ключ не задаёт поддерживаемую версию документа.
+Каждый вложенный проект — самостоятельный ShipDesign4 с явным tacticalRules/hullVariant и
+`technologyVariant`/`tacticalVariant` на каждом компоненте. Проекты1/2/3, отсутствующий вариант
+и старые конверты1/2/3 отвергаются, а не получают default/grant.
+Кодеки не конвертируют state5/run6 в match7 или state5 в run6.
+
+Порядок guard сохранён: тип/5 000 000 байт UTF-8 до parse → строгая базовая
+форма/own session → schema → rules → обязательные control/scenario →
+policy/scenario → полное скрытое состояние. Неподдерживаемая положительная
+schema даёт `UNSUPPORTED_SAVE_VERSION`, текущая schema с rules≠3 —
+`UNSUPPORTED_RULES_VERSION`; лишние поля/неверная базовая форма дают
+`INVALID_SAVE` до версий. Полные typed errors, detached candidates,
+предварительный encode до любого storage-access и один get/set сохранены.
+Отказ чтения старых bytes не пишет/не удаляет/не ремонтирует слот и не
+выполняет команды. Успешная явная запись текущего состояния заменяет слот
+по прежнему подтверждению MainScene.
+
+Механика мирной кампании, paid FIFO/перелёты, completed, AI privacy и
+lifecycle не расширены. Регрессии старого acceptance заменены явным
+rejection; границы, атомарность, paid snapshots и восстановление текущей
+версии продолжают проверяться. Все номера1/2/3 и миграции в следующих
+исторических разделах описывают прежнюю приёмку, не действующий reader.
+
 На 2026-10-08 **S3.39 подключил MainScene к [match-кодеку](../src/domain/campaignMatchSave.ts) и [CampaignMatchSaveManager](../src/utils/CampaignMatchSaveManager.ts)**: writer3/rules1, reader strict1/2/3, тот же orion_campaign_v1. Legacy1/2→sandbox без записи/ретрозавершения; outcome не сохраняется. Save захватывает match до IO, занятый/повреждённый слот требует confirm; load проверяет detached candidate до confirm без reread. Error/cancel сохраняет исход; completed load без AI, ongoing red-load paused. Старые API неизменны и отвергают3. [Приёмка S3.39](CAMPAIGN_COMPLETION.md#12-фактическая-приёмка-s339):3140 тестов/44 файла, strict/build, actual save3/reload/load обычной и оплаченной completed-партии; реальные quota/concurrency не проверялись. Ниже исторические описания S3.34/save2 и более ранних этапов; этот абзац имеет приоритет.
 
 - Дата решения: 2026-09-09.
@@ -8,13 +65,13 @@
 - Основание: [план](../reports/2026-09-07/plan.md), [кампания](CAMPAIGN.md), [содержание](CAMPAIGN_UPKEEP.md).
 - Область v1: один ручной локальный слот полной мирной партии, отдельный от библиотеки проектов. JSON-кодек общий для слота и будущего обмена файлами; файловый UI, autosave, облако, история слотов, AI и восстановление тактического боя вне первой реализации.
 
-Действующий путь: [run-кодек](../src/domain/campaignRunSave.ts) → [run-менеджер](../src/utils/CampaignRunSaveManager.ts) → [MainScene](../src/scenes/MainScene.ts)/[CampaignPanel](../src/ui/CampaignPanel.ts). [Legacy encode/decode](../src/domain/campaignSave.ts) и [CampaignSaveManager](../src/utils/CampaignSaveManager.ts) сохранены для1/1, не являются текущим writer сцены. **Исторические заголовки/якоря и проверки S3.23–S3.33 ниже сохранены:** их save1/1/«UI ещё нет» относятся к своему этапу; текущие S3.34/раздел8 имеют приоритет.
+Действующий путь: [match-кодек6](../src/domain/campaignMatchSave.ts) → [match-менеджер](../src/utils/CampaignMatchSaveManager.ts) → [MainScene](../src/scenes/MainScene.ts)/[CampaignPanel](../src/ui/CampaignPanel.ts). State4/run5 — самостоятельные API, не writer сцены и не compatibility-readers. **Исторические заголовки/якоря и проверки S3.23–S3.39 ниже сохранены:** текущая матрица Н12 выше имеет приоритет над всеми прежними статусами и номерами.
 
 ## 1. Проверенные исходные факты
 
 [CampaignSession](../src/domain/campaignSession.ts) содержит обязательные `galaxy`, `turn`, `treasuries`, `production`, `ships`, `fleets`. Все игровые команды карты работают с этой сессией; текущая [MainScene](../src/scenes/MainScene.ts) создаёт новую при входе и освобождает при выходе. Автоматического продолжения/чтения диска нет.
 
-[ShipDesignManager](../src/utils/ShipDesignManager.ts) сохраняет **библиотеку**, не партию. Ключи библиотеки v2/v1 и старого редактора, её импортеры и миграции не подходят для кампании. Совпадение `schemaVersion` не означает совпадение формата.
+[ShipDesignManager](../src/utils/ShipDesignManager.ts) сохраняет **библиотеку**, не партию: только v3 в `orion_shipyard_v3`, без миграций и fallback к старым ключам. Совпадение `schemaVersion` не означает совпадение формата.
 
 Существующие схемы строгие, включая вложенные объекты: неизвестные поля не должны молча отбрасываться. Исключение преобразования, которое уже есть: `name` проекта/компонента проходит `.trim()`. Схема не доказывает достижимость партии историей команд: например, не закрепляет вечное владение домашними системами. Это проверка структурной согласованности, не античит.
 

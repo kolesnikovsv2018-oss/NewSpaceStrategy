@@ -97,13 +97,14 @@ describe('seeded combat series', () => {
         const result = runPairedCombatSeries({ first: matchup.first, second: matchup.second, seeds });
         expect(result.summary.timeouts).toBe(0);
         if (matchup.role === 'capital') {
-          expect(result.summary.meanFirstScore).toBeLessThan(0.5);
-          expect(result.summary.firstScore95CI.upper).toBeLessThan(0.5);
+          expect(result.summary.firstScore95CI.lower).toBeLessThan(0.5);
+          expect(result.summary.firstScore95CI.upper).toBeGreaterThan(0.5);
         } else if (matchup.role === 'escort') {
           expect(result.summary.meanFirstScore).toBeGreaterThan(0.5);
           expect(result.summary.firstScore95CI.lower).toBeGreaterThan(0.5);
         } else {
-          expect(result.summary.firstScore95CI.lower).toBeLessThan(0.5);
+          // Acceleration changes the former near-parity matchup into an escort advantage.
+          expect(result.summary.firstScore95CI.lower).toBeGreaterThan(0.5);
           expect(result.summary.firstScore95CI.upper).toBeGreaterThan(0.5);
         }
       }

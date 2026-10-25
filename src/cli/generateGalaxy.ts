@@ -78,7 +78,7 @@ function usage(): string {
     '  yarn generate:galaxy --world-count <N> --output <file.json> [--participants <2..8>] [--seed <1..4294967295>]',
     'Параметры:',
     '  N: 3×P..256; один мир на участника плюс по две ближайшие гарантированные цели',
-    '  P: 2..8; по умолчанию 2; профиль balanced-start-v3, прямые перелёты, habitable/toxic/barren',
+    '  P: 2..8; по умолчанию 2; профиль balanced-start-v4, прямые перелёты, habitable/toxic/barren',
     '  --seed: при отсутствии создаётся один seed на границе CLI'
   ].join('\n');
 }

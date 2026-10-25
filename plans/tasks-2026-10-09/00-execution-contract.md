@@ -11,7 +11,40 @@
 5. До изменения игровых правил перечисли нерешённые продуктовые решения: формулы, пределы, цены, захват/отмена, сроки и новая схема данных. Предложи конкретный вариант и запроси подтверждение спорных вариантов. Не подменяй отсутствие решения скрытым default. Числа в тестовых примерах — иллюстрации расчёта, не согласованный баланс.
 6. При старте задания, до его изменений, поставь `В процессе` в [журнале заданий](task-status.md). Прочитай предыдущий результат и комментарии; для работы вне Н-этапов добавь отдельную строку, не закрывая игровой этап.
 
-### Актуальная отправная точка после Н10
+### Актуальная отправная точка после Н14
+
+Н14 принят: [контракт](../../docs/CAMPAIGN_TRAVEL.md),
+[приёмка19](../../reports/2026-10-25/19-n14-strategic-travel.md).
+ShipDesign5/library5, Conquest16/rules13, snapshot11/rules11/tree10/
+baseline12/map4, мирные6/7/8 rules4. Проектные speed/jump/tank,
+fuel в тысячных и pinned transit; мирные fuel3/arrival1 и тактика прежние.
+3835/71, strict/build173, actual desktop/mobile paid/reload/next oracle.
+Baseline18:4 completed65–66/14 timeout200, все repeat/checkpoint совпали;
+4 boundary и bounded40/256. Полные58/quota/FPS не измерены.
+Далее Н15/Н16. Нижние версии/статусы относятся к своим приёмкам.
+
+### Историческая отправная точка после Н13
+
+Н13 принят: [приёмка16](../../reports/2026-10-25/16-n13-combat-technologies.md).
+ShipDesign4/library4, Conquest15/rules12, snapshot10/rules10/tree9/
+baseline11, мирные5/6/7 rules3. Map3 без линий; прямую метрику уже ввёл
+Д08. Н14 добавляет проектные speed/jump/tank и дистанционные тарифы,
+не возвращает граф линий. [Готовность Н14](../../reports/2026-10-25/17-n14-readiness.md).
+Нижние версии — история соответствующих приёмок.
+
+### Историческая отправная точка после Н12
+
+Н11/Н12 приняты: [terraform](../../docs/CAMPAIGN_TERRAFORMING.md),
+[equipment/refit](../../docs/CAMPAIGN_EQUIPMENT_REFIT.md).
+Save14/rules11, snapshot9/rules9/tree8/baseline10, ShipDesign3/library3,
+мирные codecs4/5/6 rules2. Только текущие форматы без миграций/fallback.
+Общий FIFO ship/terraform/refit с post-encounter completion, paid refit
+без бесплатных HP/ammo/fuel и compact V×0,8/cost×1,25. Map3/дальность/fuel/
+тактика/военные цели прежние.3791/69, strict/build173,18 repeat/checkpoint,
+bounded40/256, actual desktop/mobile editor/refit/real battle/reload oracle,
+отдельные free yard/library3 и мирный paid save6. Далее Н13/Н14/Н15.
+
+### Историческая отправная точка после Н10
 
 Н10 принят: [контракт планетологии](../../docs/CAMPAIGN_PLANETOLOGY.md),
 save12/rules9, snapshot7/rules7/tree6/baseline8, map3/rules3/generator-v3.

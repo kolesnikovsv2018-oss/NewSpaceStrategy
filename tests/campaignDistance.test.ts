@@ -42,7 +42,7 @@ it('provides an independent valid colonizer project and exactly two full startin
   });
   expect(state.session.production.lastOrderId).toBe(2);
   expect(state.session.ships.map(ship => [ship.id, ship.factionId, ship.systemId, ship.fuel, ship.design.hullId]))
-    .toEqual([[1, 'blue', 'sol', 3, 'colonizer'], [2, 'red', 'vega', 3, 'colonizer']]);
+    .toEqual([[1, 'blue', 'sol', 3000, 'colonizer'], [2, 'red', 'vega', 3000, 'colonizer']]);
   expect(Object.keys(state.operations)).toEqual(['1', '2']);
   state.session.ships[0].design.name = 'Changed';
   expect(state.session.ships[1].design.name).toBe('Колонизатор');
@@ -53,7 +53,7 @@ it('provides an independent valid colonizer project and exactly two full startin
 
 it('requires an explicit selected colonizer and consumes it only after successful paid founding', () => {
   let state = apply(createConquest(), { kind: 'sendShip', systemId: 'sol', shipId: 1, destinationId: 'eden' });
-  expect(state.session.ships[0].fuel).toBe(2);
+  expect(state.session.ships[0].fuel).toBe(2992);
   state = round(state);
   expect(state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBeNull();
   expect(executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', shipId: 1,

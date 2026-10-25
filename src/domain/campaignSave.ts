@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { campaignSessionSchema, type CampaignSession } from './campaignSession';
 
 export const CAMPAIGN_SAVE_FORMAT = 'orion-campaign';
-export const CAMPAIGN_SAVE_SCHEMA_VERSION = 1;
+export const CAMPAIGN_SAVE_SCHEMA_VERSION = 6;
 // Bump when map, validation, formulas, limits or command semantics change, not just the JSON shape.
-export const CAMPAIGN_RULES_VERSION = 1;
+export const CAMPAIGN_RULES_VERSION = 4;
 export const MAX_CAMPAIGN_SAVE_BYTES = 5_000_000;
 
 export type CampaignSaveErrorCode = 'INVALID_SAVE' | 'SAVE_TOO_LARGE' | 'UNSUPPORTED_SAVE_VERSION' |

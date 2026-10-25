@@ -37,6 +37,7 @@ export abstract class ShipRuntime implements ShipView {
   abstract getMovementPower(): number;
   abstract getCargoLimits(): CargoLimits;
   abstract getCurrentMaxSpeed(): number;
+  getAcceleration(): number | undefined { return undefined; }
   abstract update(deltaTime: number): void;
 
   // Presentation queries are implemented by each model; operations below never read compatibility views.
@@ -70,7 +71,7 @@ export abstract class ShipRuntime implements ShipView {
     if (!this.isMoving) return;
     const length = Math.hypot(this.velocity.x, this.velocity.y);
     if (!positiveFinite(length)) return;
-    const speed = this.getCurrentMaxSpeed();
+    const speed = this.getAcceleration() === undefined ? this.getCurrentMaxSpeed() : Math.min(length, this.getCurrentMaxSpeed());
     if (!nonNegativeFinite(speed)) return;
     this.velocity = { x: this.velocity.x / length * speed, y: this.velocity.y / length * speed };
   }
@@ -95,9 +96,14 @@ export abstract class ShipRuntime implements ShipView {
     const power = this.getMovementPower();
     if (!nonNegativeFinite(power) || !finitePosition(this.position) || !finitePosition(this.velocity)) return;
     const consumption = power * deltaTime;
-    const next = { x: this.position.x + this.velocity.x * deltaTime, y: this.position.y + this.velocity.y * deltaTime };
+    const direction = this.state.movementDirection, acceleration = this.getAcceleration();
+    const speed = direction && acceleration !== undefined
+      ? Math.min(this.getCurrentMaxSpeed(), Math.hypot(this.velocity.x, this.velocity.y) + acceleration * deltaTime) : undefined;
+    const velocity = direction && speed !== undefined ? { x: direction.x * speed, y: direction.y * speed } : this.velocity;
+    const next = { x: this.position.x + velocity.x * deltaTime, y: this.position.y + velocity.y * deltaTime };
     if (!nonNegativeFinite(consumption) || !finitePosition(next)) return;
     if (payBeforeMoving && !this.consumeEnergy(consumption)) { this.stopMoving(); return; }
+    this.velocity = velocity;
     this.position.x = next.x;
     this.position.y = next.y;
     if (!payBeforeMoving && !this.consumeEnergy(consumption)) this.stopMoving();
@@ -111,8 +117,12 @@ export abstract class ShipRuntime implements ShipView {
     if (!positiveFinite(distance)) return false;
     const speed = this.getCurrentMaxSpeed();
     if (!nonNegativeFinite(speed)) return false;
-    this.velocity.x = dx / distance * speed;
-    this.velocity.y = dy / distance * speed;
+    const direction = { x: dx / distance, y: dy / distance };
+    const acceleration = this.getAcceleration();
+    const currentSpeed = acceleration === undefined ? speed : Math.min(speed, Math.hypot(this.velocity.x, this.velocity.y));
+    if (acceleration !== undefined) this.state.movementDirection = direction;
+    this.velocity.x = direction.x * currentSpeed;
+    this.velocity.y = direction.y * currentSpeed;
     this.isMoving = true;
     return true;
   }
@@ -121,5 +131,6 @@ export abstract class ShipRuntime implements ShipView {
     this.velocity.x = 0;
     this.velocity.y = 0;
     this.isMoving = false;
+    delete this.state.movementDirection;
   }
 }

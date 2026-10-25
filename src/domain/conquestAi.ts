@@ -1,25 +1,41 @@
-import { HULLS, createComponentWithId, calculateShipStats, validateDesign, type ShipDesign, type ComponentDefinition } from './shipDesign';
-import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP, getCombatCooldownSteps } from './combatSimulation';
+import { HULLS, createComponentWithId, calculateShipStats, validateDesign, withTacticalVariant, type ShipDesign, type ComponentDefinition } from './shipDesign';
+import { COMBAT_SIMULATION_MAX_SECONDS, COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP, getCombatCooldownSteps, getCombatApproachSeconds } from './combatSimulation';
 import type { Treasury } from './campaignEconomy';
-import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable, getResearchProgress,
-  type ResearchState, type ResearchTree } from './campaignResearch';
+import { getCampaignVariantProfile, getCampaignVariantTier, getResearchAccess, isCampaignDesignAvailable, getResearchProgress, hasCompactEquipment,
+  hasTacticalVariant, type ResearchState, type ResearchTree } from './campaignResearch';
 import { getProductionQuote } from './production';
 import { getColonyProductionQuote } from './campaignOutput';
-import { getRefuelQuote } from './campaignShips';
 import { createOperationalState } from './campaignOperations';
 import { conquestSchema, executeConquestAction, getConquestOutcome, getConquestView, type ConquestCommand, type ConquestView, type ConquestResult } from './conquest';
 import { factionIdSchema } from './campaign';
 import type { BattleFrame } from './conquestBattle';
 import { calculateColonyValue } from './campaignColonyEffects';
-import { getWorldDistance, isWorldInRange } from './campaignTravel';
+import { getWorldDistance, isWorldInRange, createStrategicEquipment, getTravelCapabilities,
+  getTravelQuote, getStrategicRefuelQuote, type StrategicEquipment } from './campaignTravel';
 import { createColonizerDesign } from './civilianPresets';
+import { MAX_CAMPAIGN_SHIPS } from './campaignShips';
+
+function getAiStrategicEquipment(research: ResearchState, tree: ResearchTree, improved: boolean): StrategicEquipment {
+  const equipment = createStrategicEquipment();
+  if (!improved) return equipment;
+  const effects = tree.nodes.filter(node => research.completed.includes(node.id)).flatMap(node => node.effects);
+  if (effects.some(effect => effect.kind === 'strategic-equipment-unlock' && effect.option === 'fast')) equipment.drive = 'fast';
+  if (effects.some(effect => effect.kind === 'strategic-equipment-unlock' && effect.option === 'extended-tank')) equipment.tank = 'extended';
+  const range = effects.reduce((maximum, effect) => effect.kind === 'strategic-range' ? Math.max(maximum, effect.maxJumpDistance) : maximum, 200);
+  equipment.jump = range >= 1500 ? 'galactic' : range >= 800 ? 'deep' : range >= 400 ? 'extended' : 'standard';
+  return equipment;
+}
 
 export function getConquestResearchUtility(view: ConquestView, node: ResearchTree['nodes'][number]): number {
   const activeIds = new Set(view.researchTree.nodes.filter(item => view.research.completed.includes(item.id))
     .flatMap(item => item.effects.flatMap(effect => effect.kind === 'colony-effect' ? [effect.effectId] : [])));
   const proposedIds = new Set([...activeIds, ...node.effects.flatMap(effect => effect.kind === 'colony-effect' ? [effect.effectId] : [])]);
   const proposed = view.colonyTechnologyEffects.filter(effect => proposedIds.has(effect.id));
-  let score = node.effects.reduce((sum, effect) => sum + (effect.kind === 'variant-tier' ? 4 :
+  let score = node.effects.reduce((sum, effect) => sum + (effect.kind === 'tactical-variant-unlock' || effect.kind === 'hull-variant-unlock' ? 3 :
+    effect.kind === 'strategic-equipment-unlock' ? (view.galaxy.systems.some(system =>
+      view.ships.some(ship => !ship.transit && getWorldDistance(view.galaxy.systems, ship.systemId, system.id) >
+        (effect.option === 'extended-tank' ? 600 : 100))) ? (effect.option === 'extended-tank' ? 6 : 3) : 0) :
+    effect.kind === 'equipment-variant-unlock' ? 2 : effect.kind === 'variant-tier' ? 4 :
     effect.kind === 'colonization-unlock' ? 5 * Object.values(view.environmentKnowledge).filter(type => type === effect.worldType).length :
     effect.kind === 'strategic-range' ? Math.min(10, view.galaxy.systems.filter(system =>
       view.ships.some(ship => !ship.transit && isWorldInRange(view.galaxy.systems, ship.systemId, system.id, effect.maxJumpDistance) &&
@@ -58,15 +74,17 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
   const signatures = new Set<string>();
   const components = new Map<string, ComponentDefinition>();
   const unlockedTier = getCampaignVariantTier(research, tree);
+  const compactAvailable = hasCompactEquipment(research, tree);
   for (const kind of access.components) {
     const component = createComponentWithId(kind, `conquest-${kind}-v1`);
     components.set(kind, component);
   }
-  for (const hullId of access.hulls.filter(id => id !== 'colonizer')) for (let variant = 0; variant < 8; variant++) {
+  for (let variant = 0; variant < 8; variant++) for (const hullId of access.hulls.filter(id => id !== 'colonizer')) {
     const profile = getCampaignVariantProfile(tree, Math.min(unlockedTier, 1 + Math.floor(variant / 2)));
     const variantComponents = new Map<string, ComponentDefinition>();
     for (const [kind, component] of components) {
-      const candidate = structuredClone(component);
+      let candidate = structuredClone(component);
+      if (compactAvailable && variant % 2) candidate.technologyVariant = 'compact';
       if (profile) {
         const magnitude = profile.magnitude, ratioStep = profile.ratioStep;
         if (candidate.kind === 'engine') Object.assign(candidate, { thrust: candidate.thrust * (1 + magnitude),
@@ -92,19 +110,26 @@ export function buildConquestDesigns(research: ResearchState, tree: ResearchTree
           accuracy: Math.min(1, candidate.accuracy + ratioStep) });
         if (candidate.kind === 'cargoExpansion') Object.assign(candidate, { bonusCapacity: candidate.bonusCapacity * (1 + magnitude) });
       }
+      if (variant >= 4 || ((variant === 2 || variant === 3) && candidate.kind === 'projectile')) {
+        const advanced = withTacticalVariant(candidate);
+        if (hasTacticalVariant(advanced.tacticalVariant, research, tree)) candidate = advanced;
+      }
       variantComponents.set(kind, candidate);
     }
     const design: ShipDesign = { id: `conquest-${hullId}-${variant}`, name: `${HULLS[hullId].name} ${variant + 1}`,
-      schemaVersion: 2, hullId, createdAt: '2000-01-01T00:00:00.000Z', updatedAt: '2000-01-01T00:00:00.000Z',
+      schemaVersion: 5, tacticalRules: 'design-combat-v1', strategicEquipment: getAiStrategicEquipment(research, tree, variant > 0),
+      hullVariant: variant === 7 && hasTacticalVariant('reinforced', research, tree) ? 'reinforced' : 'standard',
+      hullId, createdAt: '2000-01-01T00:00:00.000Z', updatedAt: '2000-01-01T00:00:00.000Z',
       slots: HULLS[hullId].slots.map(slot => {
         let component: ComponentDefinition | undefined;
-        if (slot.kind === 'engine' || slot.id === 'beam_1') component = variantComponents.get(slot.kind);
+        if (slot.kind === 'engine' || (slot.id === 'beam_1' && !((variant === 2 || variant === 3) && access.components.includes('projectile')))) component = variantComponents.get(slot.kind);
         if (slot.id === 'beam_2' && variant % 2) component = variantComponents.get('beam');
-        if (slot.kind === 'armor' && variant >= 4) component = variantComponents.get('armor');
-        if (slot.kind === 'projectile' && variant % 4 >= 2) component = variantComponents.get('projectile');
+        if (slot.kind === 'armor' && (variant === 4 || variant === 6)) component = variantComponents.get('armor');
+        if (slot.kind === 'shield' && (variant === 5 || variant === 7)) component = variantComponents.get('shield');
+        if (slot.kind === 'projectile' && (variant === 2 || variant === 3)) component = variantComponents.get('projectile');
         return { id: slot.id, component: component ? structuredClone(component) : null };
       }) };
-    const signature = JSON.stringify([design.hullId, design.slots]);
+    const signature = JSON.stringify([design.hullId, design.hullVariant, design.strategicEquipment, design.slots]);
     if (!signatures.has(signature) && !validateDesign(design, 'battle').length && isCampaignDesignAvailable(design, research, tree)) {
       signatures.add(signature); designs.push(design);
     }
@@ -132,18 +157,21 @@ export function calculateConquestDesignScore(design: ShipDesign, available: Trea
     ? Math.min(...stats.weapons.map(weapon => weapon.definition.range)) : 0;
   const maximumRange = Math.max(0, ...stats.weapons.map(weapon => weapon.definition.range));
   const engagementRange = preferredRange < maximumRange * 0.8 ? preferredRange : maximumRange * 0.8;
-  const approachSeconds = stats.speed > 0
-    ? Math.min(COMBAT_SIMULATION_MAX_SECONDS, Math.max(0, (600 - engagementRange) / (2 * stats.speed)))
-    : COMBAT_SIMULATION_MAX_SECONDS;
+  const approachSeconds = getCombatApproachSeconds(Math.max(0, (600 - engagementRange) / 2),
+    stats.speed, stats.thrust / stats.mass);
   const firstFiringStep = Math.ceil(approachSeconds / COMBAT_SIMULATION_STEP);
   const activeSteps = Math.max(0, COMBAT_SIMULATION_MAX_STEPS - firstFiringStep);
   let expectedDamage = 0;
+  let availableEnergy = Math.max(0, stats.energyCapacity + stats.powerGeneration * COMBAT_SIMULATION_MAX_SECONDS -
+    stats.movementPower * approachSeconds);
 
   for (const weapon of stats.weapons) {
     const cooldownSteps = getCombatCooldownSteps(1 / weapon.definition.fireRate);
     const possibleShots = activeSteps === 0 ? 0 : Math.floor((activeSteps - 1) / cooldownSteps) + 1;
     const ammunition = weapon.definition.kind === 'projectile' ? weapon.definition.ammoCapacity : possibleShots;
-    expectedDamage += weapon.definition.damage * weapon.definition.accuracy * Math.min(possibleShots, ammunition);
+    const shots = Math.min(possibleShots, ammunition, Math.floor(availableEnergy / weapon.energyPerShot));
+    availableEnergy -= shots * weapon.energyPerShot;
+    expectedDamage += weapon.definition.damage * weapon.definition.accuracy * shots;
   }
 
   const hitRate = 1 - stats.evasion;
@@ -178,7 +206,7 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
   const colonies = view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === factionId);
   const afford = (credits: number, minerals = 0) => view.treasury.credits >= credits && view.treasury.minerals >= minerals;
   const completed = view.production.completed[0];
-  if (completed && view.ships.length < 8) return { ...fields, kind: 'deployProduction', orderId: completed.id, systemId: completed.systemId };
+  if (completed && view.ships.length < MAX_CAMPAIGN_SHIPS) return { ...fields, kind: 'deployProduction', orderId: completed.id, systemId: completed.systemId };
   const needsResearch = view.research.completed.length < view.researchTree.nodes.length;
   for (const colony of colonies) {
     const workforce = view.colonyOutput.assignments[colony.id];
@@ -233,8 +261,9 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     }
     const rounds = maximum.ammunition.reduce((sum, weapon) => sum + weapon.amount - operation.ammunition.find(item => item.slotId === weapon.slotId)!.amount, 0);
     if (home && rounds && afford(rounds, rounds)) return { ...fields, kind: 'resupplyShip', systemId: ship.systemId, shipId: ship.id };
-    if (home && ship.fuel < 3) {
-      const quote = getRefuelQuote(ship.fuel);
+    const capabilities = getTravelCapabilities(ship.design.strategicEquipment);
+    if (home && ship.fuel < capabilities.fuelCapacity) {
+      const quote = getStrategicRefuelQuote(ship.fuel, capabilities.fuelCapacity);
       if (afford(quote.cost.credits, quote.cost.minerals)) return { ...fields, kind: 'refuelShip', systemId: ship.systemId, shipId: ship.id };
     }
     if (!ship.fuel) continue;
@@ -242,7 +271,7 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     const compare = (left: { id: string }, right: { id: string }) => distance(left.id) - distance(right.id) ||
       (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
     const reachable = view.galaxy.systems.filter(system =>
-      isWorldInRange(view.galaxy.systems, ship.systemId, system.id, view.strategicRange));
+      getTravelQuote(distance(system.id), capabilities, ship.fuel).ok);
     const targets = reachable.filter(system => system.visibility === 'unknown'
       ? !view.knownSystems.includes(system.id) || view.knownHabitableSystems.includes(system.id)
       : system.habitable && (colonizer ? !system.ownerId && !view.enemies.some(enemy => enemy.systemId === system.id)
@@ -250,25 +279,40 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     const nearest = targets.filter(target => distance(target.id) === distance(targets[0].id));
     const rank = view.ships.filter(other => other.id < ship.id).length;
     let destination = nearest.length ? nearest[rank % nearest.length] : undefined;
-    if (!home && (ship.fuel === 1 && (!destination || destination.visibility === 'unknown') || !destination)) {
+    if (!home && (!destination || destination.visibility === 'unknown' &&
+      !getTravelQuote(distance(destination.id), capabilities, Math.max(0, ship.fuel - Math.ceil(distance(destination.id) * capabilities.fuelConsumptionPerDistance))).ok)) {
       destination = reachable.filter(system => colonies.some(colony => colony.id === system.id)).sort(compare)[0];
     }
-    if (destination && (ship.fuel > 1 || destination.visibility === 'explored')) {
+    if (destination) {
       return { ...fields, kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId: destination.id };
     }
   }
   const orders = view.production.orders, completedRecords = view.production.completed;
   const allRecords = [...view.ships, ...orders, ...completedRecords];
   const source = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
-  if (source && !allRecords.some(record => record.design.hullId === 'colonizer') &&
-    view.galaxy.systems.some(system => system.visibility === 'unknown' || system.habitable && system.ownerId === null)) {
-    const design = createColonizerDesign(), quote = getColonyProductionQuote(design, view.colonyOutput.rules);
-    if (afford(quote.cost.credits + 5, quote.cost.minerals)) {
+  const colonizationTargets = view.galaxy.systems.filter(system => system.visibility === 'unknown' || system.habitable && system.ownerId === null);
+  const fullReach = (design: ShipDesign, from: string, to: string) => {
+    const caps = getTravelCapabilities(design.strategicEquipment);
+    return getTravelQuote(getWorldDistance(view.galaxy.systems, from, to), caps, caps.fuelCapacity).ok;
+  };
+  if (source && colonizationTargets.length && !allRecords.some(record => record.design.hullId === 'colonizer' &&
+    colonizationTargets.some(target => fullReach(record.design, record.systemId, target.id)))) {
+    const design = { ...createColonizerDesign(), strategicEquipment: getAiStrategicEquipment(view.research, view.researchTree, true) },
+      quote = getColonyProductionQuote(design, view.colonyOutput.rules);
+    if (colonizationTargets.some(target => fullReach(design, source.id, target.id)) && afford(quote.cost.credits + 5, quote.cost.minerals)) {
       return { ...fields, kind: 'enqueueProduction', systemId: source.id, design };
     }
   }
-  if (colonies.length && allRecords.filter(record => record.design.hullId !== 'colonizer').length < 4) {
+  const combatRecords = allRecords.filter(record => record.design.hullId !== 'colonizer');
+  const desired = getTravelCapabilities(getAiStrategicEquipment(view.research, view.researchTree, true));
+  const needsUpgrade = combatRecords.length > 0 && combatRecords.every(record => {
+    const caps = getTravelCapabilities(record.design.strategicEquipment);
+    return caps.maxJumpDistance < desired.maxJumpDistance || caps.fuelCapacity < desired.fuelCapacity;
+  });
+  if (colonies.length && (combatRecords.length < 4 || needsUpgrade && combatRecords.length < 8)) {
     const designs = buildConquestDesigns(view.research, view.researchTree).filter(design => {
+      const caps = getTravelCapabilities(design.strategicEquipment);
+      if (needsUpgrade && (caps.maxJumpDistance < desired.maxJumpDistance || caps.fuelCapacity < desired.fuelCapacity)) return false;
       const quote = getColonyProductionQuote(design, view.colonyOutput.rules);
       return afford(quote.cost.credits + 5, quote.cost.minerals);
     }).map(design => ({ design, value: calculateConquestDesignScore(design,
@@ -277,6 +321,14 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
         (left.design.id < right.design.id ? -1 : left.design.id > right.design.id ? 1 : 0));
     const colony = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
     if (designs[0] && colony) return { ...fields, kind: 'enqueueProduction', systemId: colony.id, design: designs[0].design };
+  }
+  const terraform = view.terraforming.find(candidate => candidate.quote.ok &&
+    view.population.some(colony => colony.systemId === candidate.systemId &&
+      (colony.reason === 'at-capacity' || colony.reason === 'over-capacity')) &&
+    !view.production.orders.some(order => order.systemId === candidate.systemId) &&
+    !view.workProjects.some(project => project.systemId === candidate.systemId));
+  if (terraform?.quote.ok && afford(terraform.quote.cost.credits + 5, terraform.quote.cost.minerals)) {
+    return { ...fields, kind: 'startTerraform', systemId: terraform.systemId };
   }
   return { ...fields, kind: 'endTurn' };
 }

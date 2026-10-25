@@ -1,5 +1,13 @@
 # S3.35 — Контракт завершения мирного сценария
 
+**Актуализация Н14, 2026-10-25:** MainScene использует только match8/rules4
+с полными ShipDesign5/явными strategicEquipment/tacticalRules/hullVariant/technologyVariant/tacticalVariant. State6/run7 остаются
+отдельными API; ни они, ни старые1/2/3 не превращаются в sandbox match.
+Общий слот `orion_campaign_v1`, typed errors, 5 МБ UTF-8, completed и
+privacy/lifecycle сохранены. Миграций/version-readers/fallback нет.
+Текущая [матрица](CAMPAIGN_SAVE.md#актуальный-мирный-формат-н13--2026-10-25)
+имеет приоритет над историческими номерами/миграциями S3 ниже.
+
 - Дата решения: 2026-10-08.
 - Статус на 2026-10-08: **S3.36–S3.39 реализованы: match API/кодек/репозиторий и сценовая интеграция**, приёмка в разделах9–12. MainScene владеет CampaignMatch, пишет save3/1, предлагает local/AI и sandbox/совместную разведку, показывает completed/readonly. Это не соревновательная победа или закрытие всего S3.
 - Основание: [план](../reports/2026-09-07/plan.md), [управление](CAMPAIGN_CONTROL.md), [кампания](CAMPAIGN.md), [сохранения](CAMPAIGN_SAVE.md).

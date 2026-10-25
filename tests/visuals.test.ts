@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CombatShipFactory } from '../src/entities/CombatShipFactory';
 import type { BattleManager } from '../src/entities/BattleManager';
 import type { DesignedShip } from '../src/entities/DesignedShip';
-import { createComponent, createDesign, installComponent, type ShipDesign } from '../src/domain/shipDesign';
+import { createComponent, createDesign, installComponent, withTacticalVariant, type ShipDesign } from '../src/domain/shipDesign';
 import { COMBAT_SIMULATION_MAX_STEPS, COMBAT_SIMULATION_STEP } from '../src/domain/combatSimulation';
 import { drawBlueprint } from '../src/ui/ShipBlueprint';
 import type { ShipView } from '../src/entities/interfaces/ShipView';
@@ -151,11 +151,11 @@ describe('simulation/view boundary', () => {
     expect(settings.data).toEqual({});
     expect(() => scene.init({ seed: 0 })).toThrow('Недопустимый seed боя');
 
-    const run = (seed: number, frameDelta: number) => {
+    const run = (seed: number, frameDelta: number, trialDesign?: ShipDesign, simulationSpeed = 1) => {
       const battleScene = new BattleScene();
       Object.assign(battleScene, {
         battleSeed: seed,
-        trialDesign: undefined,
+        trialDesign, simulationSpeed,
         isPaused: false,
         simulationAccumulator: 0,
         battleEnded: false,
@@ -189,6 +189,11 @@ describe('simulation/view boundary', () => {
       expect(at40Fps.duration).toBeGreaterThan(0);
       expect(at40Fps.duration).toBeLessThanOrEqual(COMBAT_SIMULATION_MAX_STEPS * COMBAT_SIMULATION_STEP * 1000);
       expect(at40Fps).toEqual(at20Fps);
+      const base = createDesign('corvette', true);
+      const advanced: ShipDesign = { ...base, hullVariant: 'reinforced',
+        slots: base.slots.map(slot => ({ ...slot, component: slot.component ? withTacticalVariant(slot.component) : null })) };
+      const reference = run(4242, 25, advanced);
+      for (const speed of [1, 2, 4]) expect(run(4242, 50, advanced, speed)).toEqual(reference);
     } finally { random.mockRestore(); log.mockRestore(); }
   });
 

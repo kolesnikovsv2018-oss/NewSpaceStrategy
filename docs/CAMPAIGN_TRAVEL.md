@@ -1,4 +1,51 @@
-# Д08 — прямые перелёты и колонизатор
+# Стратегические перелёты: контракт Н14 и история Д08
+
+## Н14: согласованный контракт
+
+Согласован и принят2026-10-25: [приёмка19](../reports/2026-10-25/19-n14-strategic-travel.md).
+Прямые евклидовы расстояния0..1000 без линий сохраняются.
+Отдельный обязательный strategicEquipment проекта содержит policy
+project-travel-v1 и независимые drive/jump/tank. Базовый комплект входит
+в корпус, новых слотов нет; tactical speed/тяга/энергия не используются.
+
+| Опция | Величина | Доплата, credits | Доступ |
+| --- | --- | --- | --- |
+| standard drive | speed100 distance/own-turn | 0 | начальный |
+| fast drive | speed200 | 75 |3000 science после engineering |
+| standard jump |200 |0 |начальный |
+| extended/deep/galactic jump |400/800/1500 |50/100/150 |engineering/ordnance/capital |
+| standard tank |3000 тысячных топлива |0 |начальный |
+| extended tank |9000 тысячных топлива |60 |3000 science после engineering |
+
+Доплаты складываются в канонической цене; mass/volume/tactical ratings/
+minerals неизменны. Каждая опция меняет ровно свою величину. Research
+открывает только выбор: существующие проекты/заказы/ships не обновляются.
+Новый экземпляр оплачивается производством, прежний — refit.
+Scanner сохраняет отдельный радиус исследований стороны200/400/800/1500.
+
+Distance=Math.hypot исходных координат без округления/epsilon.
+Turns=max(1,ceil(distance/speed)); расход=ceil(distance×5) тысячных.
+Exact jump/fuel разрешены; неверные/неfinite/overflow явно отвергаются.
+Расход списывается единожды при send. Полная refuel только в своей
+колонии:ceil(missing×5/1000) credits и ceil(missing×2/1000) minerals.
+
+В пути нет присутствия/visibility/services/mining/battle у endpoints.
+Успешный own-end уменьшает remaining; enemy-end не двигает маршрут.
+На последнем шаге arrival происходит до mining/encounters по прежнему
+pipeline. Прогноз mining учитывает только stationary/arriving этим own-end.
+Транзакционные S0/upkeep/FIFO/rollback прежние.
+
+Fleet летит по минимальным speed/jump, синхронно; у каждого свой fuel,
+все quotes проверяются до списаний. Route/capability snapshot хранится
+в ship.transit, не на fleet/в UI; новая наука/catalog не меняют его.
+Load midway автономен от latest-map, не генерирует карту.
+
+Refit сохраняет абсолютные HP/fuel; новый бак не заправляется.
+Уменьшение ниже текущего fuel отвергается. Ammo-контракт Н13 прежний.
+Без redirect/cancel в пути, автоконвоев и auto-refit AI.
+Мирный gameplay и тактика Н13 прежние; только current readers.
+
+## История Д08
 
 Согласованная подготовка Н10,2026-10-25. Это не полный Н14:
 разные стратегические двигатели/баки проектов, скорость и дистанционные

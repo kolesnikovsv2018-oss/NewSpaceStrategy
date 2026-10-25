@@ -9,7 +9,20 @@
 
 ## Дерево и эффекты
 
-Единственная актуальная схема дерева — version6, ID `orion-technologies-v6`.
+Текущее дерево Н14 — strict version10. strategic-drive и strategic-tank
+стоят по3000 science после engineering и открывают fast/extended-tank.
+Прежние engineering/ordnance/capital открывают выбор jump400/800/1500,
+не обновляют уже построенные ships. Scanner использует отдельную
+нынешнюю дальность стороны. Формулы/доплаты — [Н14](CAMPAIGN_TRAVEL.md).
+Default YAML/JSON/source и snapshot используют один текущий формат.
+
+Единственная актуальная схема дерева — version9, ID `orion-technologies-v9`.
+Н12 добавил [миниатюризацию](CAMPAIGN_EQUIPMENT_REFIT.md):4000 науки после
+engineering, typed equipment-variant-unlock compact. Numeric bands
+сохраняются, preset exemption больше нет.
+Н11 добавил [терраформирование](CAMPAIGN_TERRAFORMING.md):6000 науки после
+biosphere/toxic-adaptation, typed unlock, без мгновенной смены среды.
+Н13 добавил шесть [тактических направлений](CAMPAIGN_COMBAT_TECHNOLOGIES.md): tactical-propulsion3000/focused-beams4000 после engineering; rapid-projectiles4000 после ordnance; composite-armor3500/capacitor-shields4000/reinforced-hulls4000 после support. Typed tactical-variant-unlock/hull-variant-unlock открывают только новые snapshots, не лечат действующий флот.
 Начально доступны fighter/corvette/colonizer и engine/beam.
 
 | Узел | Предпосылки | Научная цена | Рабочий эффект |

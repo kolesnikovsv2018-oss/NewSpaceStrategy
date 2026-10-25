@@ -16,13 +16,13 @@ function failure(code: CampaignStorageErrorCode): CampaignStorageFailure {
   return { ok: false, code, message: messages[code] };
 }
 
-/** Explicit full-run access to the shared legacy slot, not a second save slot.
+/** Explicit full-run access to the shared slot, not a second save slot.
  * The synchronous port must set atomically or throw without changing its previous bytes.
- * No repair, rollback, automatic migration writes or AI execution. Overwrite confirmation
+ * No repair, rollback, compatibility readers or AI execution. Overwrite confirmation
  * belongs to the caller; multiple instances are last-successful-writer-wins, not a transaction.
  */
 export class CampaignRunSaveManager {
-  // The legacy class has no import-time IO; its stable key is independent of schema version.
+  // The state-only class has no import-time IO; its stable key is independent of schema version.
   static readonly STORAGE_KEY = CampaignSaveManager.STORAGE_KEY;
 
   constructor(private readonly providedStorage?: StoragePort) {}

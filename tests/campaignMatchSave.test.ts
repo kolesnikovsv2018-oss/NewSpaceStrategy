@@ -5,7 +5,7 @@ import * as runCodec from '../src/domain/campaignRunSave';
 import { encodeCampaignRunSave } from '../src/domain/campaignRunSave';
 import { CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION, decodeCampaignMatchSave, encodeCampaignMatchSave,
   type CampaignMatchSaveErrorCode, type DecodeCampaignMatchSaveResult } from '../src/domain/campaignMatchSave';
-import { MAX_CAMPAIGN_SAVE_BYTES, encodeCampaignSave, decodeCampaignSave } from '../src/domain/campaignSave';
+import { MAX_CAMPAIGN_SAVE_BYTES, decodeCampaignSave } from '../src/domain/campaignSave';
 import * as sessions from '../src/domain/campaignSession';
 import * as executor from '../src/domain/campaignAiExecutor';
 import * as planner from '../src/domain/campaignAiPlanner';
@@ -40,46 +40,44 @@ function reject(result: { ok: boolean }, code: CampaignMatchSaveErrorCode): void
   expect(message).toMatch(/[А-Яа-яЁё]/); expect(message.length).toBeLessThan(200);
   expect(message).not.toMatch(/PRIVATE|Error:|issues|treasuries|exploredBy/);
 }
-function envelope(match: CampaignMatch = created(), version = 3): Record<string, unknown> {
-  return { format: 'orion-campaign', schemaVersion: version, rulesVersion: 1, session: match.run.session,
-    ...(version !== 1 ? { control: match.run.control } : {}), ...(version === 3 ? { scenario: match.scenario } : {}) };
+function envelope(match: CampaignMatch = created(), version = 8): Record<string, unknown> {
+  return { format: 'orion-campaign', schemaVersion: version, rulesVersion: version === 8 ? 4 : version < 4 ? 1 : 2, session: match.run.session,
+    ...(![1, 4].includes(version) ? { control: match.run.control } : {}),
+    ...([3, 6, 7, 8].includes(version) ? { scenario: match.scenario } : {}) };
 }
 const bytes = (text: string): number => new TextEncoder().encode(text).byteLength;
 function surveyed(match: CampaignMatch): void {
   match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
 }
 function legacyEncoded(match: CampaignMatch, version: number): string {
-  const result = version === 1 ? encodeCampaignSave(match.run.session) : encodeCampaignRunSave(match.run);
-  if (!result.ok) throw Error(result.message); return result.json;
+  return JSON.stringify(envelope(match, version));
 }
 
 describe('match save boundary', () => {
-  it('writes strict3/1 and derives completed after decoding without persisting outcome', () => {
+  it('writes strict6/2 and derives completed after decoding without persisting outcome', () => {
     const created = createCampaignMatch({ mode: 'local' }, 'joint-survey-v1');
     if (!created.ok) throw Error(created.message);
     created.match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
     const encoded = encodeCampaignMatchSave(created.match); if (!encoded.ok) throw Error(encoded.message);
     const document = JSON.parse(encoded.json);
     expect(Object.keys(document).sort()).toEqual(['control', 'format', 'rulesVersion', 'scenario', 'schemaVersion', 'session']);
-    expect(document.schemaVersion).toBe(3); expect(document.rulesVersion).toBe(1);
+    expect(document.schemaVersion).toBe(8); expect(document.rulesVersion).toBe(4);
     const decoded = decodeCampaignMatchSave(encoded.json); if (!decoded.ok) throw Error(decoded.message);
     expect(decoded.match).toEqual(created.match);
     expect(getCampaignOutcome(decoded.match)).toEqual({ ok: true, outcome: { status: 'completed', reason: 'joint-survey-complete' } });
   });
-  it('migrates a fully surveyed strict2 run only to ongoing sandbox', () => {
+  it('rejects a fully surveyed run without assigning sandbox or deriving an outcome', () => {
     const created = createCampaignMatch({ mode: 'human-vs-ai', aiPolicy: 'expansion-v1' }, 'joint-survey-v1');
     if (!created.ok) throw Error(created.message);
     created.match.run.session.galaxy.systems.forEach(system => { system.exploredBy = ['blue', 'red']; });
     const encoded = encodeCampaignRunSave(created.match.run); if (!encoded.ok) throw Error(encoded.message);
-    const decoded = decodeCampaignMatchSave(encoded.json); if (!decoded.ok) throw Error(decoded.message);
-    expect(decoded.match).toEqual({ run: created.match.run, scenario: 'sandbox' });
-    expect(getCampaignOutcome(decoded.match)).toEqual({ ok: true, outcome: { status: 'ongoing' } });
+    reject(decodeCampaignMatchSave(encoded.json), 'UNSUPPORTED_SAVE_VERSION');
   });
 });
 
 describe('strict envelope and error priority', () => {
   it('exports a distinct version and typed detached result without outcome', () => {
-    expect(CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION).toBe(3);
+    expect(CAMPAIGN_MATCH_SAVE_SCHEMA_VERSION).toBe(8);
     expectTypeOf<CampaignMatchSaveErrorCode>().toEqualTypeOf<runCodec.CampaignRunSaveErrorCode | 'UNSUPPORTED_SCENARIO'>();
     expectTypeOf<Extract<DecodeCampaignMatchSaveResult, { ok: true }>>().toEqualTypeOf<{ ok: true; match: CampaignMatch }>();
   });
@@ -102,16 +100,16 @@ describe('strict envelope and error priority', () => {
   ('$key=$value must be a positive integer', ({ key, value }) => {
     reject(decodeCampaignMatchSave(JSON.stringify({ ...envelope(), schemaVersion: 99, [key]: value })), 'INVALID_SAVE');
   });
-  it.each([1, 2, 3, 99])('schema%s orders versions before version-specific control/scenario and state', version => {
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 99])('schema%s orders versions before control/scenario and state', version => {
     const input = { ...envelope(), schemaVersion: version, rulesVersion: 99, control: null, scenario: null, session: null };
-    reject(decodeCampaignMatchSave(JSON.stringify(input)), version === 99 ? 'UNSUPPORTED_SAVE_VERSION' : 'UNSUPPORTED_RULES_VERSION');
+    reject(decodeCampaignMatchSave(JSON.stringify(input)), version === 8 ? 'UNSUPPORTED_RULES_VERSION' : 'UNSUPPORTED_SAVE_VERSION');
   });
-  it.each([1, 2])('schema%s forbids scenario even if policy and state are invalid', version => {
+  it.each([1, 2, 3, 4, 5, 6])('schema%s is unsupported even if policy and state are invalid', version => {
     const input = { ...envelope(created(), version), scenario: 'sandbox', session: null, control: { ...computer, aiPolicy: 'future' } };
     const reader = vi.spyOn(runCodec, 'decodeCampaignRunSave');
-    reject(decodeCampaignMatchSave(JSON.stringify(input)), 'INVALID_SAVE'); expect(reader).not.toHaveBeenCalled();
+    reject(decodeCampaignMatchSave(JSON.stringify(input)), 'UNSUPPORTED_SAVE_VERSION'); expect(reader).not.toHaveBeenCalled();
   });
-  it.each(['control', 'scenario'])('schema3 requires own %s before policy', key => {
+  it.each(['control', 'scenario'])('schema6 requires own %s before policy', key => {
     const input = { ...envelope(), control: { ...computer, aiPolicy: 'future' }, scenario: 'future', session: null };
     Reflect.deleteProperty(input, key); reject(decodeCampaignMatchSave(JSON.stringify(input)), 'INVALID_SAVE');
   });
@@ -140,17 +138,28 @@ describe('strict envelope and error priority', () => {
   ('encode rejects non-match %j', input => reject(encodeCampaignMatchSave(input), 'INVALID_STATE'));
 });
 
-describe('migration, completed roundtrips and unchanged readers', () => {
-  it.each([1, 2].flatMap(version => [local, computer].map(control => ({ version, control }))))
-  ('strict$version/$control.mode migrates only to sandbox, without retaining prior call settings', ({ version, control }) => {
+describe('retired rejection, completed roundtrips and independent readers', () => {
+  it('retains explicit compact snapshots without creating research or changing standard components', () => {
+    const match = created('sandbox'), design = createCombatDesign('fighter');
+    const beam = design.slots.find(slot => slot.component?.kind === 'beam')?.component;
+    if (!beam) throw Error('Expected beam');
+    beam.technologyVariant = 'compact'; match.run.session.production.lastOrderId = 1;
+    match.run.session.ships = [{ id: 1, factionId: 'blue', systemId: 'sol', fuel: 3, design }];
+    const restored = decoded(encoded(match)); expect(restored).toEqual(match);
+    expect(restored.run.session.ships[0].design.slots.find(slot => slot.component?.kind === 'beam')?.component?.technologyVariant).toBe('compact');
+    expect(restored.run.session.ships[0].design.slots.find(slot => slot.component?.kind === 'engine')?.component?.technologyVariant).toBe('standard');
+  });
+
+  it.each([1, 2, 3, 4, 5].flatMap(version => [local, computer].map(control => ({ version, control }))))
+  ('strict$version/$control.mode is rejected without delegation, state mutation or implicit settings', ({ version, control }) => {
     const match = created(); match.run.control = control; surveyed(match); const text = legacyEncoded(match, version);
     const before = text, reader = vi.spyOn(runCodec, 'decodeCampaignRunSave');
-    const loaded = decoded(text); expect(reader).toHaveBeenCalledTimes(1); expect(reader).toHaveBeenCalledWith(text);
-    expect(loaded).toEqual({ run: { ...match.run, control: version === 1 ? local : control }, scenario: 'sandbox' });
-    expect(getCampaignOutcome(loaded)).toEqual({ ok: true, outcome: { status: 'ongoing' } });
-    const copy = structuredClone(loaded); loaded.run.session.treasuries.blue.credits = 0; loaded.scenario = 'joint-survey-v1';
-    decoded(encoded(match)); expect(decoded(text)).toEqual(copy); expect(text).toBe(before);
-    expect(JSON.parse(encoded(copy)).schemaVersion).toBe(3);
+    reject(decodeCampaignMatchSave(text), 'UNSUPPORTED_SAVE_VERSION'); expect(reader).not.toHaveBeenCalled();
+    const copy = structuredClone(match);
+    expect(decoded(encoded(match))).toEqual(copy);
+    reader.mockClear(); reject(decodeCampaignMatchSave(text), 'UNSUPPORTED_SAVE_VERSION');
+    expect(reader).not.toHaveBeenCalled(); expect(match).toEqual(copy); expect(text).toBe(before);
+    expect(JSON.parse(encoded(copy)).schemaVersion).toBe(8);
     expect(JSON.parse(text).schemaVersion).toBe(version);
   });
   it.each(scenarios.flatMap(scenario => [local, computer].flatMap(control => [false, true].map(done => ({ scenario, control, done })))))
@@ -198,6 +207,16 @@ describe('migration, completed roundtrips and unchanged readers', () => {
 
 describe('full hidden state, no repair or library migration', () => {
   const corruptions: [string, (state: sessions.CampaignSession) => void][] = [
+    ...(['ship', 'order', 'completed'] as const).flatMap(kind =>
+      (['retired design2', 'missing variant', 'unknown variant'] as const).map((damage): [string, (state: sessions.CampaignSession) => void] =>
+        [`hidden ${kind} ${damage}`, state => {
+          const design = kind === 'ship' ? state.ships[3].design : kind === 'order' ? state.production.orders[4].design : state.production.completed[0].design;
+          const component = design.slots.find(slot => slot.component)?.component;
+          if (!component) throw Error('Expected component');
+          if (damage === 'retired design2') Reflect.set(design, 'schemaVersion', 2);
+          if (damage === 'missing variant') Reflect.deleteProperty(component, 'technologyVariant');
+          if (damage === 'unknown variant') Reflect.set(component, 'technologyVariant', 'future');
+        }])),
     ['missing fuel', state => { Reflect.deleteProperty(state.ships[3], 'fuel'); }],
     ['missing fleets', state => { Reflect.deleteProperty(state, 'fleets'); }],
     ['partial group route', state => { delete state.ships[3].transit; }],
@@ -211,11 +230,11 @@ describe('full hidden state, no repair or library migration', () => {
     ['duplicate exploration', state => { state.galaxy.systems[5].exploredBy.push('red'); }],
     ['unknown session field', state => { Object.assign(state, { outcome: completed }); }]
   ];
-  it.each(corruptions.flatMap(([name, corrupt]) => [1, 2, 3].map(version => ({ name, corrupt, version }))))
+  it.each(corruptions.flatMap(([name, corrupt]) => [1, 2, 3, 4, 5, 6].map(version => ({ name, corrupt, version }))))
   ('$name schema$version rejects instead of calculating completion', ({ corrupt, version }) => {
     const match: CampaignMatch = { run: { session: rich(2, 3), control: computer }, scenario: 'joint-survey-v1' };
     surveyed(match); corrupt(match.run.session); const before = structuredClone(match); freeze(match);
-    reject(decodeCampaignMatchSave(JSON.stringify(envelope(match, version))), 'INVALID_STATE');
+    reject(decodeCampaignMatchSave(JSON.stringify(envelope(match, version))), version === 7 ? 'INVALID_STATE' : 'UNSUPPORTED_SAVE_VERSION');
     reject(encodeCampaignMatchSave(match), 'INVALID_STATE'); expect(match).toEqual(before);
   });
   it.each([NaN, Infinity, -Infinity])('encode refuses nonfinite %s; literal JSON1e400 also fails', value => {
@@ -235,10 +254,11 @@ describe('full hidden state, no repair or library migration', () => {
 });
 
 describe('real UTF-8 boundaries', () => {
-  it.each([1, 2, 3])('schema%s exact5MB decodes, +1 rejects before parse', version => {
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('schema%s exact5MB dispatches its version, +1 rejects before parse', version => {
     const text = JSON.stringify(envelope(created(), version));
     const exact = text + ' '.repeat(MAX_CAMPAIGN_SAVE_BYTES - bytes(text)); expect(bytes(exact)).toBe(MAX_CAMPAIGN_SAVE_BYTES);
-    expect(decoded(exact).scenario).toBe(version === 3 ? 'joint-survey-v1' : 'sandbox');
+    if (version === 8) expect(decoded(exact).scenario).toBe('joint-survey-v1');
+    else reject(decodeCampaignMatchSave(exact), 'UNSUPPORTED_SAVE_VERSION');
     const parse = vi.spyOn(JSON, 'parse'); reject(decodeCampaignMatchSave(exact + ' '), 'SAVE_TOO_LARGE'); expect(parse).not.toHaveBeenCalled();
   });
   it('counts multi-byte characters before JSON parsing, not just code units', () => {
@@ -246,26 +266,32 @@ describe('real UTF-8 boundaries', () => {
     expect(text.length).toBeLessThan(MAX_CAMPAIGN_SAVE_BYTES); expect(bytes(text)).toBe(MAX_CAMPAIGN_SAVE_BYTES + 1);
     const parse = vi.spyOn(JSON, 'parse'); reject(decodeCampaignMatchSave(text), 'SAVE_TOO_LARGE'); expect(parse).not.toHaveBeenCalled();
   });
-  it.each([1, 2, 3])('real schema%s oversized upgrade/encode uses legal long datetime, not a mocked schema', version => {
+  it.each([1, 2, 3, 4, 5, 6, 7])('real schema%s exact/oversized encode uses legal long datetime, not a mocked schema', version => {
     const match: CampaignMatch = { run: { session: rich(2, 3), control: computer }, scenario: 'sandbox' };
     const design = match.run.session.ships[0].design; design.createdAt = '2026-10-08T00:00:00.0Z';
-    const serialize = () => version === 3 ? encoded(match) : legacyEncoded(match, version);
+    const serialize = () => version === 7 ? encoded(match) : legacyEncoded(match, version);
     const initial = bytes(serialize()); design.createdAt = '2026-10-08T00:00:00.' + '0'.repeat(MAX_CAMPAIGN_SAVE_BYTES - initial + 1) + 'Z';
     const text = serialize(); expect(bytes(text)).toBe(MAX_CAMPAIGN_SAVE_BYTES);
-    const restored = decoded(text); expect(restored.run.session).toEqual(match.run.session);
-    if (version === 3) { expect(encoded(restored)).toBe(text); design.createdAt = design.createdAt.replace('Z', '0Z'); }
-    reject(encodeCampaignMatchSave(version === 3 ? match : restored), 'SAVE_TOO_LARGE');
+    if (version === 7) {
+      const restored = decoded(text); expect(restored.run.session).toEqual(match.run.session);
+      expect(encoded(restored)).toBe(text); design.createdAt = design.createdAt.replace('Z', '0Z');
+    } else {
+      reject(decodeCampaignMatchSave(text), 'UNSUPPORTED_SAVE_VERSION');
+      // Retired full match3 has the same fields and byte size, but remains unsupported.
+      design.createdAt = design.createdAt.replace('Z', '0Z');
+    }
+    reject(encodeCampaignMatchSave(match), 'SAVE_TOO_LARGE');
     expect(text.length).toBeLessThan(MAX_CAMPAIGN_SAVE_BYTES);
   });
 });
 
 describe('fault-only exception containment and purity', () => {
   const privateError = (): never => { throw Error('PRIVATE'); };
-  it.each(['encode', 'decode3', 'decode2', 'decode1'].flatMap(operation =>
+  it.each(['encode', 'decode6'].flatMap(operation =>
     ['session', 'production', 'flight'].map(layer => ({ operation, layer }))))
   ('$operation contains nested $layer refinement exception', ({ operation, layer }) => {
     const match: CampaignMatch = { run: { session: rich(2, 3), control: computer }, scenario: 'sandbox' };
-    const json = operation === 'decode1' ? legacyEncoded(match, 1) : operation === 'decode2' ? legacyEncoded(match, 2) : encoded(match);
+    const json = encoded(match);
     const effect = layer === 'session' ? sessions.campaignSessionSchema._def.effect : layer === 'production'
       ? productionStateSchema._def.effect : flightDesignSchema._def.effect;
     if (effect.type !== 'refinement') throw Error('Expected refinement');
@@ -284,15 +310,15 @@ describe('fault-only exception containment and purity', () => {
     reject(encodeCampaignMatchSave(match), 'INVALID_STATE'); stringify.mockRestore();
     reject(encodeCampaignMatchSave({ get run(): never { return privateError(); }, scenario: 'sandbox' }), 'INVALID_STATE');
   });
-  it.each([1, 2])('schema%s contains legacy dependency exceptions and invalid returned run', version => {
+  it.each([1, 2, 3, 4, 5, 6])('schema%s never delegates even to a throwing dependency', version => {
     const json = legacyEncoded(created(), version), read = vi.spyOn(runCodec, 'decodeCampaignRunSave').mockImplementation(privateError);
-    reject(decodeCampaignMatchSave(json), 'INVALID_SAVE');
+    reject(decodeCampaignMatchSave(json), 'UNSUPPORTED_SAVE_VERSION'); expect(read).not.toHaveBeenCalled();
     const run = created().run; run.session.turn = NaN; read.mockReturnValue({ ok: true, run });
-    reject(decodeCampaignMatchSave(json), 'INVALID_STATE');
+    reject(decodeCampaignMatchSave(json), 'UNSUPPORTED_SAVE_VERSION'); expect(read).not.toHaveBeenCalled();
   });
-  it.each([1, 2, 3, 99])('schema%s own undefined scenario is not a missing/default field', schemaVersion => {
+  it.each([1, 2, 3, 4, 5, 6, 7, 99])('schema%s own undefined scenario is not a missing/default field', schemaVersion => {
     vi.spyOn(JSON, 'parse').mockReturnValue({ ...envelope(), schemaVersion, scenario: undefined });
-    reject(decodeCampaignMatchSave('{}'), schemaVersion === 99 ? 'UNSUPPORTED_SAVE_VERSION' : 'INVALID_SAVE');
+    reject(decodeCampaignMatchSave('{}'), schemaVersion === 8 ? 'INVALID_SAVE' : 'UNSUPPORTED_SAVE_VERSION');
   });
   it('has no storage, clock, RNG, catalog, scheduling or gameplay calls', () => {
     const match = created(), texts = [legacyEncoded(match, 1), legacyEncoded(match, 2), encoded(match)];
@@ -305,7 +331,9 @@ describe('fault-only exception containment and purity', () => {
     const read = vi.spyOn(ShipDesignManager.prototype, 'load'), write = vi.spyOn(ShipDesignManager.prototype, 'saveDesign');
     try {
       expect(encodeCampaignMatchSave(match).ok).toBe(true);
-      texts.forEach(text => expect(decodeCampaignMatchSave(text).ok).toBe(true));
+      reject(decodeCampaignMatchSave(texts[0]), 'UNSUPPORTED_SAVE_VERSION');
+      reject(decodeCampaignMatchSave(texts[1]), 'UNSUPPORTED_SAVE_VERSION');
+      expect(decodeCampaignMatchSave(texts[2]).ok).toBe(true);
       for (const spy of [now, random, execute, ai, policy, read, write]) expect(spy).not.toHaveBeenCalled();
     } finally {
       for (const [name, descriptor] of descriptors) {

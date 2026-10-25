@@ -408,7 +408,7 @@ describe('S3.34 bounded run scene integration', () => {
     vi.stubGlobal('localStorage', storage); return { storage, contents };
   }
   function load(f: ReturnType<typeof fixture>, run: runDomain.CampaignRun, contents: Map<string, string>) {
-    const encoded = encodeCampaignRunSave(run); if (!encoded.ok) throw Error(encoded.message);
+    const encoded = encodeCampaignMatchSave({ run, scenario: 'sandbox' }); if (!encoded.ok) throw Error(encoded.message);
     contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
     f.click('campaign-load'); f.click('campaign-confirm');
     expect(runtime(f).run).toEqual(run); expect(f.delayedCall).not.toHaveBeenCalled();
@@ -513,7 +513,7 @@ describe('S3.34 bounded run scene integration', () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it.each(['save', 'load'] as const)('%s read failure remains paused; empty save writes full save3 and never auto-resumes', action => {
+  it.each(['save', 'load'] as const)('%s read failure remains paused; empty save writes full save6 and never auto-resumes', action => {
     const { storage, contents } = slot();
     try {
       const f = redScheduled(), r = runtime(f), source = r.run, task = f.tasks[0];
@@ -524,19 +524,19 @@ describe('S3.34 bounded run scene integration', () => {
       expect(r.run).toBe(source); expect(r.aiPhase).toBe('paused'); expect(storage.setItem).toHaveBeenCalledTimes(1);
       const json = contents.get(CampaignRunSaveManager.STORAGE_KEY)!;
       expect(Object.keys(JSON.parse(json)).sort()).toEqual(['format', 'schemaVersion', 'rulesVersion', 'session', 'control', 'scenario'].sort());
-      expect(JSON.parse(json).schemaVersion).toBe(3); expect(decodeCampaignMatchSave(json)).toEqual({ ok: true, match: { run: source, scenario: 'sandbox' } });
+      expect(JSON.parse(json).schemaVersion).toBe(8); expect(decodeCampaignMatchSave(json)).toEqual({ ok: true, match: { run: source, scenario: 'sandbox' } });
       expect(f.tasks).toHaveLength(1); expect(contents.get('unrelated')).toBe('keep');
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it.each(['local-blue', 'local-red', 'ai-blue', 'ai-red', 'legacy-red'] as const)('load %s uses captured whole run/control without reread, resets UI and never schedules', variant => {
+  it.each(['local-blue', 'local-red', 'ai-blue', 'ai-red'] as const)('load %s uses captured whole run/control without reread, resets UI and never schedules', variant => {
     const { storage, contents } = slot();
     try {
       const f = aiStart(), r = runtime(f);
       const run: runDomain.CampaignRun = { session: domain.createCampaignSession(), control: variant.startsWith('ai')
         ? { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } : { mode: 'local' } };
       run.session.turn = variant.endsWith('red') ? 2 : 1;
-      const encoded = variant.startsWith('legacy') ? encodeCampaignSave(run.session) : encodeCampaignRunSave(run);
+      const encoded = encodeCampaignMatchSave({ run, scenario: 'sandbox' });
       if (!encoded.ok) throw Error(encoded.message);
       contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
       f.click('campaign-production'); f.click('production-fleets');
@@ -550,12 +550,26 @@ describe('S3.34 bounded run scene integration', () => {
       expect(r).toMatchObject({ fleetShipIds: [], fleetPage: 0, fleetMemberPage: 0, choiceIndex: 0, completedPage: 0,
         productionOpen: false, budgetOpen: false, travelOpen: false, fleetsOpen: false, fleetTravelOpen: false, catalog: undefined });
       expect(r.aiSummary).toBeUndefined();
-      if (variant.startsWith('legacy')) {
-        contents.set(CampaignRunSaveManager.STORAGE_KEY, encoded.json);
-        f.click('campaign-save'); expect(r.pending).toBe('save'); expect(storage.setItem).not.toHaveBeenCalled();
-        f.click('campaign-confirm'); expect(JSON.parse(contents.get(CampaignRunSaveManager.STORAGE_KEY)!).schemaVersion).toBe(3);
-        expect(r.run.control).toEqual({ mode: 'local' });
-      }
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([1, 2, 3, 4, 5])('load retired schema%s preserves source, UI and bytes without acquiring defaults or scheduling', schemaVersion => {
+    const { storage, contents } = slot();
+    try {
+      const f = redScheduled(), r = runtime(f), source = r.match, task = f.tasks[0];
+      const state = domain.createCampaignSession(); state.turn = 2;
+      const current = schemaVersion === 4 ? encodeCampaignSave(state)
+        : schemaVersion === 5 ? encodeCampaignRunSave({ session: state, control: { mode: 'local' } })
+        : { ok: true, json: JSON.stringify({ format: 'orion-campaign', schemaVersion, rulesVersion: 1, session: state,
+          ...(schemaVersion > 1 ? { control: { mode: 'local' } } : {}), ...(schemaVersion === 3 ? { scenario: 'sandbox' } : {}) }) };
+      if (!current.ok) throw Error('Expected fixture');
+      contents.set(CampaignRunSaveManager.STORAGE_KEY, current.json);
+      f.click('campaign-load'); expect(r.pending).toBeUndefined(); expect(r.match).toBe(source);
+      expect(r.aiPhase).toBe('paused'); expect(task.removed).toBe(true); task.callback();
+      expect(r.match).toBe(source); expect(f.tasks).toHaveLength(1);
+      expect(storage.getItem.mock.calls).toEqual([[CampaignRunSaveManager.STORAGE_KEY]]);
+      expect(storage.setItem).not.toHaveBeenCalled(); expect(contents.get(CampaignRunSaveManager.STORAGE_KEY)).toBe(current.json);
+      expect(f.message()).toContain('Версия формата');
     } finally { vi.unstubAllGlobals(); }
   });
 
@@ -951,8 +965,8 @@ describe('S3.29 confirmed manual AI turn', () => {
   it.each(['replace', 'reset', 'shutdown', 'reentry', 'load', 'redraw'] as const)('rejects late request/confirm after %s, including identical turn numbers', change => {
     const f = fixture(), r = runtime(f), executor = vi.spyOn(aiExecutor, 'executeAiTurn');
     const request = capture(f, 'campaign-ai'); f.click('campaign-ai'); const confirm = capture(f, 'campaign-confirm');
-    const encoded = encodeCampaignSave(domain.createCampaignSession()); if (!encoded.ok) throw Error(encoded.message);
-    const storage = { getItem: vi.fn(() => encoded.json), setItem: vi.fn() }; vi.stubGlobal('localStorage', storage);
+    const json = rawRun(domain.createCampaignSession());
+    const storage = { getItem: vi.fn(() => json), setItem: vi.fn() }; vi.stubGlobal('localStorage', storage);
     try {
       if (change === 'replace') r.campaign = structuredClone(r.campaign);
       if (change === 'reset') r.resetCampaign();
@@ -1041,8 +1055,8 @@ describe('S3.29 confirmed manual AI turn', () => {
   });
 
   it.each(['side', 'select', 'production', 'manual', 'load', 'reset', 'shutdown'] as const)('clears summary on %s (budget keeps the actual receipt)', action => {
-    const encoded = encodeCampaignSave(domain.createCampaignSession()); if (!encoded.ok) throw Error(encoded.message);
-    vi.stubGlobal('localStorage', { getItem: () => encoded.json, setItem: vi.fn() });
+    const json = rawRun(domain.createCampaignSession());
+    vi.stubGlobal('localStorage', { getItem: () => json, setItem: vi.fn() });
     try {
       const f = fixture(); f.click('campaign-ai'); f.click('campaign-confirm');
       const summary = runtime(f).aiSummary; f.click('campaign-budget'); expect(runtime(f).aiSummary).toBe(summary);
@@ -1123,15 +1137,15 @@ describe('S3.29 confirmed manual AI turn', () => {
 describe('S3.26 manual campaign slot UI', () => {
   const key = CampaignSaveManager.STORAGE_KEY;
   const raw = (state = domain.createCampaignSession()) => {
-    const encoded = encodeCampaignSave(state);
+    const encoded = encodeCampaignMatchSave({ run: { session: state, control: { mode: 'local' } }, scenario: 'sandbox' });
     if (!encoded.ok) throw Error(encoded.message);
     return encoded.json;
   };
   const corrupt = [
     ['empty', ''], ['json', '{'], ['format', '{}'],
     ['schema', JSON.stringify({ format: 'orion-campaign', schemaVersion: 2, rulesVersion: 1, session: null })],
-    ['rules', JSON.stringify({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 2, session: null })],
-    ['state', JSON.stringify({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 1, session: null })],
+    ['rules', JSON.stringify({ format: 'orion-campaign', schemaVersion: 6, rulesVersion: 1, session: null, control: { mode: 'local' }, scenario: 'sandbox' })],
+    ['state', JSON.stringify({ format: 'orion-campaign', schemaVersion: 6, rulesVersion: 2, session: null, control: { mode: 'local' }, scenario: 'sandbox' })],
     ['oversized', ' '.repeat(MAX_CAMPAIGN_SAVE_BYTES + 1)]
   ] as const;
   type Runtime = {
@@ -1585,7 +1599,7 @@ describe('campaign scene and projection renderer', () => {
   it.each(['preset', 'library'] as const)('accepts both factions through the full paid colony-to-colony cycle using %s', source => {
     // Real catalogue/repository/domain; only renderer/input and the storage port are substitutes.
     const saved = createCombatDesign('fighter'); saved.name = 'Приёмочный проект';
-    const raw = JSON.stringify({ schemaVersion: 2, designs: [saved], components: [] });
+    const raw = JSON.stringify({ schemaVersion: 5, designs: [saved], components: [] });
     const storage = { getItem: vi.fn((key: string) => source === 'library' && key === ShipDesignManager.STORAGE_KEY ? raw : null), setItem: vi.fn() };
     vi.stubGlobal('localStorage', storage);
     try {
@@ -1685,7 +1699,7 @@ describe('campaign scene and projection renderer', () => {
   it.each(['preset', 'library'] as const)('accepts both factions through paid FIFO fleets, empty tanks, refuelling and return using %s', source => {
     // Only environment boundaries are replaced: no injected campaign state or catalog responses.
     const saved = createCombatDesign('fighter'); saved.name = 'Приёмочный групповой fighter';
-    const raw = JSON.stringify({ schemaVersion: 2, designs: [saved], components: [] });
+    const raw = JSON.stringify({ schemaVersion: 5, designs: [saved], components: [] });
     const contents = new Map(source === 'library' ? [[ShipDesignManager.STORAGE_KEY, raw]] : []);
     const storage = {
       getItem: vi.fn((key: string) => contents.get(key) ?? null),

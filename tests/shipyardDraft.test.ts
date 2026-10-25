@@ -23,6 +23,9 @@ class Node extends EventEmitter {
   destroy() { this.destroyed = true; this.removeAll(true); this.removeAllListeners(); }
   setName(value: string) { this.name = value; return this; }
   setPadding() { return this; }
+  setFontSize() { return this; }
+  disableInteractive() { return this; }
+  setAlpha() { return this; }
   setBackgroundColor() { return this; }
   setInteractive() { return this; }
   setFixedSize() { return this; }
@@ -72,6 +75,23 @@ function panelFixture(saved = false, source = createDesign('corvette', true)) {
 }
 
 describe('shipyard draft replacement', () => {
+  it('keeps the campaign picker usable when an available module cannot fit the draft', () => {
+    const h = harness(), design = createDesign('fighter', true);
+    const panel = new ShipBuilderPanel(h.scene, 0, 0, undefined, design, undefined, {
+      width: 800, height: 700, availableHulls: ['fighter'], readOnly: false,
+      isComponentAvailable: () => true, isDesignAvailable: () => true, onDraftChanged: vi.fn()
+    });
+    const scanner = { ...createComponent('scanner'), kind: 'scanner' as const, range: 100000, accuracy: 1 , tacticalVariant: 'standard' as const};
+    panel.setAvailableComponents([scanner]);
+    expect(() => h.click('slot-service_1')).not.toThrow();
+    expect(isShipyardModalOpen(h.scene)).toBe(true);
+    expect(panel.getConfiguration()).toEqual(design);
+    h.click('campaign-choice-cancel');
+    expect(panel.installEquipment('service_1', scanner)).toBe(false);
+    expect(panel.getConfiguration()).toEqual(design);
+    expect(h.nodes.some(node => !node.destroyed && node.text.includes('Ошибка:'))).toBe(true);
+  });
+
   it('reports draft, flight and battle readiness independently for an unarmed flight design', () => {
     const flightDesign = installComponent(createDesign('fighter'), 'engine_1', createComponent('engine'));
     const f = panelFixture(false, flightDesign);
@@ -346,7 +366,7 @@ describe('shipyard asynchronous import lifecycle', () => {
   }
 
   const library = (name: string) => JSON.stringify({
-    schemaVersion: 2, designs: [], components: [{ ...createComponent('beam'), id: name, name }]
+    schemaVersion: 5, designs: [], components: [{ ...createComponent('beam'), id: name, name }]
   });
 
   it.each([

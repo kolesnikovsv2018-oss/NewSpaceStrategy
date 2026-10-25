@@ -140,7 +140,7 @@ describe('real earned preset/library FIFO and group travel; manual purchases, ex
       const encoded = encodeCampaignSave(codecBranch); if (!encoded.ok) throw new Error(encoded.code);
       const envelope = JSON.parse(encoded.json);
       expect(Object.keys(envelope).sort()).toEqual(['format', 'rulesVersion', 'schemaVersion', 'session']);
-      expect(envelope).toMatchObject({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 1 });
+      expect(envelope).toMatchObject({ format: 'orion-campaign', schemaVersion: 6, rulesVersion: 4 });
       expect(encoded.json).not.toMatch(/controller|AI|commands|summary|economyForecast|endTurnEconomy|seed/);
       expect(new CampaignSaveManager(store).save(restored)).toEqual({ ok: true });
       vi.setSystemTime(new Date(`2040-01-${String(checkpoints.length + 1).padStart(2, '0')}T00:00:00Z`));

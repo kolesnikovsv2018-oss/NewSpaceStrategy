@@ -7,8 +7,8 @@ function generatedMap(worldCount = 6, participantCount = 2) {
     worldCount,
     participantCount,
     seed: 12345,
-    generatorVersion: 'galaxy-generator-v3',
-    profileId: 'balanced-start-v3'
+    generatorVersion: 'galaxy-generator-v4',
+    profileId: 'balanced-start-v4'
   });
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error(result.message);

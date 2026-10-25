@@ -7,8 +7,8 @@ function request(worldCount: number, participantCount: number, seed = 1) {
     worldCount,
     participantCount,
     seed,
-    generatorVersion: 'galaxy-generator-v3',
-    profileId: 'balanced-start-v3'
+    generatorVersion: 'galaxy-generator-v4',
+    profileId: 'balanced-start-v4'
   };
 }
 

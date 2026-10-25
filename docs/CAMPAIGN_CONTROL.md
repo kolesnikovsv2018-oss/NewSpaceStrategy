@@ -1,5 +1,14 @@
 # S3.30 — Контракт постоянной компьютерной стороны
 
+**Актуализация Н14, 2026-10-25:** мирный run-кодек пишет/читает только
+schema7/rules4, state-кодек —6/4, действующий match-кодек MainScene —8/4
+в том же `orion_campaign_v1`. Старые версии и конверты другого кодека
+отвергаются без delegation, миграции, default control/scenario и записи.
+Полный текущий контракт — [матрица сохранений](CAMPAIGN_SAVE.md#актуальный-мирный-формат-н13--2026-10-25).
+Gameplay/control/AI privacy/lifecycle сохранены. Номера save1/2/3 и
+описания совместимости ниже относятся только к историческим этапам;
+эта актуализация имеет приоритет.
+
 На 2026-10-08 **S3.39 подключён к MainScene**: единственный CampaignMatch, операции match→run→executor/planner, [match-репозиторий](../src/utils/CampaignMatchSaveManager.ts)/save3 того же слота. Defaults local/sandbox; joint-survey-v1 завершает общую разведку без победителя. Source/ticket/candidate захватывают match identity; ongoing обязателен до scheduling и исполнения, completed запрещает команды/helper/Resume, но не просмотр/save/load/new/menu/takeover. AI-blue-only/отсутствие red-summary сохранены; completed load без AI, ongoing red-load paused. Strict1/2→sandbox без записи/ретрозавершения. [Приёмка S3.39](CAMPAIGN_COMPLETION.md#12-фактическая-приёмка-s339):3140 тестов/44 файла, strict/build и настоящий браузер. Все описания run/save2 и следующие шаги S3.34 ниже исторические; этот абзац имеет приоритет.
 
 - Дата решения: 2026-09-10.

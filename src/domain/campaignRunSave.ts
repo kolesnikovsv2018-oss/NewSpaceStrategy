@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { campaignRunSchema, type CampaignRun } from './campaignRun';
-import { CAMPAIGN_RULES_VERSION, CAMPAIGN_SAVE_FORMAT, CAMPAIGN_SAVE_SCHEMA_VERSION,
-  MAX_CAMPAIGN_SAVE_BYTES, decodeCampaignSave, type CampaignSaveErrorCode } from './campaignSave';
+import { CAMPAIGN_RULES_VERSION, CAMPAIGN_SAVE_FORMAT,
+  MAX_CAMPAIGN_SAVE_BYTES, type CampaignSaveErrorCode } from './campaignSave';
 
-// Separate from the legacy state-only schema version (1); rules and byte budget are unchanged.
-export const CAMPAIGN_RUN_SAVE_SCHEMA_VERSION = 2;
+// State, run and match formats remain distinct; only the current format is accepted.
+export const CAMPAIGN_RUN_SAVE_SCHEMA_VERSION = 7;
 export type CampaignRunSaveErrorCode = CampaignSaveErrorCode | 'UNSUPPORTED_AI_POLICY';
 export interface CampaignRunSaveFailure { ok: false; code: CampaignRunSaveErrorCode; message: string }
 export type EncodeCampaignRunSaveResult = { ok: true; json: string } | CampaignRunSaveFailure;
@@ -71,16 +71,10 @@ export function decodeCampaignRunSave(inputJson: unknown): DecodeCampaignRunSave
     if (!parsed.success) return failure('INVALID_SAVE');
     envelope = parsed.data;
   } catch { return failure('INVALID_SAVE'); }
-  if (envelope.schemaVersion !== CAMPAIGN_SAVE_SCHEMA_VERSION && envelope.schemaVersion !== CAMPAIGN_RUN_SAVE_SCHEMA_VERSION) {
+  if (envelope.schemaVersion !== CAMPAIGN_RUN_SAVE_SCHEMA_VERSION) {
     return failure('UNSUPPORTED_SAVE_VERSION');
   }
   if (envelope.rulesVersion !== CAMPAIGN_RULES_VERSION) return failure('UNSUPPORTED_RULES_VERSION');
-  if (envelope.schemaVersion === CAMPAIGN_SAVE_SCHEMA_VERSION) {
-    if (owns(envelope, 'control')) return failure('INVALID_SAVE');
-    // Reuse the unchanged strict 1/1 reader only AFTER the new reader's priority guards.
-    const legacy = decodeCampaignSave(inputJson);
-    return legacy.ok ? { ok: true, run: { session: legacy.state, control: { mode: 'local' } } } : legacy;
-  }
   if (!owns(envelope, 'control')) return failure('INVALID_SAVE');
   try {
     const control = savedControlSchema.safeParse(envelope.control);

@@ -5,7 +5,7 @@ import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { decodeCampaignRunSave, encodeCampaignRunSave, type CampaignRunSaveErrorCode,
   type CampaignRunSaveFailure, type DecodeCampaignRunSaveResult } from '../src/domain/campaignRunSave';
 import * as codec from '../src/domain/campaignRunSave';
-import { encodeCampaignSave, MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
+import { MAX_CAMPAIGN_SAVE_BYTES } from '../src/domain/campaignSave';
 import { campaignRunSchema, type CampaignRun } from '../src/domain/campaignRun';
 import * as runs from '../src/domain/campaignRun';
 import { createCampaignSession, MAX_RESOURCE, MAX_TURN, type CampaignSession } from '../src/domain/campaignSession';
@@ -25,8 +25,8 @@ const computer = { mode: 'human-vs-ai', aiPolicy: 'expansion-v1' } as const;
 const bytes = (s: string) => new TextEncoder().encode(s).byteLength;
 const fresh = (): CampaignRun => ({ session: createCampaignSession(), control: local });
 const diagnostic = (turn = 1, control: CampaignRun['control'] = local): CampaignRun => ({ session: rich(turn, 3), control });
-const documentFor = (run: CampaignRun) => JSON.stringify({ format: 'orion-campaign', schemaVersion: 2,
-  rulesVersion: 1, session: run.session, control: run.control });
+const documentFor = (run: CampaignRun) => JSON.stringify({ format: 'orion-campaign', schemaVersion: 7,
+  rulesVersion: 4, session: run.session, control: run.control });
 
 // Never access the real host storage, even when testing the default adapter.
 function globalStorage(get: () => unknown): void {
@@ -64,7 +64,7 @@ function encoded(run: unknown): string {
   const result = encodeCampaignRunSave(run); if (!result.ok) throw new Error(result.code); return result.json;
 }
 function legacy(run: CampaignRun): string {
-  const result = encodeCampaignSave(run.session); if (!result.ok) throw new Error(result.code); return result.json;
+  return JSON.stringify({ format: 'orion-campaign', schemaVersion: 1, rulesVersion: 1, session: run.session });
 }
 function loaded(manager: CampaignRunSaveManager): CampaignRun {
   const result = manager.load(); if (!result.ok) throw new Error(result.code);
@@ -76,7 +76,7 @@ function failure(result: LoadCampaignRunResult | SaveCampaignRunResult, code: Ca
   expect(result.message).toMatch(/[А-Яа-яЁё]/); expect(result.message.length).toBeLessThan(250);
   expect(result.message).not.toMatch(/PRIVATE|SecurityError|QuotaExceededError|Error:|issues|\.ts:/);
 }
-function sizedRun(size: number, control: CampaignRun['control'] = local, version = 2): CampaignRun {
+function sizedRun(size: number, control: CampaignRun['control'] = local, version = 6): CampaignRun {
   const run = fresh(), design = presets.createCombatDesign('fighter'); run.control = control;
   design.name = 'Юникод 🚀'; design.createdAt = '2026-09-10T00:00:00.0Z';
   run.session.production.lastOrderId = 1;
@@ -146,8 +146,12 @@ describe('real codec read failures and no repair', () => {
     ['missing session before future schema', () => JSON.stringify({ format: 'orion-campaign', schemaVersion: 9, rulesVersion: 9 }), 'INVALID_SAVE'],
     ['future schema before control/rules', () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), session: null, control: null, schemaVersion: 9, rulesVersion: 9 }), 'UNSUPPORTED_SAVE_VERSION'],
     ['future rules before control/session', () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), session: null, control: null, rulesVersion: 9 }), 'UNSUPPORTED_RULES_VERSION'],
-    ['new missing control', () => JSON.stringify({ format: 'orion-campaign', schemaVersion: 2, rulesVersion: 1, session: null }), 'INVALID_SAVE'],
-    ['legacy with control', () => documentFor(fresh()).replace('"schemaVersion":2', '"schemaVersion":1'), 'INVALID_SAVE'],
+    ['new missing control', () => JSON.stringify({ format: 'orion-campaign', schemaVersion: 7, rulesVersion: 4, session: null }), 'INVALID_SAVE'],
+    ['legacy with control', () => documentFor(fresh()).replace('"schemaVersion":7', '"schemaVersion":1'), 'UNSUPPORTED_SAVE_VERSION'],
+    ...[1, 2, 3, 4, 5, 6, 8].map((schemaVersion): [string, () => unknown, CampaignRunSaveErrorCode] => [
+      `unsupported schema${schemaVersion}`, () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), schemaVersion }), 'UNSUPPORTED_SAVE_VERSION'
+    ]),
+    ['retired rules', () => documentFor(fresh()).replace('"rulesVersion":4', '"rulesVersion":2'), 'UNSUPPORTED_RULES_VERSION'],
     ['malformed policy', () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), control: { mode: 'human-vs-ai', aiPolicy: 'future\n' } }), 'INVALID_SAVE'],
     ['unknown policy before invalid session', () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), session: null, control: { mode: 'human-vs-ai', aiPolicy: 'future-v2' } }), 'UNSUPPORTED_AI_POLICY'],
     ['null session', () => JSON.stringify({ ...JSON.parse(documentFor(fresh())), session: null }), 'INVALID_STATE'],
@@ -189,30 +193,31 @@ describe('real codec read failures and no repair', () => {
   });
 });
 
-describe('legacy compatibility and explicit upgrade only', () => {
-  it.each([1, 2])('load1 at turn%s restores local without inheriting prior AI or writing; only explicit save upgrades', turn => {
+describe('retired formats are rejected without repair', () => {
+  it.each([1, 2])('load1 at turn%s rejects without inheriting prior AI or writing', turn => {
     const run = diagnostic(turn), old = legacy(run), store = new MemoryStorage(), manager = new CampaignRunSaveManager(store);
     store.data.set(KEY, encoded({ ...run, control: computer })); expect(loaded(manager).control).toEqual(computer);
     store.data.set(KEY, old); store.getItem.mockClear(); const before = new Map(store.data);
-    const first = loaded(manager), second = loaded(new CampaignRunSaveManager(store));
-    expect(first).toEqual(run); expect(second).toEqual(run); expect(first).not.toBe(second);
+    failure(manager.load(), 'UNSUPPORTED_SAVE_VERSION');
+    failure(new CampaignRunSaveManager(store).load(), 'UNSUPPORTED_SAVE_VERSION');
     expect(store.getItem.mock.calls).toEqual([[KEY], [KEY]]); noWrites(store); expect(store.data).toEqual(before);
-    expect(new CampaignSaveManager(store).load()).toEqual({ ok: true, state: run.session });
+    expect(new CampaignSaveManager(store).load()).toMatchObject({ ok: false, code: 'UNSUPPORTED_SAVE_VERSION' });
     const reads = store.getItem.mock.calls.length;
-    expect(manager.save(first)).toEqual({ ok: true }); expect(store.getItem).toHaveBeenCalledTimes(reads);
+    expect(manager.save(run)).toEqual({ ok: true }); expect(store.getItem).toHaveBeenCalledTimes(reads);
     expect(store.setItem.mock.calls).toEqual([[KEY, encoded(run)]]);
-    expect(JSON.parse(store.data.get(KEY)!)).toMatchObject({ schemaVersion: 2, rulesVersion: 1, control: local });
+    expect(JSON.parse(store.data.get(KEY)!)).toMatchObject({ schemaVersion: 7, rulesVersion: 4, control: local });
     expect(new CampaignSaveManager(store).load().ok).toBe(false);
     expect(loaded(new CampaignRunSaveManager(store))).toEqual(run);
     expect(store.data).toEqual(new Map(before).set(KEY, encoded(run))); noCleanup(store);
   });
 
-  it('a valid legacy document at exactly 5MB loads, but explicit upgraded save fails without losing old bytes', () => {
+  it('retired document at exactly 5MB rejects and oversized replacement preserves every byte', () => {
     const run = sizedRun(MAX_CAMPAIGN_SAVE_BYTES, local, 1), old = legacy(run);
     expect(bytes(old)).toBe(MAX_CAMPAIGN_SAVE_BYTES);
     const store = new MemoryStorage(); store.data.set(KEY, old); const before = new Map(store.data);
-    const manager = new CampaignRunSaveManager(store), restored = loaded(manager); expect(restored).toEqual(run);
-    failure(manager.save(restored), 'SAVE_TOO_LARGE'); expect(store.getItem.mock.calls).toEqual([[KEY]]);
+    const manager = new CampaignRunSaveManager(store);
+    failure(manager.load(), 'UNSUPPORTED_SAVE_VERSION');
+    failure(manager.save(run), 'SAVE_TOO_LARGE'); expect(store.getItem.mock.calls).toEqual([[KEY]]);
     noWrites(store); expect(store.data).toEqual(before);
   });
 });
@@ -361,7 +366,7 @@ describe('detached full snapshots, no cache or game execution', () => {
     store.writeFailure = undefined; expect(a.save(first)).toEqual({ ok: true }); expect(loaded(b)).toEqual(first);
     store.data.set(KEY, '{external corruption'); failure(a.load(), 'INVALID_SAVE');
     store.data.delete(KEY); failure(b.load(), 'SAVE_NOT_FOUND');
-    store.data.set(KEY, legacy(second)); expect(loaded(a)).toEqual({ session: second.session, control: local });
+    store.data.set(KEY, legacy(second)); failure(a.load(), 'UNSUPPORTED_SAVE_VERSION');
     expect(store.getItem).toHaveBeenCalledTimes(7); expect(store.setItem).toHaveBeenCalledTimes(4); noCleanup(store);
   });
   it.each(['terminal', 'credits-cap', 'minerals-cap', 'deficit'] as const)('preserves valid %s without advancing, paying or repairing', kind => {

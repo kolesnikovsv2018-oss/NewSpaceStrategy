@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { calculateComponent, calculateShipStats, COMPONENT_NAMES, componentSchema, createDesign, designSchema,
-  HULLS, installComponent, newId, validateDesign, acceptsComponent, type ComponentDefinition, type ShipDesign, type HullId } from '../domain/shipDesign';
+  HULLS, installComponent, newId, validateDesign, acceptsComponent, describeDesign, type ComponentDefinition, type ShipDesign, type HullId } from '../domain/shipDesign';
 import { ShipDesignManager } from '../utils/ShipDesignManager';
 import { drawBlueprint } from './ShipBlueprint';
 import { button, text, panelBackground, chooseItem, confirmDiscard } from './ShipyardWidgets';
@@ -8,6 +8,7 @@ import { closeShipyardModal, isShipyardModalOpen, openShipyardModal } from './Sh
 import { hasUnsavedDesign } from '../domain/shipDraft';
 import { COMBAT_PRESET_NAMES, createCombatDesign, type CombatPresetId } from '../domain/combatPresets';
 import { CIVILIAN_PRESET_NAMES, createCivilianDesign, type CivilianPresetId } from '../domain/civilianPresets';
+import { getTravelCapabilities, getStrategicEquipmentCost, type StrategicEquipment } from '../domain/campaignTravel';
 export interface CampaignShipBuilderContext {
   width: number;
   height: number;
@@ -54,8 +55,9 @@ export class ShipBuilderPanel {
       this.perform(() => { this.design = designSchema.parse({ ...this.design, name }); }, 'Название изменено; сохраните проект');
     }, 'rename-design').setFixedSize(390, 30);
     button(this.scene, this.container, 440, 52, `Корпус: ${HULLS[this.design.hullId].name}`, () => {
-      chooseItem(this.scene, 'Выберите корпус', Object.values(HULLS).map(hull => ({ label: `${hull.name} · ${hull.maxMass} т · ${hull.hitPoints} HP`, value: hull.id })),
-        hullId => this.changeHull(hullId));
+      chooseItem(this.scene, 'Выберите корпус', Object.values(HULLS).flatMap(hull => (['standard', 'reinforced'] as const)
+        .map(hullVariant => ({ label: `${hull.name} · ${hullVariant}`, value: { hullId: hull.id, hullVariant } }))),
+        value => this.changeHull(value.hullId, value.hullVariant));
     }, 'change-hull');
     const graphics = this.scene.add.graphics({ x: 110, y: 175 });
     this.container.add(graphics);
@@ -69,7 +71,7 @@ export class ShipBuilderPanel {
     }, 'combat-presets');
     const stats = calculateShipStats(this.design);
     text(this.scene, this.container, 240, 110,
-      `Масса: ${stats.mass.toFixed(1)} / ${HULLS[this.design.hullId].maxMass} т\n` +
+      `Масса: ${stats.mass.toFixed(1)} / ${HULLS[this.design.hullId].maxMass} т · объём ${stats.equipmentVolume}/${HULLS[this.design.hullId].equipmentVolume}\n` +
       `Стоимость: ${stats.cost} ₡ · Корпус: ${stats.hitPoints} HP\n` +
       `Скорость: ${stats.speed.toFixed(1)} такт. ед/с · Щит: ${stats.shield}\n` +
       `Генерация: ${stats.powerGeneration.toFixed(1)} ЭЕ/с\n` +
@@ -85,7 +87,7 @@ export class ShipBuilderPanel {
       const label = slot.component ? `${kindName}: ${slot.component.name}` : `${kindName} [${hardpoint.size}] — пусто`;
       button(this.scene, this.container, x, y, label, () => {
         const choices = this.catalogue.filter(component => acceptsComponent(hardpoint, component)).map(component => ({
-          label: `${component.name} · ${calculateComponent(component).mass.toFixed(1)} т · ${calculateComponent(component).slotSize}`, value: component
+          label: `${component.name} · ${component.technologyVariant} · объём ${calculateComponent(component).equipmentVolume} · ${calculateComponent(component).mass.toFixed(1)} т`, value: component
         }));
         chooseItem(this.scene, `Установка: ${kindName}`, choices, component => this.installEquipment(hardpoint.id, component));
       }, `slot-${hardpoint.id}`).setFixedSize(280, 34);
@@ -100,7 +102,7 @@ export class ShipBuilderPanel {
       flightIssues.length ? '#ffc880' : '#8af5bd').setFixedSize(210, 24).setName('design-mode-flight');
     text(this.scene, this.container, 458, 454, battleIssues.length ? `Бой: недоступен (${battleIssues.length})` : 'Бой: доступен', 11,
       battleIssues.length ? '#ffc880' : '#8af5bd').setFixedSize(224, 24).setName('design-mode-battle');
-    text(this.scene, this.container, 18, 493, 'Добыча/ремонт/сканирование не исполняются; Трюм+ увеличивает объём.', 11, '#ffc880');
+    button(this.scene, this.container, 18, 483, 'Характеристики', () => this.showSpecifications(), 'design-specifications');
     text(this.scene, this.container, 18, 518, this.message, 12, this.error ? '#ff9292' : '#9bd8ff').setWordWrapWidth(660);
     button(this.scene, this.container, 18, 560, 'Сохранить', () => this.save(), 'save-design');
     button(this.scene, this.container, 125, 560, 'Загрузить', () => this.load(), 'load-design');
@@ -134,10 +136,11 @@ export class ShipBuilderPanel {
     const hullWidth = mobile ? width - pad * 2 : Math.min(300, width - pad * 2);
     const hullY = mobile ? 36 : 52;
     campaignButton(mobile ? pad : width - pad - hullWidth, hullY, `Корпус: ${HULLS[this.design.hullId].name}`, () => {
-      this.chooseCampaignItem('Доступные корпуса', availableHulls.map(id => ({
-        label: `${HULLS[id].name} · ${HULLS[id].maxMass} т · ${HULLS[id].hitPoints} HP`, value: id
-      })), hullId => this.changeHull(hullId));
-    }, 'change-hull', hullWidth, !readOnly && availableHulls.length > 1);
+      this.chooseCampaignItem('Доступные корпуса', availableHulls.flatMap(hullId => (['standard', 'reinforced'] as const)
+        .filter(hullVariant => this.isCampaignDesignAllowed({ ...this.design, hullId, hullVariant }))
+        .map(hullVariant => ({ label: `${HULLS[hullId].name} · ${hullVariant}`, value: { hullId, hullVariant } }))),
+      value => this.changeHull(value.hullId, value.hullVariant));
+    }, 'change-hull', hullWidth, !readOnly);
     const nameWidth = mobile ? width - pad * 2 : Math.min(360, width - hullWidth - pad * 3);
     const nameX = pad;
     campaignButton(nameX, mobile ? 84 : hullY, this.design.name, () => {
@@ -147,9 +150,11 @@ export class ShipBuilderPanel {
     }, 'rename-design', nameWidth, !readOnly);
 
     const stats = calculateShipStats(this.design);
-    const statsText = `Масса ${stats.mass.toFixed(1)} / ${HULLS[this.design.hullId].maxMass} т · ` +
-      `${stats.cost} ₡ · ${stats.speed.toFixed(1)} такт. ед/с · мощность ${stats.peakPower.toFixed(1)}/${stats.powerGeneration.toFixed(1)}`;
-    text(this.scene, this.container, pad, mobile ? 136 : 108, statsText, 14).setWordWrapWidth(width - pad * 2, true);
+    const statsText = `Масса ${stats.mass.toFixed(1)}/${HULLS[this.design.hullId].maxMass} т · объём ${stats.equipmentVolume}/${HULLS[this.design.hullId].equipmentVolume} (своб. ${HULLS[this.design.hullId].equipmentVolume - stats.equipmentVolume})\n` +
+      `HP ${stats.hitPoints} · ${stats.cost} ₡ · Параметры ›`;
+    const specs = campaignButton(pad, mobile ? 132 : 104, statsText,
+      () => this.showSpecifications(), 'design-specifications', width - pad * 2);
+    specs.setPadding(4, 0).setFontSize(14);
     const slotStart = mobile ? 178 : 156;
     const slotWidth = mobile ? width - pad * 2 : Math.floor((width - pad * 3) / 2);
     const slotRows = mobile ? 8 : 4;
@@ -160,7 +165,7 @@ export class ShipBuilderPanel {
       const x = pad + col * (slotWidth + pad);
       const y = slotStart + row * buttonHeight;
       const kindName = hardpoint.kind === 'service' ? 'Служебный' : COMPONENT_NAMES[hardpoint.kind];
-      const label = slot.component ? `${kindName}: ${slot.component.name}` : `${kindName} [${hardpoint.size}] — пусто`;
+      const label = slot.component ? `${kindName}: ${slot.component.tacticalVariant} · ${slot.component.technologyVariant}` : `${kindName} [${hardpoint.size}] — пусто`;
       campaignButton(x, y, label, () => {
         const choices: Array<{ label: string; value: ComponentDefinition | null }> = this.catalogue
           .filter(component => acceptsComponent(hardpoint, component))
@@ -189,9 +194,16 @@ export class ShipBuilderPanel {
   private campaignComponentVariants(component: ComponentDefinition, slotId: string):
     Array<{ label: string; value: ComponentDefinition }> {
     const base: Array<{ label: string; value: ComponentDefinition }> = [];
-    const design = (candidate: ComponentDefinition) => installComponent(this.design, slotId, candidate);
-    if (this.campaign?.isComponentAvailable(component) && this.isCampaignDesignAllowed(design(component))) {
-      base.push({ label: `${component.name} · ${calculateComponent(component).mass.toFixed(1)} т`, value: component });
+    const design = (candidate: ComponentDefinition): ShipDesign => ({
+      ...this.design, slots: this.design.slots.map(slot =>
+        slot.id === slotId ? { ...slot, component: candidate } : slot)
+    });
+    const allowed = (candidate: ComponentDefinition): boolean => {
+      const next = design(candidate);
+      return validateDesign(next, 'draft').length === 0 && this.isCampaignDesignAllowed(next);
+    };
+    if (this.campaign?.isComponentAvailable(component) && allowed(component)) {
+      base.push({ label: `${component.tacticalVariant} · ${component.technologyVariant} · V${calculateComponent(component).equipmentVolume} · ${calculateComponent(component).mass.toFixed(1)} т`, value: component });
     }
     for (const [field, value] of Object.entries(component)) {
       if (typeof value !== 'number' || field === 'mass' || field === 'cost') continue;
@@ -200,8 +212,8 @@ export class ShipBuilderPanel {
         const parsed = componentSchema.safeParse({ ...component, [field]: adjusted,
           name: `${component.name} ${field}${label}`, id: `${component.id}_${field}_${label.replace('%', '').replace('−', 'm').replace('+', 'p')}` });
         if (!parsed.success || !this.campaign?.isComponentAvailable(parsed.data) ||
-          !this.isCampaignDesignAllowed(design(parsed.data))) continue;
-        base.push({ label: `${component.name} ${field} ${label}`, value: parsed.data });
+          !allowed(parsed.data)) continue;
+        base.push({ label: `${component.name} · ${component.technologyVariant} ${field} ${label}`, value: parsed.data });
       }
     }
     return base;
@@ -246,6 +258,56 @@ export class ShipBuilderPanel {
     render();
   }
 
+  private showSpecifications(): void {
+    const modal = openShipyardModal(this.scene);
+    if (!modal) return;
+    const width = Math.min(620, this.scene.cameras.main.width - 24);
+    const height = Math.min(560, this.scene.cameras.main.height - 24);
+    const content = this.scene.add.container((this.scene.cameras.main.width - width) / 2, (this.scene.cameras.main.height - height) / 2);
+    modal.overlay.add(content);
+    const pages = describeDesign(this.design);
+    let page = 0;
+    const render = () => {
+      content.removeAll(true);
+      panelBackground(this.scene, content, width, height);
+      text(this.scene, content, 14, 14, `Характеристики · ${page + 1}/${pages.length}`, 16);
+      text(this.scene, content, 14, 60, pages[page], 14).setWordWrapWidth(width - 28, true).setLineSpacing(6);
+      if (!this.campaign?.readOnly) {
+        button(this.scene, content, 14, height - 110, 'Стратегическое оснащение ›', () => {
+          if (modal.close()) this.chooseStrategicEquipment();
+        }, 'design-strategic-equipment').setFixedSize(width - 28, 44).setFontSize(14).setPadding(8, 12);
+      }
+      for (const [label, delta, x] of [['←', -1, 14], ['→', 1, 90]] as const) {
+        button(this.scene, content, x, height - 58, label, () => {
+          page = (page + delta + pages.length) % pages.length; render();
+        }, delta < 0 ? 'design-spec-prev' : 'design-spec-next').setFixedSize(64, 44).setFontSize(14);
+      }
+
+      button(this.scene, content, width - 150, height - 58, 'Закрыть · ESC', modal.close,
+        'design-spec-close').setFixedSize(136, 44).setFontSize(14);
+    };
+    render();
+  }
+
+  private chooseStrategicEquipment(): void {
+    const options: Array<{ label: string; value: StrategicEquipment }> = [];
+    const add = (label: string, change: Partial<StrategicEquipment>) => {
+      const value = { ...this.design.strategicEquipment, ...change };
+      if (!this.isCampaignDesignAllowed({ ...this.design, strategicEquipment: value })) return;
+      const caps = getTravelCapabilities(value);
+      options.push({ label: `${label} · ${caps.strategicSpeed}/${caps.maxJumpDistance}/${(caps.fuelCapacity / 1000).toFixed(3)} · +${getStrategicEquipmentCost(value)} кр.`, value });
+    };
+    add('Двигатель обычный', { drive: 'standard' }); add('Двигатель быстрый', { drive: 'fast' });
+    for (const jump of ['standard', 'extended', 'deep', 'galactic'] as const) add(`Переход ${getTravelCapabilities({ ...this.design.strategicEquipment, jump }).maxJumpDistance}`, { jump });
+    add('Бак обычный', { tank: 'standard' }); add('Бак большой', { tank: 'extended' });
+    this.chooseCampaignItem('Оснащение: скорость / переход / бак', options, value => {
+      if (this.disposed || this.campaign?.readOnly) return;
+      this.perform(() => {
+        this.design = designSchema.parse({ ...this.design, strategicEquipment: value });
+      }, 'Оснащение изменено; нужен build/refit');
+    });
+  }
+
   private perform(action: () => void, success: string): boolean {
     if (this.disposed) return false;
     try { action(); this.message = success; this.error = false; }
@@ -266,10 +328,10 @@ export class ShipBuilderPanel {
     }, 'Компоновка изменена; сохраните проект');
   }
 
-  changeHull(hullId: HullId): void {
+  changeHull(hullId: HullId, hullVariant = this.design.hullVariant): void {
     this.perform(() => {
       if (this.campaign && !this.campaign.availableHulls.includes(hullId)) throw new Error('Корпус ещё не открыт исследованиями');
-      const next = { ...this.getConfiguration(), hullId };
+      const next = { ...this.getConfiguration(), hullId, hullVariant };
       const issues = validateDesign(next, 'draft');
       if (issues.length) throw new Error(issues.map(issue => issue.message).join('\n'));
       if (!this.isCampaignDesignAllowed(next)) throw new Error('Чертёж недоступен при текущем уровне исследований');

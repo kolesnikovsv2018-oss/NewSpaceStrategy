@@ -3,8 +3,8 @@ import { worldTypeSchema } from './worldEnvironment';
 import defaultFixture from './fixtures/rules-default.json';
 
 export const RULES_SNAPSHOT_FORMAT = 'orion-rules-snapshot';
-export const RULES_SNAPSHOT_SCHEMA_VERSION = 7;
-export const RULES_SNAPSHOT_RULES_VERSION = 7;
+export const RULES_SNAPSHOT_SCHEMA_VERSION = 11;
+export const RULES_SNAPSHOT_RULES_VERSION = 11;
 
 export const COLONY_EFFECT_TARGETS = [
   'growth-rate', 'capacity-add', 'production-output', 'science-output', 'culture-output'
@@ -250,9 +250,9 @@ export const rulesSnapshotSchema = z.object({
   treeId: ruleIdentifierSchema,
   tablesId: ruleIdentifierSchema,
   policyId: ruleIdentifierSchema,
-  treeVersion: z.literal('research-tree-v6'),
+  treeVersion: z.literal('research-tree-v10'),
   researchPolicy: z.literal('research-points-v1'),
-  tablesVersion: z.literal('campaign-tables-v4'),
+  tablesVersion: z.literal('campaign-tables-v5'),
   policyVersion: z.literal('component-bands-v1'),
   handlers: z.array(z.enum(RULES_HANDLERS)).min(1).max(32).refine(array => new Set(array).size === array.length, {
     message: 'Список обработчиков содержит дубликаты'
@@ -263,7 +263,12 @@ export const rulesSnapshotSchema = z.object({
   effects: z.array(rulesEffectSchema).max(256),
   population: populationRulesSchema,
   colonyOutput: colonyOutputRulesSchema,
-  travel: z.object({ policy: z.literal('distance-only-v1'), initialRange: z.literal(200) }).strict(),
+  travel: z.object({ policy: z.literal('project-travel-v1'), initialRange: z.literal(200) }).strict(),
+  terraforming: z.object({
+    id: z.literal('toxic-to-habitable'), source: z.literal('toxic'), target: z.literal('habitable'),
+    cost: z.object({ credits: populationAmountSchema.positive(), minerals: populationAmountSchema.positive() }).strict(),
+    productionCost: populationAmountSchema.positive()
+  }).strict(),
   planetology: z.object({ policy: z.literal('survey-v1'),
     surveyCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict() }).strict()
 }).strict().superRefine((snapshot, ctx) => {

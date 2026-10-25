@@ -1,27 +1,74 @@
 {
   "format": "orion-rules-snapshot",
-  "schemaVersion": 7,
-  "rulesVersion": 7,
+  "schemaVersion": 11,
+  "rulesVersion": 11,
   "id": "campaign-rules-v1",
-  "treeId": "orion-technologies-v6",
-  "treeVersion": "research-tree-v6",
+  "treeId": "orion-technologies-v10",
+  "treeVersion": "research-tree-v10",
   "researchPolicy": "research-points-v1",
   "tablesId": "campaign-tables",
-  "tablesVersion": "campaign-tables-v4",
+  "tablesVersion": "campaign-tables-v5",
   "policyId": "component-bands",
   "policyVersion": "component-bands-v1",
-  "handlers": ["ship-stats", "component-stats", "facility-output", "fleet-capacity", "campaign-policy", "colony-growth", "colony-capacity", "colony-output"],
-  "policies": ["component-bands-v1", "campaign-policy-v1"],
-  "travel": { "policy": "distance-only-v1", "initialRange": 200 },
-  "planetology": { "policy": "survey-v1", "surveyCost": { "credits": 10, "minerals": 5 } },
+  "handlers": [
+    "ship-stats",
+    "component-stats",
+    "facility-output",
+    "fleet-capacity",
+    "campaign-policy",
+    "colony-growth",
+    "colony-capacity",
+    "colony-output"
+  ],
+  "policies": [
+    "component-bands-v1",
+    "campaign-policy-v1"
+  ],
+  "travel": {
+    "policy": "project-travel-v1",
+    "initialRange": 200
+  },
+  "planetology": {
+    "policy": "survey-v1",
+    "surveyCost": {
+      "credits": 10,
+      "minerals": 5
+    }
+  },
+  "terraforming": {
+    "id": "toxic-to-habitable",
+    "source": "toxic",
+    "target": "habitable",
+    "cost": {
+      "credits": 300,
+      "minerals": 150
+    },
+    "productionCost": 12000
+  },
   "population": {
-    "policy": "population-v1", "unit": "thousand-residents",
-    "home": 5000, "settlers": 1000, "minimumSource": 2000, "growthPercent": 2,
-    "foundingCost": { "credits": 20, "minerals": 10 },
+    "policy": "population-v1",
+    "unit": "thousand-residents",
+    "home": 5000,
+    "settlers": 1000,
+    "minimumSource": 2000,
+    "growthPercent": 2,
+    "foundingCost": {
+      "credits": 20,
+      "minerals": 10
+    },
     "capacities": {
-      "habitable": { "base": 10000, "absolute": 20000 },
-      "toxic": { "base": 6000, "absolute": 12000 },
-      "barren": { "base": 0, "absolute": 0 }
+      "habitable": {
+        "base": 10000,
+        "absolute": 20000
+      },
+      "toxic": {
+        "base": 6000,
+        "absolute": 12000
+      },
+      "barren": {
+        "base": 0,
+        "absolute": 0
+      }
     }
   },
   "colonyOutput": {
@@ -37,63 +84,166 @@
   },
   "effects": [
     {
-      "kind": "modifier", "id": "biology-growth", "target": "growth-rate", "scope": "own-colonies",
-      "worldTypes": ["habitable", "toxic"], "unit": "percent", "operation": "add", "value": 0.2, "cap": 1,
-      "stackingGroup": "economy", "activationPhase": "on-turn-start", "handler": "colony-growth",
+      "kind": "modifier",
+      "id": "biology-growth",
+      "target": "growth-rate",
+      "scope": "own-colonies",
+      "worldTypes": [
+        "habitable",
+        "toxic"
+      ],
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.2,
+      "cap": 1,
+      "stackingGroup": "economy",
+      "activationPhase": "on-turn-start",
+      "handler": "colony-growth",
       "description": "Рост населения"
     },
     {
-      "kind": "modifier", "id": "biosphere-capacity", "target": "capacity-add", "scope": "own-colonies",
-      "worldTypes": ["habitable", "toxic"], "unit": "count", "operation": "add", "value": 2000, "cap": null,
-      "stackingGroup": "economy", "activationPhase": "on-turn-start", "handler": "colony-capacity",
+      "kind": "modifier",
+      "id": "biosphere-capacity",
+      "target": "capacity-add",
+      "scope": "own-colonies",
+      "worldTypes": [
+        "habitable",
+        "toxic"
+      ],
+      "unit": "count",
+      "operation": "add",
+      "value": 2000,
+      "cap": null,
+      "stackingGroup": "economy",
+      "activationPhase": "on-turn-start",
+      "handler": "colony-capacity",
       "description": "Вместимость"
     },
     {
-      "kind": "modifier", "id": "automation-output", "target": "production-output", "scope": "own-colonies",
-      "worldTypes": ["habitable", "toxic"], "unit": "percent", "operation": "add", "value": 0.2, "cap": 1,
-      "stackingGroup": "engineering", "activationPhase": "on-turn-start", "handler": "colony-output",
+      "kind": "modifier",
+      "id": "automation-output",
+      "target": "production-output",
+      "scope": "own-colonies",
+      "worldTypes": [
+        "habitable",
+        "toxic"
+      ],
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.2,
+      "cap": 1,
+      "stackingGroup": "engineering",
+      "activationPhase": "on-turn-start",
+      "handler": "colony-output",
       "description": "Промышленный выпуск"
     },
     {
-      "kind": "modifier", "id": "scientific-output", "target": "science-output", "scope": "own-colonies",
-      "worldTypes": ["habitable", "toxic"], "unit": "percent", "operation": "add", "value": 0.2, "cap": 1,
-      "stackingGroup": "science", "activationPhase": "on-turn-start", "handler": "colony-output",
+      "kind": "modifier",
+      "id": "scientific-output",
+      "target": "science-output",
+      "scope": "own-colonies",
+      "worldTypes": [
+        "habitable",
+        "toxic"
+      ],
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.2,
+      "cap": 1,
+      "stackingGroup": "science",
+      "activationPhase": "on-turn-start",
+      "handler": "colony-output",
       "description": "Научный выпуск"
     },
     {
-      "kind": "modifier", "id": "cultural-output", "target": "culture-output", "scope": "own-colonies",
-      "worldTypes": ["habitable", "toxic"], "unit": "percent", "operation": "add", "value": 0.2, "cap": 1,
-      "stackingGroup": "special", "activationPhase": "on-turn-start", "handler": "colony-output",
+      "kind": "modifier",
+      "id": "cultural-output",
+      "target": "culture-output",
+      "scope": "own-colonies",
+      "worldTypes": [
+        "habitable",
+        "toxic"
+      ],
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.2,
+      "cap": 1,
+      "stackingGroup": "special",
+      "activationPhase": "on-turn-start",
+      "handler": "colony-output",
       "description": "Культурный выпуск"
     },
     {
-      "kind": "modifier", "id": "ship-speed-bonus", "target": "ship-speed", "scope": "ship",
-      "unit": "percent", "operation": "add", "value": 0.1, "cap": 0.3,
-      "stackingGroup": "engineering", "activationPhase": "always", "handler": "ship-stats",
-      "policy": "component-bands-v1", "description": "Библиотечный пример бонуса скорости"
+      "kind": "modifier",
+      "id": "ship-speed-bonus",
+      "target": "ship-speed",
+      "scope": "ship",
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.1,
+      "cap": 0.3,
+      "stackingGroup": "engineering",
+      "activationPhase": "always",
+      "handler": "ship-stats",
+      "policy": "component-bands-v1",
+      "description": "Библиотечный пример бонуса скорости"
     },
     {
-      "kind": "modifier", "id": "ship-growth-bonus", "target": "ship-growth", "scope": "planet",
-      "unit": "percent", "operation": "add", "value": 0.2, "cap": 0.5,
-      "stackingGroup": "economy", "activationPhase": "on-turn-start", "handler": "facility-output",
-      "policy": "campaign-policy-v1", "description": "Будущее описание роста, не игровой бонус"
+      "kind": "modifier",
+      "id": "ship-growth-bonus",
+      "target": "ship-growth",
+      "scope": "planet",
+      "unit": "percent",
+      "operation": "add",
+      "value": 0.2,
+      "cap": 0.5,
+      "stackingGroup": "economy",
+      "activationPhase": "on-turn-start",
+      "handler": "facility-output",
+      "policy": "campaign-policy-v1",
+      "description": "Будущее описание роста, не игровой бонус"
     },
     {
-      "kind": "capability", "id": "fleet-bonus-slot", "target": "fleet-capacity", "scope": "fleet",
-      "unit": "count", "operation": "add", "value": 1, "cap": 4,
-      "stackingGroup": "combat", "activationPhase": "on-build", "handler": "fleet-capacity",
+      "kind": "capability",
+      "id": "fleet-bonus-slot",
+      "target": "fleet-capacity",
+      "scope": "fleet",
+      "unit": "count",
+      "operation": "add",
+      "value": 1,
+      "cap": 4,
+      "stackingGroup": "combat",
+      "activationPhase": "on-build",
+      "handler": "fleet-capacity",
       "description": "Библиотечный пример вместимости"
     },
     {
-      "kind": "policy-reference", "id": "policy-reference-v1", "target": "planet-habitability", "scope": "global",
-      "unit": "points", "operation": "set", "value": 1, "cap": 10,
-      "stackingGroup": "science", "activationPhase": "on-research", "handler": "campaign-policy",
-      "policy": "campaign-policy-v1", "description": "Будущая политика без runtime-исполнителя"
+      "kind": "policy-reference",
+      "id": "policy-reference-v1",
+      "target": "planet-habitability",
+      "scope": "global",
+      "unit": "points",
+      "operation": "set",
+      "value": 1,
+      "cap": 10,
+      "stackingGroup": "science",
+      "activationPhase": "on-research",
+      "handler": "campaign-policy",
+      "policy": "campaign-policy-v1",
+      "description": "Будущая политика без runtime-исполнителя"
     },
     {
-      "kind": "capability", "id": "component-unlock", "target": "component-unlock", "scope": "component",
-      "unit": "count", "operation": "set", "value": 1, "cap": 1,
-      "stackingGroup": "base", "activationPhase": "on-research", "handler": "component-stats",
+      "kind": "capability",
+      "id": "component-unlock",
+      "target": "component-unlock",
+      "scope": "component",
+      "unit": "count",
+      "operation": "set",
+      "value": 1,
+      "cap": 1,
+      "stackingGroup": "base",
+      "activationPhase": "on-research",
+      "handler": "component-stats",
       "description": "Библиотечный пример открытия компонента"
     }
   ]

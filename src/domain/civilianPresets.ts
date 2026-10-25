@@ -6,7 +6,8 @@ export type CivilianPresetId = keyof typeof CIVILIAN_PRESET_NAMES;
 
 export function createColonizerDesign(): ShipDesign {
   return {
-    id: 'colonizer-preset-v1', name: CIVILIAN_PRESET_NAMES.colonizer, schemaVersion: 2, hullId: 'colonizer',
+    id: 'colonizer-preset-v1', name: CIVILIAN_PRESET_NAMES.colonizer, schemaVersion: 5, hullId: 'colonizer',
+    tacticalRules: 'design-combat-v1', hullVariant: 'standard', strategicEquipment: { policy: 'project-travel-v1', drive: 'standard', jump: 'standard', tank: 'standard' },
     createdAt: '2000-01-01T00:00:00.000Z', updatedAt: '2000-01-01T00:00:00.000Z',
     slots: HULLS.colonizer.slots.map(({ id }) =>
       ({ id, component: id === 'engine_1' ? createComponentWithId('engine', 'colonizer-engine-v1') : null }))

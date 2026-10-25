@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createSeededRandomStream } from './seededRandom.ts';
-import { INITIAL_STRATEGIC_RANGE } from './campaignTravel.ts';
+import { INITIAL_TRAVEL_CAPABILITIES, STRATEGIC_TRAVEL_POLICY } from './campaignTravel.ts';
 import {
   GALAXY_GENERATOR_VERSION,
   GALAXY_MAP_FORMAT,
@@ -74,8 +74,7 @@ function createMapProfile(participantCount: number): GalaxyMap['profile'] {
     maximumCoordinate: MAP_MAX_COORDINATE,
     minimumSeparation: MAP_MINIMUM_SEPARATION,
     placementGridDivisions: 32,
-    initialTravel: { policy: 'distance-only-v1', fuelCapacity: 3, fuelPerJump: 1,
-      maxJumpDistance: INITIAL_STRATEGIC_RANGE }
+    initialTravel: { policy: STRATEGIC_TRAVEL_POLICY, ...INITIAL_TRAVEL_CAPABILITIES }
   };
 }
 

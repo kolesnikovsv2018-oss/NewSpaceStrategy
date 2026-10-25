@@ -7,7 +7,9 @@ import { treasurySchema, type Treasury } from './campaignEconomy';
 import { researchTreeSchema, researchStateSchema, researchIdSchema, createResearchState, getDefaultResearchTree,
   isResearchStateValid, isCampaignDesignAvailable, isCampaignDraftAvailable, calculateResearchTurn,
   getStrategicRange, type ResearchTurnReceipt } from './campaignResearch';
-import { operationalStateSchema, createOperationalState, readOperationalState, getRepairQuote, getAmmunitionQuote } from './campaignOperations';
+import { operationalStateSchema, createOperationalState, readOperationalState, getRepairQuote, getAmmunitionQuote,
+  getRefitQuote, getRefitOperationalState } from './campaignOperations';
+import { designSchema } from './shipDesign';
 import { resolveConquestBattle, type BattleFrame } from './conquestBattle';
 import type { CampaignShip } from './campaignShips';
 import { campaignProjectsSchema, createCampaignProjects, projectCommandSchema, editCampaignProject,
@@ -16,13 +18,13 @@ import { createDefaultRulesSnapshot, rulesSnapshotSchema } from './campaignRules
 import { populationStateSchema, createPopulation, advancePopulation, populationGrowth, getPopulationTechnologyForecast, quoteFounding, transferSettlers,
   type FoundingErrorCode } from './campaignPopulation';
 import { advanceColonyOutput, calculateColonyEndTurnBudget, colonyOutputStateSchema, createColonyOutputState,
-  getColonyOutputForecast, getColonyProductionQuote, getColonyProductionRefund, reduceWorkforce,
+  getColonyOutputForecast, getColonyProductionQuote, getColonyProductionRefund, getColonyProjectRefund, colonyWorkQueue, reduceWorkforce,
   validateColonyOutputState, workforceSchema, emptyWorkforce, type ColonyOutputForecast,
   type ColonyProductionOrder, type Workforce } from './campaignOutput';
 import { MAX_ORDER_ID } from './production';
-import { CAMPAIGN_FUEL_CAPACITY, MAX_CAMPAIGN_SHIPS } from './campaignShips';
+import { MAX_CAMPAIGN_SHIPS } from './campaignShips';
 import { getColonyWorldType, getCompletedColonyEffects, isColonyEffect } from './campaignColonyEffects';
-import { isWorldInRange } from './campaignTravel';
+import { isWorldInRange, getTravelCapabilities, STRATEGIC_TRAVEL_POLICY } from './campaignTravel';
 import { createColonizerDesign } from './civilianPresets';
 import { environmentStateSchema, getEnvironmentType, type EnvironmentState } from './worldEnvironment';
 
@@ -41,6 +43,8 @@ export interface WorkforceAdjustment {
   after: Workforce;
 }
 export interface ConquestTurnReceipt {
+  completedWorldProjectIds: number[];
+  cancelledWorldProjectIds: number[];
   factionId: CampaignFactionId;
   turn: number;
   population: number;
@@ -58,12 +62,14 @@ export interface ConquestTurnReceipt {
   treasuryAfter: Treasury;
 }
 const battleReportSchema = z.object({ id: z.number().int().positive().max(MAX_TURN), turn: z.number().int().positive().max(MAX_TURN),
+  tacticalRules: z.literal('design-combat-v1'),
   systemId: systemIdSchema, winner: factionIdSchema.nullable(), timedOut: z.boolean(),
   participants: z.array(z.object({ id: z.number().int().positive(), factionId: factionIdSchema }).strict()).max(200),
   destroyed: z.array(z.number().int().positive()).max(200) }).strict();
 export const conquestSchema = z.object({
   scenario: z.literal('conquest-v1'), victory: conquestVictorySchema, control: conquestControlSchema,
   battlePolicy: conquestBattlePolicySchema,
+  tacticalRules: z.literal('design-combat-v1'),
   session: conquestSessionSchema, projects: campaignProjectsSchema, researchTree: researchTreeSchema,
   rules: rulesSnapshotSchema.refine(rules => rules.effects.every(isColonyEffect), 'Нет игрового исполнителя эффекта'),
   population: populationStateSchema,
@@ -108,8 +114,36 @@ export const conquestSchema = z.object({
     validateColonyOutputState(state.colonyOutput, state.session.galaxy, state.population,
       state.session.production.lastOrderId, state.rules.colonyOutput);
   } catch { fail(); }
-  const outputRecordIds = new Set([...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]
+  const outputRecordIds = new Set([...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed, ...state.colonyOutput.projects]
     .map(record => record.id));
+  const terraformed = new Set<string>();
+  const refitted = new Set<number>();
+  for (const project of state.colonyOutput.projects) {
+    if (project.kind === 'refit') {
+      const ship = state.session.ships.find(ship => ship.id === project.shipId && ship.systemId === project.systemId &&
+        ship.factionId === project.factionId);
+      if (!ship || ship.transit || refitted.has(project.shipId) ||
+        state.session.fleets.items.some(fleet => fleet.shipIds.includes(project.shipId)) ||
+        !isCampaignDesignAvailable(project.design, state.research[project.factionId], state.researchTree)) { fail(); continue; }
+      refitted.add(project.shipId);
+      try {
+        if (getTravelCapabilities(project.design.strategicEquipment).fuelCapacity < ship.fuel) fail();
+        const quote = getRefitQuote(ship.design, project.design, state.rules.colonyOutput.productionCreditsPerPoint);
+        getRefitOperationalState(ship.design, project.design, state.operations[String(ship.id)]);
+        if (quote.cost.credits !== project.cost.credits || quote.cost.minerals !== project.cost.minerals ||
+          quote.productionCost !== project.productionCost) fail();
+      } catch { fail(); }
+      continue;
+    }
+    const rule = state.rules.terraforming;
+    if (!Object.prototype.hasOwnProperty.call(state.environment, project.systemId)) { fail(); continue; }
+    if (terraformed.has(project.systemId) || state.population[project.systemId]?.population === 0 ||
+      project.source !== getEnvironmentType(state.environment, project.systemId) ||
+      project.target !== rule.target || project.cost.credits !== rule.cost.credits ||
+      project.cost.minerals !== rule.cost.minerals || project.productionCost !== rule.productionCost ||
+      !terraformUnlocked(state, project.factionId)) fail();
+    terraformed.add(project.systemId);
+  }
   if (state.session.ships.some(ship => outputRecordIds.has(ship.id))) fail();
   for (const ship of state.session.ships) {
     try { readOperationalState(state.operations[String(ship.id)], ship.design); } catch { fail(); }
@@ -137,6 +171,11 @@ export type ConquestResult = { ok: true; state: Conquest; frames?: BattleFrame[]
   { ok: false; code: ConquestErrorCode; message: string };
 const fields = { factionId: factionIdSchema, expectedTurn: z.number().int().min(1).max(MAX_TURN) };
 export const conquestCommandSchema = z.union([
+  z.object({ ...fields, kind: z.literal('startRefit'), systemId: systemIdSchema,
+    shipId: z.number().int().positive().max(MAX_ORDER_ID), design: designSchema }).strict(),
+  z.object({ ...fields, kind: z.literal('startTerraform'), systemId: systemIdSchema }).strict(),
+  z.object({ ...fields, kind: z.literal('cancelColonyProject'), systemId: systemIdSchema,
+    projectId: z.number().int().positive().max(MAX_ORDER_ID) }).strict(),
   z.object({ ...fields, kind: z.literal('survey'), systemId: systemIdSchema }).strict(),
   z.object({ ...fields, kind: z.literal('colonize'), systemId: systemIdSchema,
     shipId: z.number().int().positive().max(MAX_ORDER_ID) }).strict(),
@@ -148,6 +187,25 @@ export const conquestCommandSchema = z.union([
   z.object({ ...fields, kind: z.enum(['repairShip', 'resupplyShip']), shipId: z.number().int().positive().max(MAX_TURN), systemId: systemIdSchema }).strict()
 ]);
 export type ConquestCommand = z.infer<typeof conquestCommandSchema>;
+
+function terraformUnlocked(state: { research: Record<CampaignFactionId, { completed: string[] }>;
+  researchTree: { nodes: { id: string; effects: { kind: string }[] }[] } }, faction: CampaignFactionId): boolean {
+  return state.researchTree.nodes.some(node => state.research[faction].completed.includes(node.id) &&
+    node.effects.some(effect => effect.kind === 'terraform-unlock'));
+}
+
+function terraformAvailability(state: Conquest, faction: CampaignFactionId, systemId: SystemId) {
+  if (state.session.galaxy.systems.find(world => world.id === systemId)?.ownerId !== faction) {
+    return { ok: false as const, reason: 'Нужна собственная колония' };
+  }
+  if (getEnvironmentType(state.environment, systemId) !== state.rules.terraforming.source ||
+    state.population[systemId].population === 0) return { ok: false as const, reason: 'Нужна населённая токсичная колония' };
+  if (!terraformUnlocked(state, faction)) return { ok: false as const, reason: 'Терраформирование ещё не изучено' };
+  if (state.colonyOutput.projects.some(project => project.kind === 'terraform' && project.systemId === systemId)) {
+    return { ok: false as const, reason: 'Проект мира уже поставлен в очередь' };
+  }
+  return { ok: true as const, ...structuredClone(state.rules.terraforming) };
+}
 class ConquestRuleError extends Error {
   constructor(message: string, readonly code: ConquestErrorCode = 'RULE_REJECTED') { super(message); }
 }
@@ -164,7 +222,7 @@ export function createConquest(control: unknown = { mode: 'local' }, tree: unkno
   const operations: Record<string, ReturnType<typeof createOperationalState>> = {};
   for (const faction of getGalaxyDefinition(session.galaxy).factions) {
     const id = ++session.production.lastOrderId, design = createColonizerDesign();
-    session.ships.push({ id, factionId: faction.id, systemId: faction.homeSystemId, design, fuel: CAMPAIGN_FUEL_CAPACITY });
+    session.ships.push({ id, factionId: faction.id, systemId: faction.homeSystemId, design, fuel: getTravelCapabilities(design.strategicEquipment).fuelCapacity });
     operations[String(id)] = createOperationalState(design);
   }
   const references = new Set(researchTree.nodes.flatMap(node => node.effects.flatMap(effect =>
@@ -172,7 +230,7 @@ export function createConquest(control: unknown = { mode: 'local' }, tree: unkno
   rules.effects = rules.effects.filter(effect => isColonyEffect(effect) && references.has(effect.id));
   rules.treeId = researchTree.id;
   return conquestSchema.parse({ scenario: 'conquest-v1', victory: { kind: 'all-planets-v1' }, control,
-    battlePolicy: 'campaign-v2',
+    battlePolicy: 'campaign-v2', tacticalRules: 'design-combat-v1',
     session, rules, population, environment, surveys, colonyOutput: createColonyOutputState(session.galaxy, population),
     projects: createCampaignProjects(), researchTree, research: { blue: createResearchState(), red: createResearchState() },
     researchJournal: { blue: {}, red: {} },
@@ -234,7 +292,7 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
   const state = conquestSchema.parse(input);
   const side = factionIdSchema.parse(faction);
   const view: CampaignSessionView = getConquestSessionView(state.session, side);
-  const mined = miningYield(state, side);
+  const mined = miningYield(state, side, true);
   const effects = getCompletedColonyEffects(state.researchTree, state.research[side], state.rules);
   const outputForecast = getColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, side,
     state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === side).length, effects, state.environment);
@@ -278,6 +336,8 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
       reserves: structuredClone(state.colonyOutput.reserves[side]),
       reserveCaps: { research: outputForecast.reserves.research.cap, culture: outputForecast.reserves.culture.cap },
       forecast: outputForecast, rules: state.rules.colonyOutput },
+    workProjects: structuredClone(state.colonyOutput.projects.filter(project => project.factionId === side)),
+    terraforming: population.map(world => ({ systemId: world.systemId, quote: terraformAvailability(state, side, world.systemId) })),
     population, colonization, foundingCost: { ...state.rules.population.foundingCost },
     knownSystems: state.session.galaxy.systems.filter(system => system.exploredBy.includes(side)).map(system => system.id),
     knownHabitableSystems: Object.entries(environmentKnowledge).filter(([, type]) => type !== 'barren').map(([id]) => id),
@@ -321,13 +381,15 @@ function reveal(state: Conquest): void {
     }
   }
 }
-function debit(state: Conquest, faction: CampaignFactionId, credits: number, minerals: number): void {
+function debit(state: Conquest, faction: CampaignFactionId, credits: number, minerals: number,
+  code: ConquestErrorCode = 'RULE_REJECTED'): void {
   const treasury = state.session.treasuries[faction];
-  if (treasury.credits < credits || treasury.minerals < minerals) throw new ConquestRuleError('Недостаточно ресурсов');
+  if (treasury.credits < credits || treasury.minerals < minerals) throw new ConquestRuleError('Недостаточно ресурсов', code);
   treasury.credits -= credits; treasury.minerals -= minerals;
 }
-function miningYield(state: Conquest, faction: CampaignFactionId): number {
+function miningYield(state: Conquest, faction: CampaignFactionId, forecast = false): number {
   return state.session.ships.filter(ship => ship.factionId === faction &&
+    (!ship.transit || forecast && ship.transit.remainingTurns === 1) &&
     state.surveys[faction][ship.transit?.destinationId ?? ship.systemId] === 'barren' &&
     getEnvironmentType(state.environment, ship.transit?.destinationId ?? ship.systemId) === 'barren').reduce((total, ship) => total +
       Math.floor(Math.min(10, ship.design.slots.reduce((sum, slot) => sum +
@@ -363,7 +425,7 @@ function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefi
       const seed = ((state.seed ^ Math.imul(turn, 2654435761) ^ (state.lastBattleId + 1)) >>> 0) || 1;
       const result = resolveConquestBattle(present, state.operations, seed, state.battlePolicy);
       frames = result.frames;
-      state.battles.push({ id: ++state.lastBattleId, turn, systemId: definition.id, winner: result.winner,
+      state.battles.push({ id: ++state.lastBattleId, tacticalRules: 'design-combat-v1', turn, systemId: definition.id, winner: result.winner,
         timedOut: result.timedOut, participants: present.map(ship => ({ id: ship.id, factionId: ship.factionId })), destroyed: result.destroyed });
       state.battles = state.battles.slice(-12);
       state.session.ships = state.session.ships.filter(ship => !result.destroyed.includes(ship.id));
@@ -383,6 +445,7 @@ function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefi
       state.surveys[owner][system.id] = getEnvironmentType(state.environment, system.id);
       if (!system.exploredBy.includes(owner)) system.exploredBy.push(owner);
       if (previousOwner !== owner) {
+        state.colonyOutput.projects = state.colonyOutput.projects.filter(project => project.systemId !== system.id);
         state.colonyOutput.assignments[system.id] = emptyWorkforce();
         state.colonyOutput.production.orders = state.colonyOutput.production.orders
           .filter(record => record.systemId !== system.id || record.factionId === owner);
@@ -406,10 +469,10 @@ function runColonyProductionCommand(state: Conquest,
     try { quote = getColonyProductionQuote(command.design, state.rules.colonyOutput); } catch {
       throw new ConquestRuleError('Нужен допустимый полётный проект', 'INVALID_DESIGN');
     }
-    if (production.orders.filter(order => order.factionId === factionId && order.systemId === systemId).length >= 3) {
+    if (colonyWorkQueue(state.colonyOutput, systemId).length >= 3) {
       throw new ConquestRuleError('Очередь колонии заполнена', 'QUEUE_FULL');
     }
-    if ([...production.orders, ...production.completed].filter(record => record.factionId === factionId).length >= 100) {
+    if ([...production.orders, ...production.completed, ...state.colonyOutput.projects].filter(record => record.factionId === factionId).length >= 100) {
       throw new ConquestRuleError('Достигнут предел производственных записей стороны', 'PRODUCTION_LIMIT');
     }
     if (state.session.production.lastOrderId === MAX_ORDER_ID) {
@@ -448,7 +511,7 @@ function runColonyProductionCommand(state: Conquest,
     throw new ConquestRuleError('Достигнут предел стратегических кораблей стороны', 'SHIP_LIMIT');
   }
   const [completed] = production.completed.splice(index, 1);
-  state.session.ships.push({ ...completed, fuel: CAMPAIGN_FUEL_CAPACITY });
+  state.session.ships.push({ ...completed, fuel: getTravelCapabilities(completed.design.strategicEquipment).fuelCapacity });
   state.operations[String(completed.id)] = createOperationalState(completed.design);
 }
 
@@ -476,7 +539,65 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
     const notices: FoundingNotice[] = [];
     const workforceAdjustments: WorkforceAdjustment[] = [];
     let turnReceipt: ConquestTurnReceipt | undefined;
-    if (command.kind === 'createProject' || command.kind === 'copyProject' || command.kind === 'renameProject' ||
+    if (command.kind === 'sendShip' || command.kind === 'createFleet') {
+      const ids = command.kind === 'sendShip' ? [command.shipId] : command.shipIds;
+      if (state.colonyOutput.projects.some(project => project.kind === 'refit' && ids.includes(project.shipId))) {
+        throw new ConquestRuleError('Корабль зарезервирован для переоснащения');
+      }
+    }
+    if (command.kind === 'startRefit') {
+      if (state.session.galaxy.systems.find(world => world.id === command.systemId)?.ownerId !== faction) {
+        throw new ConquestRuleError('Переоснащение только в своей колонии', 'NOT_OWN_COLONY');
+      }
+      const ship = state.session.ships.find(ship => ship.id === command.shipId && ship.factionId === faction && ship.systemId === command.systemId);
+      if (!ship) throw new ConquestRuleError('Свой корабль не найден', 'SHIP_NOT_FOUND');
+      if (ship.transit) throw new ConquestRuleError('Корабль уже в пути', 'SHIP_IN_TRANSIT');
+      if (state.session.fleets.items.some(fleet => fleet.shipIds.includes(ship.id))) throw new ConquestRuleError('Сначала расформируйте группу', 'SHIP_IN_FLEET');
+      if (state.colonyOutput.projects.some(project => project.kind === 'refit' && project.shipId === ship.id)) {
+        throw new ConquestRuleError('Переоснащение уже поставлено в очередь');
+      }
+      if (!isCampaignDesignAvailable(command.design, state.research[faction], state.researchTree) || command.design.hullId !== ship.design.hullId) {
+        throw new ConquestRuleError('Нужен доступный полётный проект того же корпуса', 'INVALID_DESIGN');
+      }
+      const quote = getRefitQuote(ship.design, command.design, state.rules.colonyOutput.productionCreditsPerPoint);
+      if (getTravelCapabilities(command.design.strategicEquipment).fuelCapacity < ship.fuel) {
+        throw new ConquestRuleError('Новый бак меньше текущего запаса топлива', 'INVALID_DESIGN');
+      }
+      getRefitOperationalState(ship.design, command.design, state.operations[String(ship.id)]);
+      if (colonyWorkQueue(state.colonyOutput, command.systemId).length >= 3) throw new ConquestRuleError('Общая очередь заполнена', 'QUEUE_FULL');
+      if ([...state.colonyOutput.projects, ...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]
+        .filter(item => item.factionId === faction).length >= 100) throw new ConquestRuleError('Достигнут предел работ', 'PRODUCTION_LIMIT');
+      if (state.session.production.lastOrderId === MAX_ORDER_ID) throw new ConquestRuleError('Достигнут предел ID', 'ORDER_ID_LIMIT');
+      debit(state, faction, quote.cost.credits, quote.cost.minerals, 'INSUFFICIENT_RESOURCES');
+      state.colonyOutput.projects.push({ kind: 'refit', id: ++state.session.production.lastOrderId, shipId: ship.id,
+        factionId: faction, systemId: command.systemId, design: structuredClone(command.design),
+        cost: quote.cost, productionCost: quote.productionCost, productionProgress: 0 });
+    } else if (command.kind === 'startTerraform' || command.kind === 'cancelColonyProject') {
+      if (state.session.galaxy.systems.find(world => world.id === command.systemId)?.ownerId !== faction) {
+        throw new ConquestRuleError('Нужна собственная колония', 'NOT_OWN_COLONY');
+      }
+      if (command.kind === 'cancelColonyProject') {
+        const project = state.colonyOutput.projects.find(item => item.id === command.projectId &&
+          item.systemId === command.systemId && item.factionId === faction);
+        if (!project) throw new ConquestRuleError('Работа не найдена', 'ORDER_NOT_FOUND');
+        const refund = getColonyProjectRefund(project), treasury = state.session.treasuries[faction];
+        const next = { credits: treasury.credits + refund.credits, minerals: treasury.minerals + refund.minerals };
+        if (!treasurySchema.safeParse(next).success) throw new ConquestRuleError('Возврат превысит предел ресурсов', 'RESOURCE_LIMIT');
+        state.session.treasuries[faction] = next;
+        state.colonyOutput.projects = state.colonyOutput.projects.filter(item => item.id !== project.id);
+      } else {
+        const quote = terraformAvailability(state, faction, command.systemId);
+        if (!quote.ok) throw new ConquestRuleError(quote.reason);
+        if (colonyWorkQueue(state.colonyOutput, command.systemId).length >= 3) throw new ConquestRuleError('Общая очередь заполнена', 'QUEUE_FULL');
+        if ([...state.colonyOutput.projects, ...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]
+          .filter(item => item.factionId === faction).length >= 100) throw new ConquestRuleError('Достигнут предел работ', 'PRODUCTION_LIMIT');
+        if (state.session.production.lastOrderId === MAX_ORDER_ID) throw new ConquestRuleError('Достигнут предел ID', 'ORDER_ID_LIMIT');
+        debit(state, faction, quote.cost.credits, quote.cost.minerals, 'INSUFFICIENT_RESOURCES');
+        state.colonyOutput.projects.push({ kind: 'terraform', id: ++state.session.production.lastOrderId,
+          factionId: faction, systemId: command.systemId, source: quote.source, target: quote.target,
+          cost: quote.cost, productionCost: quote.productionCost, productionProgress: 0 });
+      }
+    } else if (command.kind === 'createProject' || command.kind === 'copyProject' || command.kind === 'renameProject' ||
       command.kind === 'replaceProject' || command.kind === 'deleteProject') {
       if ((command.kind === 'createProject' || command.kind === 'replaceProject') &&
         !isCampaignDraftAvailable(command.design, state.research[faction], state.researchTree)) {
@@ -567,10 +688,11 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
         if (!endTurnBudget.ok) throw new ConquestRuleError('Валовой доход превысит предел ресурсов; ход не завершён', 'RESOURCE_LIMIT');
       }
       const result = executeConquestSessionCommand(state.session, command,
-        endTurnBudget?.ok ? endTurnBudget : undefined, getStrategicRange(state.research[faction], state.researchTree, state.rules));
+        endTurnBudget?.ok ? endTurnBudget : undefined, STRATEGIC_TRAVEL_POLICY);
       if (!result.ok) return { ok: false, code: result.code, message: result.message };
       state.session = result.state;
       if (command.kind === 'endTurn') {
+        const endingProjectIds = state.colonyOutput.projects.filter(project => project.factionId === faction).map(project => project.id);
         const output = advanceColonyOutput(state.colonyOutput, parsedState.data.session.galaxy,
           parsedState.data.population, faction, state.rules.colonyOutput,
           parsedState.data.session.ships.filter(ship => ship.factionId === faction).length, effects, state.environment);
@@ -584,7 +706,29 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
         state.session.treasuries[faction].minerals += miningMinerals;
         treasurySchema.parse(state.session.treasuries[faction]);
         frames = settleEncounters(state, command.expectedTurn);
+        state.colonyOutput.projects = state.colonyOutput.projects.filter(project =>
+          project.kind !== 'refit' || state.session.ships.some(ship => ship.id === project.shipId));
+        const completedWorldProjectIds: number[] = [];
+        for (const project of output.completedProjects) {
+          if (project.kind === 'refit') {
+            const ship = state.session.ships.find(ship => ship.id === project.shipId && ship.systemId === project.systemId);
+            if (ship && state.session.galaxy.systems.find(world => world.id === project.systemId)?.ownerId === project.factionId) {
+              state.operations[String(ship.id)] = getRefitOperationalState(ship.design, project.design, state.operations[String(ship.id)]);
+              ship.design = structuredClone(project.design);
+              completedWorldProjectIds.push(project.id);
+            }
+            continue;
+          }
+          if (state.session.galaxy.systems.find(world => world.id === project.systemId)?.ownerId === project.factionId &&
+            getEnvironmentType(state.environment, project.systemId) === project.source && state.population[project.systemId].population > 0) {
+            state.environment[project.systemId] = project.target;
+            completedWorldProjectIds.push(project.id);
+          }
+        }
         turnReceipt = {
+          completedWorldProjectIds,
+          cancelledWorldProjectIds: endingProjectIds.filter(id => !completedWorldProjectIds.includes(id) &&
+            !state.colonyOutput.projects.some(current => current.id === id)),
           factionId: faction, turn: command.expectedTurn, population: output.forecast.population,
           populationIncome: output.forecast.income, miningMinerals,
           populationUpkeepCredits: output.forecast.upkeep.populationCredits,

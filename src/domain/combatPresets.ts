@@ -6,7 +6,7 @@ export const COMBAT_PRESET_NAMES = {
 } as const;
 export type CombatPresetId = keyof typeof COMBAT_PRESET_NAMES;
 type ComponentTemplate = {
-  [K in ComponentKind]: Omit<Extract<ComponentDefinition, { kind: K }>, 'id'>
+  [K in ComponentKind]: Omit<Extract<ComponentDefinition, { kind: K }>, 'id' | 'technologyVariant' | 'tacticalVariant'>
 }[ComponentKind];
 interface CombatPreset {
   hullId: HullId;
@@ -48,14 +48,15 @@ const legacyDreadnoughtAccuracy: Record<string, number> = {
 };
 
 function matchesPreset(design: ShipDesign, preset: CombatPreset, legacyDreadnought: boolean): boolean {
-  if (design.hullId !== preset.hullId) return false;
+  if (design.hullId !== preset.hullId || design.hullVariant !== 'standard') return false;
   const modules = new Map(preset.modules.map(module => [module.slotId, module.component]));
   return preset.modules.every(module => design.slots.some(slot => slot.id === module.slotId)) &&
     design.slots.every(slot => {
       const expected = modules.get(slot.id), actual = slot.component;
       if (!expected || !actual || expected.kind !== actual.kind) return !expected && !actual;
       const expectedValues = Object.entries(expected).filter(([key]) => key !== 'name');
-      const actualKeys = Object.keys(actual).filter(key => key !== 'id' && key !== 'name');
+      if (actual.tacticalVariant !== 'standard') return false;
+      const actualKeys = Object.keys(actual).filter(key => key !== 'id' && key !== 'name' && key !== 'technologyVariant' && key !== 'tacticalVariant');
       return actualKeys.length === expectedValues.length && expectedValues.every(([key, value]) => {
         const historicalAccuracy = legacyDreadnought && key === 'accuracy'
           ? legacyDreadnoughtAccuracy[slot.id] : undefined;
@@ -78,7 +79,8 @@ export function createCombatDesign(presetId: CombatPresetId, index = 0): ShipDes
   let design = createDesign(preset.hullId);
   design.name = `${COMBAT_PRESET_NAMES[presetId]}-${index + 1}`;
   for (const { slotId, component } of preset.modules) {
-    design = installComponent(design, slotId, componentSchema.parse({ ...component, id: newId(component.kind) }));
+    design = installComponent(design, slotId, componentSchema.parse({ ...component, id: newId(component.kind),
+      technologyVariant: 'standard', tacticalVariant: 'standard' }));
   }
   const errors = validateDesign(design, 'battle');
   if (errors.length) throw new Error(`Недопустимая комплектация ${design.name}: ${errors.map(error => error.message).join('; ')}`);

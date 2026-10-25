@@ -1,5 +1,5 @@
 import { factionIdSchema } from './campaign';
-import { campaignShipsSchema } from './campaignShips';
+import { campaignShipsSchema, strategicShipsSchema } from './campaignShips';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 
 // Provisional flat tariff: neither fleet membership nor travel grants a discount.
@@ -19,8 +19,8 @@ export interface EndTurnBudget {
 export type EconomyCalculation = ({ ok: true } & EndTurnBudget) | { ok: false; code: 'RESOURCE_LIMIT' };
 
 /** Strict query boundary; colony ownership and fleet consistency belong to the session. */
-export function getUpkeepQuote(inputShips: unknown, inputFaction: unknown): UpkeepQuote {
-  const ships = campaignShipsSchema.parse(inputShips), faction = factionIdSchema.parse(inputFaction);
+export function getUpkeepQuote(inputShips: unknown, inputFaction: unknown, military = false): UpkeepQuote {
+  const ships = (military ? strategicShipsSchema : campaignShipsSchema).parse(inputShips), faction = factionIdSchema.parse(inputFaction);
   const shipCount = ships.filter(ship => ship.factionId === faction).length;
   return { shipCount, credits: shipCount * UPKEEP_CREDITS_PER_SHIP };
 }

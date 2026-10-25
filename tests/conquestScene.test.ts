@@ -4,7 +4,7 @@ import { conquestSchema, createConquest, executeConquestCommand, type Conquest }
 import { createDesign } from '../src/domain/shipDesign';
 import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { createCombatDesign, isCombatPresetDesign } from '../src/domain/combatPresets';
-import { createOperationalState } from '../src/domain/campaignOperations';
+import { createOperationalState, getRefitQuote } from '../src/domain/campaignOperations';
 import { decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { CampaignSaveManager } from '../src/utils/CampaignSaveManager';
 import { closeShipyardModal } from '../src/ui/ShipyardModal';
@@ -160,7 +160,7 @@ it.each(['cancel', 'shutdown', 'supersede'])('ignores late imported trees after 
   else test.click('conquest-import-tree');
   const old = getDefaultResearchTree(); old.id = 'obsolete-tree'; read.resolve(JSON.stringify(old));
   await stale;
-  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v6');
+  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v10');
   expect(test.find('conquest-generation-error').text).toBe('');
   test.events.emit('shutdown');
 });
@@ -279,7 +279,7 @@ it('does not report or perform implicit founding for an armed ship', () => {
   const test = fixture();
   const state = createConquest(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 3;
-  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'eden', fuel: 3, design });
+  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'eden', fuel: 3000, design });
   state.operations['3'] = createOperationalState(design);
   state.population.sol.population = 1000;
   state.colonyOutput.assignments.sol = { industry: 1000, research: 0, culture: 0 };
@@ -409,7 +409,28 @@ it('relayouts an open dirty project immediately on resize without losing its bas
   test.events.emit('shutdown');
 });
 
-it('limits component variants individually while allowing and saving an exact available preset', () => {
+it.each([[1280, 720], [390, 844]])('shows the full refit quote despite a long project name at %ix%i', (width, height) => {
+  const test = fixture(new Map(), true, width, height);
+  const state = structuredClone(test.owner.state);
+  state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
+  state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
+  const ship = state.session.ships.find(ship => ship.id === 1)!;
+  const design = { ...structuredClone(ship.design), name: 'Н'.repeat(80),
+    slots: ship.design.slots.map(slot => ({ ...slot,
+      component: slot.component ? { ...slot.component, technologyVariant: 'compact' as const } : null })) };
+  const created = executeConquestCommand(state, { kind: 'createProject', name: design.name, design,
+    factionId: 'blue', expectedTurn: state.session.turn });
+  if (!created.ok) throw new Error(created.message);
+  test.owner.replace(created.state);
+  test.click('conquest-tab-fleet'); test.click('conquest-ship-1'); test.click('conquest-refit'); test.click('choice-0');
+  const quote = getRefitQuote(ship.design, design, state.rules.colonyOutput.productionCreditsPerPoint);
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes(`${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков`))).toBe(true);
+  test.click('conquest-cancel');
+  expect(test.owner.state.colonyOutput.projects).toEqual([]);
+  test.events.emit('shutdown');
+});
+
+it('limits component variants and excludes presets outside the same research bands', () => {
   const test = fixture();
   test.click('conquest-projects');
   test.click('slot-beam_1');
@@ -422,13 +443,13 @@ it('limits component variants individually while allowing and saving an exact av
   test.click('campaign-choice-cancel');
 
   test.click('campaign-project-preset');
-  test.click('campaign-preset-0');
-  test.click('campaign-dirty-confirm');
-  const preset = createCombatDesign('fighter');
+  expect(test.nodes.filter(node => !node.destroyed && /^campaign-preset-\d+$/.test(node.name))
+    .some(node => node.text.includes('Истребитель'))).toBe(false);
+  test.click('campaign-preset-cancel');
   test.click('campaign-project-save');
   const savedPreset = test.owner.state.projects.blue.items[0].design;
-  expect(savedPreset).toMatchObject({ hullId: preset.hullId, name: preset.name });
-  expect(isCombatPresetDesign(savedPreset)).toBe(true);
+  expect(savedPreset.hullId).toBe('fighter');
+  expect(isCombatPresetDesign(savedPreset)).toBe(false);
 
   const owner = test.owner as unknown as { projectPanel: {
     editor: {
@@ -453,7 +474,7 @@ it('limits component variants individually while allowing and saving an exact av
   test.events.emit('shutdown');
 });
 
-it('does not expose exempt preset modules as individual variants', () => {
+it('accepts only in-band presets after unlock and does not expose closed preset modules', () => {
   const test = fixture();
   const advanced = structuredClone(test.owner.state);
   advanced.research.blue.completed = advanced.researchTree.nodes.map(node => node.id);
@@ -461,7 +482,9 @@ it('does not expose exempt preset modules as individual variants', () => {
   test.owner.replace(conquestSchema.parse(advanced));
   test.click('conquest-projects');
   test.click('campaign-project-preset');
-  test.click('campaign-preset-3');
+  expect(test.nodes.filter(node => !node.destroyed && /^campaign-preset-\d+$/.test(node.name))
+    .some(node => node.text.includes('Дредноут'))).toBe(false);
+  test.click('campaign-preset-0');
   test.click('campaign-dirty-confirm');
   test.click('campaign-project-save');
 
@@ -477,7 +500,7 @@ it('does not expose exempt preset modules as individual variants', () => {
   const engine = saved.design.slots.find(slot => slot.id === 'engine_1')?.component;
   if (!engine || engine.kind !== 'engine') throw new Error('Dreadnought preset is missing its engine');
   const exactPreset = editor.getConfiguration();
-  expect(editor.installEquipment('engine_1', engine)).toBe(false);
+  expect(editor.installEquipment('engine_1', { ...engine, thrust: 9999 })).toBe(false);
   expect(editor.getConfiguration()).toEqual(exactPreset);
 
   test.click('campaign-project-1');
@@ -754,7 +777,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   const casualtyDesign = structuredClone(design);
   casualtyDesign.slots.find(slot => slot.id === 'beam_1')!.component = null;
   for (let id = 6; id <= 10; id++) {
-    test.owner.state.session.ships.push({ id, factionId: 'red', systemId: 'sol', fuel: 3, design: structuredClone(casualtyDesign) });
+    test.owner.state.session.ships.push({ id, factionId: 'red', systemId: 'sol', fuel: 3000, design: structuredClone(casualtyDesign) });
     const operation = createOperationalState(casualtyDesign);
     operation.hull = 1;
     test.owner.state.operations[String(id)] = operation;
@@ -780,7 +803,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   test.owner.tab = 'research';
   test.owner.page = 99;
   test.owner.render();
-  expect(test.nodes.some(node => !node.destroyed && node.text === '6 / 6')).toBe(true);
+  expect(test.nodes.some(node => !node.destroyed && node.text === `${Math.ceil(test.owner.state.researchTree.nodes.length / 2)} / ${Math.ceil(test.owner.state.researchTree.nodes.length / 2)}`)).toBe(true);
   test.events.emit('shutdown');
 });
 
@@ -855,7 +878,7 @@ it.each(['Очень длинное название проекта '.repeat(2).
     character.length === 2 || !/[\uD800-\uDFFF]/.test(character))).toBe(true);
   expect(test.owner.state.session.ships[0].design.name).toBe(design.name);
   test.click('conquest-ship-1');
-  expect(test.nodes.some(node => !node.destroyed && node.text.includes('топливо 3/3'))).toBe(true);
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('бак 3.000/3.000'))).toBe(true);
   test.events.emit('shutdown');
 });
 

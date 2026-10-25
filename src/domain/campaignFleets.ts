@@ -57,7 +57,7 @@ export function isShipInFleet(fleets: readonly CampaignFleet[], shipId: number):
 /** Validated session/view only: all members have identical transit, or none. No second route stored on fleets. */
 export function getFleetTransit(fleet: CampaignFleet, ships: readonly CampaignShip[]): CampaignShip['transit'] {
   const transit = ships.find(ship => ship.id === fleet.shipIds[0])?.transit;
-  return transit ? { ...transit } : undefined;
+  return transit ? structuredClone(transit) : undefined;
 }
 
 /** While travelling, fleet.systemId is the origin, not presence in either colony. */

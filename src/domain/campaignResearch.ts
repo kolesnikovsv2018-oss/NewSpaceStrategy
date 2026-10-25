@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import { componentSchema, createComponentWithId, hullIdSchema, designSchema, validateDesign, HULLS,
   type ComponentDefinition, type ComponentKind, type ShipDesign } from './shipDesign';
-import { isCombatPresetDesign } from './combatPresets';
-import { isCivilianPresetDesign } from './civilianPresets';
 import { createDefaultRulesSnapshot, COLONY_EFFECT_TARGETS, type RulesEffect, type RulesSnapshot } from './campaignRules';
 
 export const researchIdSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
@@ -16,6 +14,11 @@ const researchEffectSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('variant-tier'), tier: z.number().int().min(2).max(4) }).strict(),
   z.object({ kind: z.literal('colony-effect'), effectId: researchIdSchema }).strict(),
   z.object({ kind: z.literal('colonization-unlock'), worldType: z.literal('toxic') }).strict(),
+  z.object({ kind: z.literal('terraform-unlock'), transitionId: z.literal('toxic-to-habitable') }).strict(),
+  z.object({ kind: z.literal('equipment-variant-unlock'), variant: z.literal('compact') }).strict(),
+  z.object({ kind: z.literal('tactical-variant-unlock'), variant: z.enum(['high-thrust', 'focused', 'rapid', 'composite', 'capacitor']) }).strict(),
+  z.object({ kind: z.literal('hull-variant-unlock'), variant: z.literal('reinforced') }).strict(),
+  z.object({ kind: z.literal('strategic-equipment-unlock'), option: z.enum(['fast', 'extended-tank']) }).strict(),
   z.object({ kind: z.literal('strategic-range'), maxJumpDistance: z.union([z.literal(400), z.literal(800), z.literal(1500)]) }).strict()
 ]);
 export type ResearchEffect = z.infer<typeof researchEffectSchema>;
@@ -31,7 +34,7 @@ const variantTierSchema = z.object({
   ammo: z.number().finite().min(0).max(1), rechargeDelay: z.number().finite().min(0).max(60)
 }).strict();
 export const researchTreeSchema = z.object({
-  version: z.literal(6), id: researchIdSchema, initial: unlockSchema,
+  version: z.literal(10), id: researchIdSchema, initial: unlockSchema,
   nodes: z.array(researchNodeSchema).min(1).max(64),
   variantPolicy: z.object({ id: z.literal('component-bands-v1'), tiers: z.array(variantTierSchema).length(4) }).strict()
 }).strict().superRefine((tree, context) => {
@@ -40,7 +43,11 @@ export const researchTreeSchema = z.object({
   if (nodes.size !== tree.nodes.length || !tree.initial.hulls.includes('fighter') || !tree.initial.hulls.includes('colonizer') ||
     !tree.initial.components.includes('engine') || !tree.initial.components.includes('beam')) fail();
   const effects = tree.nodes.flatMap(node => node.effects);
+  if (!['fast', 'extended-tank'].every(option => effects.some(effect =>
+    effect.kind === 'strategic-equipment-unlock' && effect.option === option))) fail();
   if (!effects.some(effect => effect.kind === 'colonization-unlock' && effect.worldType === 'toxic')) fail();
+  if (!effects.some(effect => effect.kind === 'terraform-unlock')) fail();
+  if (!effects.some(effect => effect.kind === 'equipment-variant-unlock')) fail();
   const ranges = new Set<number>(effects.flatMap(effect => effect.kind === 'strategic-range' ? [effect.maxJumpDistance] : []));
   if (![400, 800, 1500].every(range => ranges.has(range))) fail();
   const registeredIds = new Set(createDefaultRulesSnapshot().effects.filter(effect =>
@@ -75,7 +82,7 @@ export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree 
 }
 
 const defaultTree: ResearchTree = {
-  version: 6, id: 'orion-technologies-v6',
+  version: 10, id: 'orion-technologies-v10',
   initial: { hulls: ['fighter', 'corvette', 'colonizer'], components: ['engine', 'beam'] },
   nodes: [
     { id: 'engineering', name: 'Инженерные методы', prerequisites: [], researchCost: 2000,
@@ -103,8 +110,28 @@ const defaultTree: ResearchTree = {
       effects: [{ kind: 'colony-effect', effectId: 'scientific-output' }] },
     { id: 'cultural-practices', name: 'Культурные практики', prerequisites: [], researchCost: 2000,
       effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }] },
+    { id: 'miniaturization', name: 'Миниатюризация', prerequisites: ['engineering'], researchCost: 4000,
+      effects: [{ kind: 'equipment-variant-unlock', variant: 'compact' }] },
+    { id: 'terraforming', name: 'Терраформирование', prerequisites: ['biosphere', 'toxic-adaptation'], researchCost: 6000,
+      effects: [{ kind: 'terraform-unlock', transitionId: 'toxic-to-habitable' }] },
     { id: 'toxic-adaptation', name: 'Адаптация к токсичной среде', prerequisites: [], researchCost: 3000,
-      effects: [{ kind: 'colonization-unlock', worldType: 'toxic' }] }
+      effects: [{ kind: 'colonization-unlock', worldType: 'toxic' }] },
+    { id: 'tactical-propulsion', name: 'Тактическая тяга', prerequisites: ['engineering'], researchCost: 3000,
+      effects: [{ kind: 'tactical-variant-unlock', variant: 'high-thrust' }] },
+    { id: 'focused-beams', name: 'Фокусировка лучей', prerequisites: ['engineering'], researchCost: 4000,
+      effects: [{ kind: 'tactical-variant-unlock', variant: 'focused' }] },
+    { id: 'rapid-projectiles', name: 'Скорострельная артиллерия', prerequisites: ['ordnance'], researchCost: 4000,
+      effects: [{ kind: 'tactical-variant-unlock', variant: 'rapid' }] },
+    { id: 'composite-armor', name: 'Композитная броня', prerequisites: ['support'], researchCost: 3500,
+      effects: [{ kind: 'tactical-variant-unlock', variant: 'composite' }] },
+    { id: 'capacitor-shields', name: 'Ёмкостные щиты', prerequisites: ['support'], researchCost: 4000,
+      effects: [{ kind: 'tactical-variant-unlock', variant: 'capacitor' }] },
+    { id: 'reinforced-hulls', name: 'Усиленный корпус', prerequisites: ['support'], researchCost: 4000,
+      effects: [{ kind: 'hull-variant-unlock', variant: 'reinforced' }] },
+    { id: 'strategic-drive', name: 'Стратегический двигатель', prerequisites: ['engineering'], researchCost: 3000,
+      effects: [{ kind: 'strategic-equipment-unlock', option: 'fast' }] },
+    { id: 'strategic-tank', name: 'Топливная автономность', prerequisites: ['engineering'], researchCost: 3000,
+      effects: [{ kind: 'strategic-equipment-unlock', option: 'extended-tank' }] }
   ],
   variantPolicy: { id: 'component-bands-v1', tiers: [
     { level: 1, magnitude: 0.1, ratioStep: 0.05, ammo: 0.1, rechargeDelay: 0.5 },
@@ -208,7 +235,19 @@ export function isCampaignComponentVariantAvailable(component: ComponentDefiniti
   if (!componentSchema.safeParse(component).success) return false;
   const access = getResearchAccess(state, tree);
   if (!access.components.includes(component.kind)) return false;
+  if (component.technologyVariant === 'compact' && !hasCompactEquipment(state, tree)) return false;
+  if (!hasTacticalVariant(component.tacticalVariant, state, tree)) return false;
   return componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree);
+}
+
+export function hasCompactEquipment(state: ResearchState, tree: ResearchTree): boolean {
+  return tree.nodes.some(node => state.completed.includes(node.id) &&
+    node.effects.some(effect => effect.kind === 'equipment-variant-unlock' && effect.variant === 'compact'));
+}
+
+export function hasTacticalVariant(variant: ComponentDefinition['tacticalVariant'] | 'reinforced', state: ResearchState, tree: ResearchTree): boolean {
+  return variant === 'standard' || tree.nodes.some(node => state.completed.includes(node.id) &&
+    node.effects.some(effect => (effect.kind === 'tactical-variant-unlock' || effect.kind === 'hull-variant-unlock') && effect.variant === variant));
 }
 
 export function isCampaignDesignAvailable(design: ShipDesign, state: ResearchState, tree: ResearchTree): boolean {
@@ -219,10 +258,18 @@ export function isCampaignDraftAvailable(design: ShipDesign, state: ResearchStat
   if (!designSchema.safeParse(design).success || validateDesign(design, 'draft').length) return false;
   const access = getResearchAccess(state, tree);
   if (!access.hulls.includes(design.hullId)) return false;
+  if (!hasTacticalVariant(design.hullVariant, state, tree)) return false;
+  const equipment = design.strategicEquipment;
+  const effects = tree.nodes.filter(node => state.completed.includes(node.id)).flatMap(node => node.effects);
+  if (equipment.drive === 'fast' && !effects.some(effect => effect.kind === 'strategic-equipment-unlock' && effect.option === 'fast') ||
+    equipment.tank === 'extended' && !effects.some(effect => effect.kind === 'strategic-equipment-unlock' && effect.option === 'extended-tank')) return false;
+  const jump = { standard: 200, extended: 400, deep: 800, galactic: 1500 }[equipment.jump];
+  if (jump > effects.reduce((range, effect) => effect.kind === 'strategic-range' ? Math.max(range, effect.maxJumpDistance) : range, 200)) return false;
   const components = design.slots.flatMap(slot => slot.component ? [slot.component] : []);
   if (components.some(component => !access.components.includes(component.kind))) return false;
-  if (isCombatPresetDesign(design) || isCivilianPresetDesign(design)) return true;
-  return components.every(component => componentWithinVariantTier(component, getCampaignVariantTier(state, tree), tree));
+  if (components.some(component => component.technologyVariant === 'compact') && !hasCompactEquipment(state, tree)) return false;
+  const tier = getCampaignVariantTier(state, tree);
+  return components.every(component => hasTacticalVariant(component.tacticalVariant, state, tree) && componentWithinVariantTier(component, tier, tree));
 }
 
 export interface ResearchTurnReceipt {
@@ -269,6 +316,13 @@ export function calculateResearchTurn(state: ResearchState, tree: ResearchTree, 
 export function describeResearchEffect(effect: ResearchEffect, tree: ResearchTree,
   catalog: readonly RulesEffect[] = createDefaultRulesSnapshot().effects): string {
   if (effect.kind === 'colonization-unlock') return 'основание колоний: токсичные миры, без изменения среды';
+  if (effect.kind === 'terraform-unlock') return 'платное терраформирование toxic → habitable';
+  if (effect.kind === 'equipment-variant-unlock') return 'компактные модули: объём −20%, цена +25%, масса прежняя';
+  if (effect.kind === 'tactical-variant-unlock') return `тактический вариант ${effect.variant}: новый проект или платный refit`;
+  if (effect.kind === 'hull-variant-unlock') return 'усиленный корпус: HP +20%, масса +15%, цена +30%; без лечения';
+  if (effect.kind === 'strategic-equipment-unlock') return effect.option === 'fast' ?
+    'стратегический двигатель: 200 гал. ед./свой ход, +75 кр.; build/refit' :
+    'стратегический бак: 9.000 топлива, +60 кр.; build/refit без заправки';
   if (effect.kind === 'strategic-range') return `стратегическая дальность ${effect.maxJumpDistance} гал. ед.`;
   if (effect.kind === 'hull-unlock') return `корпус ${HULLS[effect.hullId].name}`;
   if (effect.kind === 'component-unlock') return `семейство ${createComponentWithId(effect.component, 'research-label').name}`;

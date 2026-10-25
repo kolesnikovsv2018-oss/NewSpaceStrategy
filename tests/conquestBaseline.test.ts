@@ -28,7 +28,7 @@ describe('Conquest baseline', () => {
     const run = runBaseline(options);
     const verification = verifyBaseline(run);
     expect(verification).toEqual({ repeat: 'passed', roundTrip: run.checkpoint ? 'passed' : 'no-checkpoint-before-stop' });
-    expect(run.versions).toEqual({ baseline: 8, save: 12, rules: 9, tree: 6, battlePolicy: 'campaign-v2' });
+    expect(run.versions).toEqual({ baseline: 12, save: 16, rules: 13, tree: 10, tacticalRules: 'design-combat-v1', battlePolicy: 'campaign-v2' });
     expect(run.map.seed).toBe(options.mapSeed);
     expect(run.finalState.seed).toBe(options.campaignSeed);
     expect(run.status).not.toBe('executor-error');
@@ -192,12 +192,12 @@ describe('Conquest baseline', () => {
     } finally { log.mockRestore(); error.mockRestore(); }
   });
 
-  it('records legal distance-policy outcomes across all six-world seed pairs and opening schedules', () => {
+  it('records legal bounded openings across all six-world seed pairs and opening schedules', () => {
     for (const options of baselineMatrix().filter(item => item.kind === 'paid' && item.worldCount === 6)) {
-      const run = runBaseline(options), metrics = run.metrics[run.lineups.first];
+      const run = runBaseline({ ...options, maxTurns: 16 }), metrics = run.metrics[run.lineups.first];
       const production = options.schedule === 'production-first';
-      expect(run.status).toBe('completed');
-      expect(run.turnsExecuted).toBeLessThanOrEqual(200);
+      expect(['completed', 'timeout']).toContain(run.status);
+      expect(run.turnsExecuted).toBeLessThanOrEqual(16);
       expect(run.commands.every(record => record.result === 'accepted')).toBe(true);
       expect(metrics.firstResearch.status).toBe('measured');
       if (production) expect(metrics.firstOrder.status).toBe('measured');

@@ -143,9 +143,12 @@ describe('runtime contracts and sibling combat models', () => {
       const positioned = { ...target, position: { x, y: 0 } };
       ship.startMoving(0, 100);
       ship.moveToTarget(positioned);
+      ship.update(0.05);
       expect(Math.sign(ship.velocity.x)).toBe(direction);
       expect(ship.isMoving).toBe(direction !== 0);
-      expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(direction === 0 ? 0 : ship.getCurrentMaxSpeed());
+      const acceleration = ship.getAcceleration();
+      expect(Math.hypot(ship.velocity.x, ship.velocity.y)).toBeCloseTo(direction === 0 ? 0 :
+        acceleration === undefined ? ship.getCurrentMaxSpeed() : acceleration * 0.05);
     });
   });
 

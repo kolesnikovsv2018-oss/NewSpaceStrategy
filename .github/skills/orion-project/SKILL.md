@@ -5,7 +5,86 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 # Orion: быстрый вход в проект
 
+## Актуальная отправная точка Н14
+
+**Н14 принят2026-10-25:** [travel-контракт](../../../docs/CAMPAIGN_TRAVEL.md),
+[аудит17](../../../reports/2026-10-25/17-n14-readiness.md),
+[приёмка19](../../../reports/2026-10-25/19-n14-strategic-travel.md).
+ShipDesign5/library5/key orion_shipyard_v5, Conquest16/rules13,
+snapshot11/rules11/tree10/baseline12, map4/rules4/generator-v4/
+balanced-start-v4; мирные codecs6/7/8 rules4. Current-only, без миграций.
+Обязательный strategicEquipment: независимые drive/jump/tank, policy
+project-travel-v1. Base100/200/3000; fuel в целых тысячных, расход
+ceil(distance×5), turns=ceil(distance/speed), без округления distance.
+Fast200/+75, jump400/800/1500 за50/100/150, tank9000/+60;
+fast/tank science3000 после engineering. Цена в общих stats/quotes,
+тактика/масса/объём прежние. Scanner отдельно по научной дальности стороны.
+Unlock не меняет snapshots; refit не заправляет и запрещает бак ниже fuel.
+Военная и мирная ship schemas раздельны; мирные fuel3/arrival1 прежние.
+Own-end countdown, min speed/jump группы и индивидуальные баки,
+однократное списание, pinned transit, в пути нет mining/присутствия/служб.
+Forecast mining считает только arriving этим own-end; факт — после arrival.
+UI/AI/generator/checker используют campaignTravel; CLI не импортирует
+корабли/Phaser. AI48 candidates/24 commands, заказывает дальние замены
+без auto-refit; deploy уважает100 ships, не старый скрытый предел8.
+3835/71, strict/build173;24 baseline repeat/checkpoint:18 paid6 дают
+4 completed65–66 и14 timeout200,4 boundary и bounded40/25616 окон.
+Это существенное ограничение AI/баланса, не все партии завершены.
+Actual headless Chromium CSS1280×720/390×844: paid editor/refit/build/
+single/fleet/refuel/real battle, actual reload/full next oracle,
+latest-map256 не меняет saved40; pointer/ESC/14px/44px/1canvas.
+AI-red paused/load/Resume oracle, free library5 и мирный paid save8/reload
+проверены. Полные58/quota/FPS/physical touch не измерены.
+Далее Н15/Н16. Нижние версии/«далее» — история своих приёмок.
+
+## История отправной точки Н13
+
+**Н13 принят2026-10-25:** [боевой контракт](../../../docs/CAMPAIGN_COMBAT_TECHNOLOGIES.md),
+[приёмка16](../../../reports/2026-10-25/16-n13-combat-technologies.md).
+ShipDesign4/library4/key orion_shipyard_v4, Conquest15/rules12,
+snapshot10/rules10/tree9/baseline11, мирные codecs5/6/7 rules3.
+Обязательный design-combat-v1 в design/Conquest/battle report;
+campaign-v2 по-прежнему инициатива/RNG. Только текущие readers, без миграций.
+Шесть paid ветвей: high-thrust/focused/rapid/composite/capacitor/reinforced.
+Numeric bands исходные, calculateComponent даёт effective один раз,
+compact независим. Проектный разгон a=тяга/полная масса, vNext×dt после
+оплаты; retarget сохраняет скорость, stop без инерции, legacy прежний.
+Refit сохраняет абсолютный HP/fuel и только effective-equal ammo; unlock
+не меняет snapshots. AI≤47 combat+colonizer/24 commands, shield/hull роли,
+общий energy bound и quantized cooldown; auto-refit нет.
+3818/70, final targeted70/4 и30/2, strict/build173;18 paid6 repeat/checkpoint
+27–35 окон,4 boundary и bounded40/25616 окон. Actual CSS1280×720/390×844:
+paid editor/build/refit/battle/reload/full next oracle,1canvas/14px/44px;
+long80/refit quote, pointer/ESC, free library4/reload и мирный paid save7/
+rules3/reload проверены. Browser zoom1.5: viewport1920×1080/585×1266 даёт
+именно CSS1280×720/390×844; setViewport1280×720 дал853×480, не целевую
+CSS-приёмку. Полные58/quota/FPS/physical touch не измерены.
+Далее Н14/Н15. Нижние прежние «актуально/далее/не реализован» — история
+своих приёмок, а не отправная точка новой задачи.
+
 ## Назначение
+
+**Н11/Н12 приняты2026-10-25:** [terraform](../../../docs/CAMPAIGN_TERRAFORMING.md),
+[equipment/refit](../../../docs/CAMPAIGN_EQUIPMENT_REFIT.md).
+Актуальны save14/rules11/snapshot9/rules9/tree8/baseline10,
+ShipDesign3/library3 и мирные codecs4/5/6 rules2. Только текущие readers,
+без миграций/fallback; library пишет orion_shipyard_v3, старые ключи не удаляет.
+Map3/rules3/generator-v3 и военные цели прежние.
+Общий FIFO ship orders/tagged colonyOutput.projects по одному ID:
+3/колонию,100/сторону, один head/no spillover. Terraform toxic→habitable
+300/150/12000points; refit того же корпуса, ship-lock с постановки,
+старый design в бою, применение завершений после encounters.
+Refund unused BigInt, capture/destruction без возврата. Никаких бесплатных
+HP/ammo/fuel. Миниатюризация4000 после engineering: V×0,8/cost×1,25;
+масса/тактика прежние. Все пресеты проходят общие research/physical caps.
+AI строит compact≤48 candidates, auto-refit намеренно нет.
+3791/69, strict/build173,18 baseline repeat/checkpoint и bounded40/256;
+actual CSS1280×720/390×844 paid editor/refit/reload/real battle,
+long names/pointer/ESC/1canvas/14px/44px/0pageerrors, отдельная free yard
+library3 и мирный paid save6/reload/full next oracle. Полные58/quota/FPS
+не измерены. [Итог13](../../../reports/2026-10-25/13-n12-equipment-refit.md).
+Далее доступны Н13/Н14/Н15; нижние записи прежних приёмок исторические,
+их слова «актуально/далее» не переопределяют эту отправную точку.
 
 Браузерный прототип 2D-стратегии в духе Master of Orion. S2 принят для канонического проекта корабля; S3 завершён в минимальных границах: мирная карта и отдельная военная кампания с исследованиями, AI-производством, присутствием/боем, службами и победой за все пригодные миры карты. Н05/Г04 подключили общий генератор к браузерной военной кампании для двух участников. Дипломатия, научная/процентная победы и развитая логистика не реализованы.
 
@@ -91,7 +170,7 @@ Toxic K6000/absolute12000, обычный рост/выпуск; корнево�
 - src/utils/ShipDesignManager.ts — библиотека v2, явная миграция шестислотовых v1 и поддерживаемых unversioned данных; ключи v1 сохраняются, повреждённый v2 не вызывает откат к старым данным.
 - docs/SHIP_DESIGN.md — новый путь проекта; SHIP_MODEL и часть VISUALIZATION описывают также legacy-пресеты.
 - [План2026-10-09](../../../plans/plan-2026-10-09.md) — актуальная дорожная карта: Н01–Н10/Н05а и Д08 приняты; далее Н11/Н12. Н11–Н20 не начаты, полный Н14 не реализован. Прежние планы сохраняют историю.
-- [Задания Н01–Н20 и Н05а](../../../plans/tasks-2026-10-09/README.md) сверены с кодом 2026-10-10; запускать с общим контрактом. Н05/Г04 — одна реализованная интеграция для двух участников, без взаимной зависимости. Н06 требует Н04/Н05 и вводит вместимости; Н10 вводит runtime-среду отдельно от неизменной начальной карты, Н11 меняет её без изменения военных целей до Н18. В map сейчас нет длины линий: Н14 вводит её и одновременно обновляет обязательный CLI/browser generator/checker; Н17 расширяет существующие настройки на P>2. Н20 требует Н02/Н03/Н18/Н19 и транзитивно все остальные этапы. Н03-runner не является скрытой предпосылкой независимых задач; обновляется только после принятого Н03. Граф 21 этапа согласован в заданиях/README/плане, все зависимости направлены назад; это документальная проверка, не реализация будущих механик.
+- [Задания Н01–Н20 и Н05а](../../../plans/tasks-2026-10-09/README.md) сверены с кодом 2026-10-10; запускать с общим контрактом. Н05/Г04 — одна реализованная интеграция для двух участников, без взаимной зависимости. Н06 требует Н04/Н05 и вводит вместимости; Н10 вводит runtime-среду отдельно от неизменной начальной карты, Н11 меняет её без изменения военных целей до Н18. В map нет линий по решению Д08: Н14 расширяет прямую метрику проектными speed/jump/fuel и одновременно обновляет обязательный CLI/browser generator/checker; Н17 расширяет существующие настройки на P>2. Н20 требует Н02/Н03/Н18/Н19 и транзитивно все остальные этапы. Н03-runner не является скрытой предпосылкой независимых задач; обновляется только после принятого Н03. Граф 21 этапа согласован в заданиях/README/плане, все зависимости направлены назад; это документальная проверка, не реализация будущих механик.
 - [Н05а — кампанийный конструктор](../../../plans/tasks-2026-10-09/n05a-campaign-shipyard.md) принят 2026-10-10: [контракт](../../../docs/CAMPAIGN_PROJECTS.md), [отчёт10](../../../reports/2026-10-10/10-n05a-campaign-shipyard.md). Root `Conquest.projects`:25 записей/сторона, отдельные монотонные ID1..1e9. Полные rights/expectedTurn/completed и draft/research gates, own-view; свободная верфь в демонстрациях, Production не читает общую библиотеку. Save6/rules3 с обязательным каталогом, baseline2 с фактическими codes; мирные session/run/match/save неизменны. `campaignProjects.test.ts`:18 регрессий; full3427/61, strict/build167 прошли через VS Code tasks. Browser1280×720/390×844: оба собственных проекта→оплаченный FIFO→deploy→перелёт→настоящий бой, actual save/reload на FIFO/в пути/после боя и полный next-command oracle. Save после правки, dirty-resize и mobile-overlap исправлены с тестами и browser-retest. Кнопочные события/scene-команды без инъекции state, отдельно mouse smoke; не полный mouse E2E/quota/FPS. Н12 требует Н08/Н05а и расширяет этот же путь.
 - Общий формат/checker/codec: `src/domain/galaxyMap.ts`; единственный pure generator: `src/domain/galaxyGenerator.ts`; CLI: `src/cli/generateGalaxy.ts`; browser wrapper: `src/utils/BrowserGalaxyGenerator.ts`. balanced-start-v1: CLI 2–8 участников, по одному дому/две ближайшие доступные пригодные цели, максимум256 миров; JSON UTF-8 без byte cap. [Контракт генератора](../../../docs/GALAXY_GENERATOR.md).
 - Browser «Новая кампания» сначала показывает адаптивные настройки6–256/default40, участников2 и local/AI. Seed создаётся Web Crypto один раз. Кандидат проверяется до одного setItem latest-map-слота `orion_galaxy_map_v1`; ошибка не запускает игру/не заменяет старое состояние. `GalaxyMapRepository` save/load допускает Promise; сцена принимает порт конструктором, `LocalGalaxyMapRepository` — нынешний адаптер. Нет backend/автозагрузки карты. Полный canonical snapshot `session.galaxy.map` отдельно от меняющегося ownership/knowledge. Рабочий save10/rules7 хранит карту/projects/rules5/population/colonyOutput/tree4/science progress/researchJournal/явный battlePolicy; иные версии отвергаются без миграций, load не читает latest-map.
@@ -99,6 +178,10 @@ Toxic K6000/absolute12000, обычный рост/выпуск; корнево�
 - tests — регрессии legacy-боя, доменной модели, хранилища, DesignedShip и контракта представления. Phaser в visuals.test.ts подменён, это не браузерный тест.
 
 ## Порядок работы
+
+Подготовка Н11/Н12 от2026-10-25: [аудит10](../../../reports/2026-10-25/10-n11-n12-readiness.md)
+подтвердил360/16 и strict/build174. Д09 исправляет безопасную проверку
+невместимых кандидатов редактора, не реализует Н11/Н12.
 
 На2026-10-25 Н01–Н10/Н05а и подготовка Д08 приняты; доступны Н11/Н12. Граф Н-этапов не закрывает будущие механики автоматически. Блокировка Node/Yarn снята ранее пользователем; точная настройка неизвестна. Приёмки ниже исторические, актуальные форматы/queries задаёт Н10 в начале навыка.
 

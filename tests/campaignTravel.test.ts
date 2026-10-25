@@ -7,10 +7,10 @@ import { campaignSessionSchema, createCampaignSession, executeSessionCommand, ge
 import { MAX_ORDER_ID } from '../src/domain/production';
 
 function design(): ShipDesign {
-  return { schemaVersion: 2, id: 'transport', name: 'Транспорт', hullId: 'fighter',
+  return { tacticalRules: 'design-combat-v1', hullVariant: 'standard', strategicEquipment: { policy: 'project-travel-v1', drive: 'standard', jump: 'standard', tank: 'standard' }, schemaVersion: 5, id: 'transport', name: 'Транспорт', hullId: 'fighter',
     createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
     slots: HULLS.fighter.slots.map(slot => ({ id: slot.id, component: slot.id === 'engine_1'
-      ? { id: 'engine', name: 'Двигатель', kind: 'engine', thrust: 10, maxSpeed: 10, maneuverability: 0.7, powerGeneration: 1 } : null })) };
+      ? { tacticalVariant: 'standard', id: 'engine', name: 'Двигатель', kind: 'engine', technologyVariant: 'standard', thrust: 10, maxSpeed: 10, maneuverability: 0.7, powerGeneration: 1 } : null })) };
 }
 function own(state: CampaignSession, systemId: SystemId, factionId: CampaignFactionId) {
   const system = state.galaxy.systems.find(s => s.id === systemId)!;
