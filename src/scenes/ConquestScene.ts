@@ -146,6 +146,13 @@ export class ConquestScene extends Phaser.Scene {
       getGalaxyDefinition(this.state.session.galaxy).factions.find(faction => faction.id === this.observer)!.homeSystemId;
   }
 
+  private selectSystem(id: SystemId): void {
+    this.selected = id;
+    this.selectedShips = []; this.selectedGroup = undefined; this.page = 0;
+    this.message = '';
+    this.render();
+  }
+
   private pauseAi(): void {
     this.ticket?.remove(false); this.ticket = undefined;
     if (this.phase === 'scheduled' || this.phase === 'running') this.phase = 'paused';
@@ -447,8 +454,7 @@ export class ConquestScene extends Phaser.Scene {
     text(this, root, 24, 93, outcome.status === 'completed' ? `Победа: ${outcome.winner === 'blue' ? 'Синий союз' : 'Красная лига'}` :
       `Ход ${view.turn} · ${view.activeFactionId === 'blue' ? 'Синий союз' : 'Красная лига'}`, 18, outcome.status === 'completed' ? '#8edfc1' : '#e5efef').setName('conquest-status');
     this.control(730, 84, this.observer === 'blue' ? 'Синий союз' : 'Красная лига', () => {
-      this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selected = this.homeSelection();
-      this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+      this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selectSystem(this.homeSelection());
     }, 'conquest-side', this.state.control.mode === 'local');
     if (this.isAiTurn()) {
       this.control(890, 84, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
@@ -504,9 +510,7 @@ export class ConquestScene extends Phaser.Scene {
       })),
       enabled: () => !this.disposed && enabled(),
       change: state => { this.mapState = state; },
-      select: select ?? (id => {
-        this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
-      })
+      select: select ?? (id => this.selectSystem(id))
     });
   }
 
@@ -522,7 +526,7 @@ export class ConquestScene extends Phaser.Scene {
       () => this.state === source && this.root === root && isShipyardModalOpen(this),
       id => {
         if (!modal.close()) return;
-        this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+        this.selectSystem(id);
       });
     modal.overlay.once('destroy', () => {
       widget.destroy();
@@ -786,7 +790,7 @@ export class ConquestScene extends Phaser.Scene {
     const source = this.state;
     chooseItem(this, 'Миры галактики', view.galaxy.systems.map(system => ({ label: `${system.id} · ${system.name}`, value: system.id })), id => {
       if (this.disposed || this.state !== source) return;
-      this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+      this.selectSystem(id);
     });
   }
 
@@ -924,8 +928,7 @@ export class ConquestScene extends Phaser.Scene {
       this.control(20 + half, 292, 'Загрузить', () => this.requestLoad(), 'conquest-load', true, half);
       control(344, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects');
       control(396, this.observer === 'blue' ? 'Наблюдение: синие' : 'Наблюдение: красные', () => {
-        this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selected = this.homeSelection();
-        this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+        this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selectSystem(this.homeSelection());
       }, 'conquest-side', this.state.control.mode === 'local');
       if (this.isAiTurn()) control(448, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
         if (this.ticket) { this.pauseAi(); this.render(); } else this.confirm('Выполнить ход компьютера?', () => this.scheduleAi());
@@ -1036,7 +1039,7 @@ export class ConquestScene extends Phaser.Scene {
   private narrowSection: Tab | 'map' | 'actions' = 'map';
 
   private moveWorld(view: ConquestView, index: number): void {
-    this.selected = view.galaxy.systems[index].id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+    this.selectSystem(view.galaxy.systems[index].id);
   }
 
   private narrowPager(total: number, y: number): void {

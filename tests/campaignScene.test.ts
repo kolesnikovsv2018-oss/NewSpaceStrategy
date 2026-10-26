@@ -122,6 +122,80 @@ function fixture() {
     message: () => find('campaign-message').text };
 }
 
+it('keeps peaceful colony, production, ship, fleet and travel panels on the same map selection', () => {
+  // Diagnostic strict-valid snapshot; paid end-to-end cycles are covered separately.
+  const state = domain.createCampaignSession(), design = createCombatDesign('fighter');
+  const eden = state.galaxy.systems.find(system => system.id === 'eden')!;
+  eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
+  state.production.lastOrderId = 10;
+  state.production.orders = [
+    { id: 1, factionId: 'blue', systemId: 'sol', design, remainingTurns: 1 },
+    { id: 2, factionId: 'blue', systemId: 'eden', design, remainingTurns: 2 }
+  ];
+  state.production.completed = [
+    { id: 3, factionId: 'blue', systemId: 'sol', design },
+    { id: 4, factionId: 'blue', systemId: 'eden', design }
+  ];
+  for (const [id, systemId] of [[5, 'sol'], [6, 'sol'], [7, 'sol'], [8, 'eden'], [9, 'eden'], [10, 'eden']] as const) {
+    state.ships.push({ id, systemId, factionId: 'blue', fuel: id % 4, design: { ...design, name: `${systemId} ship ${id}` } });
+  }
+  state.fleets = { lastFleetId: 2, items: [
+    { id: 1, factionId: 'blue', systemId: 'sol', shipIds: [5, 6] },
+    { id: 2, factionId: 'blue', systemId: 'eden', shipIds: [8, 9] }
+  ] };
+  domain.campaignSessionSchema.parse(state);
+  seedSession(state);
+  const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
+  vi.stubGlobal('localStorage', storage);
+  const f = fixture(), before = structuredClone(state);
+  const live = (name: string) => f.nodes.some(node => !node.destroyed && node.name === name);
+  let obsolete: (() => void) | undefined;
+  try {
+    expect(f.find('campaign-system-name').text).toBe('Сол');
+    for (const id of ['sol', 'eden', 'sol'] as const) {
+      const own = id === 'sol', firstShip = own ? 5 : 8, group = own ? 1 : 2, free = own ? 7 : 10;
+      f.click(`system-${id}`);
+      expect(f.find('campaign-system-name').text).toBe(own ? 'Сол' : 'Эдем');
+      expect(f.details()).toContain('Синий союз');
+      obsolete?.();
+      f.click('campaign-production');
+      expect(f.find('production-title').text).toContain(own ? 'Сол' : 'Эдем');
+      expect(live(`production-order-${own ? 1 : 2}`)).toBe(true);
+      expect(live(`production-order-${own ? 2 : 1}`)).toBe(false);
+      expect(f.find(`production-progress-${own ? 1 : 2}`).text).toContain(`осталось ${own ? 1 : 2}`);
+      expect(f.find('production-completed').text).toContain(`#${own ? 3 : 4}`);
+      obsolete = f.find('production-deploy').listeners('pointerdown')[0] as () => void;
+      f.click('production-toggle-ships');
+      expect(f.find('production-ships-title').text).toBe('КОРАБЛИ В КОЛОНИИ: 3');
+      for (let index = 0; index < 3; index++) {
+        expect(f.find('production-ship').text).toContain(`#${firstShip + index} ${id} ship`);
+        if (index < 2) f.click('production-ships-next');
+      }
+      f.click('production-travel');
+      expect(f.find('travel-ship').text).toContain(`#${free} ${id} ship`);
+      expect(f.find('travel-fuel').text).toContain(`${free % 4}/3`);
+      expect(f.find('travel-count').text).toContain('Всего кораблей: 6/100');
+      f.click('production-fleets');
+      expect(f.find('fleet-candidate').text).toContain(`#${free} ${id} ship`);
+      expect(f.find('fleet-current').text).toContain(`Группа #${group}`);
+      expect(f.find('fleet-member').text).toContain(`#${firstShip} ${id} ship`);
+      f.click('fleet-member-next');
+      expect(f.find('fleet-member').text).toContain(`#${firstShip + 1} ${id} ship`);
+      f.click('fleet-travel');
+      expect(f.find('fleet-travel-current').text).toContain(`Группа #${group}`);
+      expect(f.find('fleet-travel-destination').text).toContain(own ? 'Эдем' : 'Сол');
+      f.click('campaign-budget');
+      expect(f.find('budget-ships').text).toContain('6');
+      expect(f.find('budget-income').text).toContain('+20 кр. / +10 мин.');
+      f.click('campaign-budget');
+    }
+    const owner = f.scene as unknown as { campaign: domain.CampaignSession };
+    expect(owner.campaign).toEqual(before);
+    expect(storage.getItem).toHaveBeenCalledExactlyOnceWith(ShipDesignManager.STORAGE_KEY);
+    expect(storage.setItem).not.toHaveBeenCalled();
+  } finally { f.events.emit('shutdown'); vi.unstubAllGlobals(); }
+});
+
 it('peaceful map retains zoom across redraw/budget/production without mutating match or storage', () => {
   const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
   vi.stubGlobal('localStorage', storage);

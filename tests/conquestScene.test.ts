@@ -13,6 +13,7 @@ import { LocalGalaxyMapRepository } from '../src/utils/GalaxyMapRepository';
 import { decodeGalaxyMap } from '../src/domain/galaxyMap';
 import * as browserGenerator from '../src/utils/BrowserGalaxyGenerator';
 import { getDefaultResearchTree } from '../src/domain/campaignResearch';
+import { paidToxicColony, workCommand } from './fixtures/colonyWork';
 
 vi.stubGlobal('Phaser', { Scene: class {} });
 const { ConquestScene } = await import('../src/scenes/ConquestScene');
@@ -100,6 +101,236 @@ function fixture(storage = new Map<string, string>(), initialize = true, width =
   };
   return { scene, owner, nodes, events, keyboard, input, tasks, storage, read, write, find, click };
 }
+
+function distinctWorlds(): Conquest {
+  // Diagnostic strict-valid snapshot: intentionally different local data at each colony.
+  const state = createConquest();
+  const eden = state.session.galaxy.systems.find(world => world.id === 'eden')!;
+  eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
+  state.surveys.blue.eden = 'habitable';
+  state.population.eden.population = 2100;
+  state.colonyOutput.assignments.sol = { industry: 10, research: 20, culture: 30 };
+  state.colonyOutput.assignments.eden = { industry: 7, research: 11, culture: 13 };
+  for (const [id, systemId] of [[3, 'sol'], [4, 'eden']] as const) {
+    const design = createDesign('fighter', true); design.name = `${systemId} queue`;
+    state.colonyOutput.production.orders.push({ id, systemId, factionId: 'blue', design,
+      ...getColonyProductionQuote(design, state.rules.colonyOutput), productionProgress: id - 3 });
+  }
+  for (const [id, systemId] of [[5, 'sol'], [6, 'eden']] as const) {
+    const design = createDesign('fighter', true); design.name = `${systemId} ready`;
+    state.colonyOutput.production.completed.push({ id, systemId, factionId: 'blue', design });
+  }
+  for (const [id, systemId] of [[7, 'sol'], [8, 'eden'], [9, 'eden']] as const) {
+    const design = createDesign('fighter', true); design.name = `${systemId} ship ${id}`;
+    state.session.ships.push({ id, systemId, factionId: 'blue', design, fuel: id * 100 });
+    state.operations[String(id)] = { ...createOperationalState(design), hull: id + 30 };
+  }
+  state.session.production.lastOrderId = 9;
+  state.session.fleets = { lastFleetId: 2, items: [
+    { id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 7] },
+    { id: 2, factionId: 'blue', systemId: 'eden', shipIds: [8, 9] }
+  ] };
+  return conquestSchema.parse(state);
+}
+
+function chooseWorld(test: ReturnType<typeof fixture>, id: string, mode: 'list' | 'map', narrow: boolean): void {
+  if (narrow) test.click('conquest-tab-map');
+  if (mode === 'map') {
+    if (narrow) test.click('conquest-open-map');
+    test.click(`conquest-system-${id}`);
+  } else {
+    test.click('conquest-select-world');
+    const index = test.owner.state.session.galaxy.systems.findIndex(world => world.id === id);
+    for (let page = 0; page < Math.floor(index / 8); page++) test.click('choice-next');
+    test.click(`choice-${index}`);
+  }
+  expect(test.owner.selected).toBe(id);
+}
+
+it.each([
+  [1280, 720, 'map'], [1280, 720, 'list'], [390, 844, 'map'], [390, 844, 'list']
+] as const)('keeps every local panel on the chosen world via %s×%s %s, without changing global data', (width, height, mode) => {
+  const test = fixture(new Map(), true, width, height), narrow = width < 1280;
+  test.owner.replace(distinctWorlds());
+  const before = structuredClone(test.owner.state);
+  test.read.mockClear(); test.write.mockClear();
+  const liveText = () => test.nodes.filter(node => !node.destroyed).map(node => node.text).join('\n');
+  for (const id of ['sol', 'eden', 'sol'] as const) {
+    chooseWorld(test, id, mode, narrow);
+    const other = id === 'sol' ? 'eden' : 'sol', industry = id === 'sol' ? 10 : 7;
+    expect(test.find('conquest-population').text).toContain(id === 'sol' ? '5/10 млн' : '2,1/10 млн');
+    test.click('conquest-tab-production');
+    if (narrow && test.find('conquest-workers-toggle').text.startsWith('←')) test.click('conquest-workers-toggle');
+    expect(liveText()).toContain(id === 'sol' ? 'sol queue' : 'eden queue');
+    expect(liveText()).not.toContain(`${other} queue`);
+    expect(liveText()).not.toContain(`${other} ready`);
+    if (narrow) {
+      test.click('conquest-page-next');
+      expect(liveText()).toContain(`${id} ready`);
+      test.click('conquest-workers-toggle');
+      expect(liveText()).toContain(`Промышленность: ${industry} · ${industry} очк.`);
+      expect(liveText()).toContain(id === 'sol' ? 'Рабочие: 5000 · свободны 4940' : 'Рабочие: 2100 · свободны 2069');
+      expect(liveText()).toContain('Резерв: наука 0/71000 · культура 0/71000');
+      test.click('conquest-tab-map');
+    } else {
+      expect(liveText()).toContain(`Пром. ${industry}`);
+      expect(liveText()).toContain(id === 'sol' ? 'Население 5000 · свободны 4940' : 'Население 2100 · свободны 2069');
+      expect(liveText()).toContain(`${id} ready`);
+    }
+    test.click('conquest-effects'); test.click('choice-2');
+    expect(test.find('choice-1').text).toBe(`Работников: ${industry}`);
+    expect(test.find('choice-5').text).toBe(`Итог: ${industry}`);
+    test.click('close-choice');
+    test.click('conquest-tab-fleet');
+    expect(liveText()).not.toContain(`${other} ship`);
+    expect(test.find('conquest-refuel').input.enabled).toBe(false);
+    if (narrow && id === 'sol') test.click('conquest-page-next');
+    const shipId = id === 'sol' ? 7 : 8;
+    test.click(`conquest-ship-${shipId}`);
+    expect(liveText()).toContain(`HP ${shipId + 30} · бак 0.${shipId}00/3.000`);
+    expect(test.find('conquest-refuel').input.enabled).toBe(true);
+    test.click('conquest-select-fleet'); test.click('choice-0');
+    expect(liveText()).toContain(`Группа #${id === 'sol' ? 1 : 2} · кораблей 2`);
+  }
+  expect(test.owner.state).toEqual(before);
+  expect(test.read).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  test.events.emit('shutdown');
+});
+
+it.each([
+  [1280, 720, 'map'], [1280, 720, 'list'], [1280, 720, 'expanded'],
+  [390, 844, 'map'], [390, 844, 'list'], [390, 844, 'arrow']
+] as const)('removes feedback for the old world after selection via %s×%s %s', (width, height, mode) => {
+  const test = fixture(new Map(), true, width, height);
+  test.click('conquest-tab-production'); test.click('conquest-enqueue');
+  expect(test.find('conquest-message').text).not.toBe('');
+  const before = structuredClone(test.owner.state);
+  if (mode === 'expanded') {
+    test.click('conquest-open-map');
+    const marker = test.nodes.filter(node => !node.destroyed && node.name === 'conquest-system-eden').at(-1)!;
+    const pointer = { x: marker.x, y: marker.y, id: 1, isDown: true, leftButtonDown: () => true };
+    marker.emit('pointerdown', pointer); marker.emit('pointerup', pointer);
+  } else if (mode === 'arrow') {
+    test.click('conquest-tab-map'); test.click('conquest-world-next');
+  } else chooseWorld(test, 'eden', mode, width < 1280);
+  expect(test.owner.selected).toBe('eden');
+  expect(test.find('conquest-message').text).toBe('');
+  expect(test.owner.state).toEqual(before);
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('shows only the selected colony work and updates its environment at %s×%s', (width, height) => {
+  const test = fixture(new Map(), true, width, height), setup = paidToxicColony();
+  let state = workCommand(setup.state, { kind: 'startTerraform', systemId: setup.target });
+  const project = state.colonyOutput.projects[0];
+  test.owner.replace(state);
+  for (const id of [setup.home, setup.target, setup.home]) {
+    chooseWorld(test, id, 'list', width < 1280);
+    test.click('conquest-tab-production');
+    test.click('conquest-world-projects');
+    const shown = test.nodes.filter(node => !node.destroyed && node.name.startsWith('choice-')).map(node => node.text).join('\n');
+    expect(shown.includes(`#${project.id} toxic→habitable: 0/12000`)).toBe(id === setup.target);
+    test.click('close-choice');
+  }
+  state.colonyOutput.projects[0].productionProgress = 11999;
+  state = workCommand(state, { kind: 'endTurn' });
+  test.owner.replace(state); test.owner.observer = 'blue'; test.owner.render();
+  chooseWorld(test, setup.target, 'list', width < 1280);
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('пригодная среда'))).toBe(true);
+  expect(test.owner.state.environment[setup.target]).toBe('habitable');
+  test.events.emit('shutdown');
+});
+
+it.each([
+  [1280, 720, 6], [1280, 720, 40], [1280, 720, 256],
+  [390, 844, 6], [390, 844, 40], [390, 844, 256]
+])('renders the home world before any selection in a new %s×%s campaign of %s worlds', (width, height, count) => {
+  const test = fixture(new Map(), false, width, height);
+  for (let i = 0; i < Math.ceil(Math.abs(count - 40) / 10); i++) {
+    test.click(count < 40 ? 'conquest-worlds-minus-ten' : 'conquest-worlds-plus-ten');
+  }
+  test.click('conquest-new-local');
+  const home = test.owner.state.session.galaxy.map!.participants[0].homeWorldId;
+  expect(test.owner.selected).toBe(home);
+  expect(test.find('conquest-population').text).toContain('Население 5/10 млн');
+  test.click('conquest-tab-production');
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('5000 · свободны 0'))).toBe(width === 1280);
+  if (width < 1280) {
+    test.click('conquest-workers-toggle');
+    expect(test.nodes.some(node => !node.destroyed && node.text === 'Рабочие: 5000 · свободны 0')).toBe(true);
+  }
+  test.click('conquest-tab-fleet');
+  expect(test.find('conquest-ship-1').text).toContain('Колонизатор');
+  expect(test.nodes.some(node => !node.destroyed && node.name === 'conquest-ship-2')).toBe(false);
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('updates deploy/worker data at the selected colony and rejects its obsolete action at %s×%s', (width, height) => {
+  const test = fixture(new Map(), true, width, height), narrow = width < 1280;
+  test.owner.replace(distinctWorlds());
+  chooseWorld(test, 'eden', 'list', narrow); test.click('conquest-tab-production');
+  if (narrow) test.click('conquest-page-next');
+  const oldDeploy = test.find('conquest-order-6').listeners('pointerdown')[0];
+  test.click('conquest-order-6');
+  expect(test.owner.state.session.ships.find(ship => ship.id === 6)?.systemId).toBe('eden');
+  expect(test.owner.state.colonyOutput.production.completed.map(record => record.id)).toEqual([5]);
+  if (narrow) test.click('conquest-workers-toggle');
+  test.click('conquest-workers-industry-plus');
+  expect(test.owner.state.colonyOutput.assignments.eden.industry).toBe(8);
+  expect(test.owner.state.colonyOutput.assignments.sol.industry).toBe(10);
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes(narrow ? 'Промышленность: 8' : 'Пром. 8'))).toBe(true);
+  chooseWorld(test, 'sol', 'list', narrow); test.click('conquest-tab-production');
+  const before = structuredClone(test.owner.state);
+  oldDeploy();
+  expect(test.owner.state).toEqual(before);
+  expect(test.owner.selected).toBe('sol');
+  expect(test.nodes.some(node => !node.destroyed && node.text.includes('eden ready'))).toBe(false);
+  test.events.emit('shutdown');
+});
+
+it.each([[1280, 720], [390, 844]])('does not replace unknown or enemy data with the previous own world at %s×%s', (width, height) => {
+  const test = fixture(new Map(), true, width, height), state = distinctWorlds();
+  state.session.fleets = { lastFleetId: 2, items: [] };
+  state.session.ships.find(ship => ship.id === 9)!.systemId = 'vega';
+  state.surveys.blue.nexus = 'toxic';
+  state.session.galaxy.systems.find(world => world.id === 'nexus')!.exploredBy.push('blue');
+  test.owner.replace(state);
+  for (const [id, caption] of [['vega', 'чужая колония'], ['nexus', 'нет наблюдения'], ['rift', 'нет наблюдения']]) {
+    chooseWorld(test, id, 'list', width < 1280);
+    const shown = test.nodes.filter(node => !node.destroyed).map(node => node.text).join('\n');
+    expect(shown).toContain(caption);
+    expect(shown).toContain(id === 'nexus' ? 'токсичная среда' : 'среда не изучена');
+    expect(test.find('conquest-population').text).not.toContain('Население');
+    test.click('conquest-tab-production');
+    expect(test.find('conquest-enqueue').input.enabled).toBe(false);
+    expect(test.nodes.some(node => !node.destroyed && node.name.startsWith('conquest-workers-'))).toBe(false);
+    expect(test.nodes.some(node => !node.destroyed && /^conquest-order-/.test(node.name))).toBe(false);
+  }
+  test.events.emit('shutdown');
+});
+
+it.each([
+  [1280, 720, 'local'], [390, 844, 'local'], [1280, 720, 'human-vs-ai'], [390, 844, 'human-vs-ai']
+] as const)('loads fresh panels and the existing observer selection in %s×%s %s', (width, height, mode) => {
+  const test = fixture(new Map(), true, width, height), state = distinctWorlds();
+  state.control = mode === 'local' ? { mode } : { mode, aiPolicy: 'conquest-v1' };
+  state.session.turn = 2;
+  test.owner.replace(state);
+  const observer = mode === 'local' ? 'red' : 'blue', home = observer === 'red' ? 'vega' : 'sol';
+  if (width < 1280) test.click('conquest-tab-actions');
+  test.click('conquest-save'); test.click('conquest-confirm');
+  test.owner.replace(createConquest());
+  chooseWorld(test, 'rift', 'list', width < 1280);
+  if (width < 1280) test.click('conquest-tab-actions');
+  test.click('conquest-load'); test.click('conquest-confirm');
+  expect(test.owner.observer).toBe(observer); expect(test.owner.selected).toBe(home);
+  expect(test.owner.state).toEqual(state); expect(test.tasks).toHaveLength(0);
+  expect(test.owner.phase).toBe(mode === 'local' ? 'idle' : 'paused');
+  expect(test.find('conquest-population').text).toContain('5/10 млн');
+  test.click('conquest-tab-fleet');
+  expect(test.find(`conquest-ship-${observer === 'red' ? 2 : 1}`).text).toContain('Колонизатор');
+  test.events.emit('shutdown');
+});
 
 it.each([[1280, 720], [390, 844]])('shows domain breakdown and persisted own research journal at %sx%s without another turn', (width, height) => {
   const test = fixture(new Map(), true, width, height);
