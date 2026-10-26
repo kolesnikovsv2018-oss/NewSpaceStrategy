@@ -48,16 +48,28 @@ function rawRun(state: domain.CampaignSession) {
 /** Rendering/input contract harness; no actual Phaser hit testing. */
 class Node extends EventEmitter {
   name = ''; text = ''; destroyed = false; interactive = false; list: Node[] = [];
+  active = true; x = 0; y = 0; height = 20; private fixedWidth?: number;
+  context = { measureText: (value: string) => ({ width: value.length * 12 }) };
   constructor(text = '') { super(); this.text = text; }
   // Synthetic fixed glyph width exercises truncation; browser checks real fonts.
-  get width() { return this.text.length * 12; }
+  get width() { return this.fixedWidth ?? this.text.length * 12; }
   setText(value: string) { this.text = value; return this; }
   add(node: Node) { this.list.push(node); return this; }
-  destroy() { this.destroyed = true; this.list.forEach(node => node.destroy()); this.removeAllListeners(); }
+  destroy() { if (this.destroyed) return; this.destroyed = true; this.active = false; this.emit('destroy'); this.list.forEach(node => node.destroy()); this.removeAllListeners(); }
   setName(value: string) { this.name = value; return this; }
   setPadding() { return this; }
   setBackgroundColor() { return this; }
   setInteractive() { this.interactive = true; return this; }
+  disableInteractive() { this.interactive = false; return this; }
+  setAlpha() { return this; }
+  setFixedSize(width: number, height: number) { this.fixedWidth = width; this.height = height; return this; }
+  setPosition(x: number, y: number) { this.x = x; this.y = y; return this; }
+  setVisible() { return this; }
+  setMask() { return this; }
+  clearMask() { return this; }
+  createGeometryMask() { return { destroy: vi.fn() }; }
+  clear() { return this; }
+  fillRect() { return this; }
   setLineSpacing() { return this; }
   setWordWrapWidth() { return this; }
   fillStyle() { return this; }
@@ -88,10 +100,12 @@ function fixture() {
     task.remove.mockImplementation(() => { task.removed = true; }); tasks.push(task); return task;
   });
   const start = vi.fn(() => events.emit('shutdown'));
+  const input = Object.assign(new EventEmitter(), { keyboard });
   Object.assign(scene, {
-    cameras: { main: { setBackgroundColor: vi.fn() } }, input: { keyboard }, events,
+    cameras: { main: { setBackgroundColor: vi.fn() } }, input, events,
     scene: { start, isActive }, time: { delayedCall }, add: { container: () => make(), graphics: () => make(),
-      text: (_x: number, _y: number, value: string) => make(value) }
+      circle: (x: number, y: number) => Object.assign(make(), { x, y }), rectangle: () => make(),
+      text: (x: number, y: number, value: string) => Object.assign(make(value), { x, y }) }
   });
   scene.create();
   const find = (name: string) => {
@@ -99,11 +113,38 @@ function fixture() {
     if (!node) throw new Error(`Missing ${name}`);
     return node;
   };
-  return { scene, nodes, keyboard, events, start, find, tasks, delayedCall, isActive,
-    click: (name: string) => find(name).emit('pointerdown'),
+  return { scene, nodes, keyboard, input, events, start, find, tasks, delayedCall, isActive,
+    click: (name: string) => {
+      const node = find(name), pointer = { x: node.x, y: node.y, id: 1, isDown: true, leftButtonDown: () => true };
+      node.emit('pointerdown', pointer); node.emit('pointerup', pointer);
+    },
     details: () => find('campaign-system-details').text,
     message: () => find('campaign-message').text };
 }
+
+it('peaceful map retains zoom across redraw/budget/production without mutating match or storage', () => {
+  const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
+  vi.stubGlobal('localStorage', storage);
+  const f = fixture();
+  const owner = f.scene as unknown as { match: matchDomain.CampaignMatch; render(): void };
+  const before = structuredClone(owner.match);
+  try {
+    f.click('campaign-map-plus'); expect(f.find('campaign-map-scale').text).toBe('125%');
+    const oldFit = f.find('campaign-map-fit').listeners('pointerdown')[0];
+    owner.render(); oldFit(); expect(f.find('campaign-map-scale').text).toBe('125%');
+    f.click('campaign-budget'); expect(f.input.listenerCount('pointermove')).toBe(0);
+    f.click('campaign-budget'); expect(f.find('campaign-map-scale').text).toBe('125%');
+    f.click('campaign-production'); f.click('campaign-production');
+    expect(f.find('campaign-map-scale').text).toBe('125%');
+    f.click('campaign-map-fit'); f.click('system-eden'); expect(f.details()).toContain('Не разведана');
+    expect(owner.match).toEqual(before); expect(storage.setItem).not.toHaveBeenCalled();
+    f.click('campaign-new'); f.click('campaign-confirm');
+    expect(f.find('campaign-map-scale').text).toBe('100%');
+    f.events.emit('shutdown'); expect(f.input.listenerCount('pointermove')).toBe(0);
+    f.scene.create(); expect(f.input.listenerCount('pointermove')).toBe(1);
+    f.events.emit('shutdown'); expect(f.input.listenerCount('pointermove')).toBe(0);
+  } finally { vi.unstubAllGlobals(); }
+});
 
 describe('S3.39 match scene integration', () => {
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -2071,7 +2112,7 @@ describe('campaign scene and projection renderer', () => {
     for (const id of ['vega', 'rift']) {
       f.click(`system-${id}`);
       expect(f.details()).toBe('Не разведана\nВладелец: неизвестен\nПригодность: неизвестна');
-      expect(f.find(`system-${id}`).text.startsWith('○')).toBe(true);
+      expect(f.find(`campaign-map-label-${id}`).text.startsWith('○')).toBe(true);
     }
   });
 
@@ -2094,7 +2135,7 @@ describe('campaign scene and projection renderer', () => {
     f.click('campaign-side-switch');
     expect(f.find('campaign-side').text).toBe('Красная лига');
     expect(f.message()).toBe(''); expect(f.details()).toContain('Владелец: неизвестен');
-    expect(f.find('system-eden').text.startsWith('○')).toBe(true);
+    expect(f.find('campaign-map-label-eden').text.startsWith('○')).toBe(true);
     f.click('campaign-side-switch'); expect(f.details()).toContain('Синий союз');
   });
 

@@ -38,6 +38,10 @@ class Node extends EventEmitter {
   setPosition(x: number, y: number) { this.x = x; this.y = y; return this; }
   setSize(width: number, height: number) { this.width = width; this.height = height; return this; }
   setDepth() { return this; }
+  setVisible() { return this; }
+  setMask() { return this; }
+  clearMask() { return this; }
+  createGeometryMask() { return { destroy: vi.fn() }; }
   setWordWrapWidth() { return this; }
   setStrokeStyle() { return this; }
   clear() { return this; }
@@ -49,6 +53,7 @@ class Node extends EventEmitter {
   fillTriangle() { return this; }
   lineStyle() { return this; }
   lineBetween() { return this; }
+  strokeCircle() { return this; }
 }
 
 class Keyboard extends EventEmitter {
@@ -77,17 +82,23 @@ function fixture(storage = new Map<string, string>(), initialize = true, width =
   const owner = scene as unknown as { state: Conquest; phase: string; page: number; tab: string;
     observer: 'blue' | 'red'; selected: string; replace(state: Conquest): void; render(): void;
     forwardEscape(event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>): void };
-  Object.assign(scene, { cameras: { main: { width, height } }, input: { keyboard }, events,
+  const input = Object.assign(new EventEmitter(), { keyboard });
+  Object.assign(scene, { cameras: { main: { width, height } }, input, events,
     scene: { start: () => events.emit('shutdown') }, time: { delayedCall: (_delay: number, callback: () => void) => {
       const task = { callback, remove: vi.fn() }; tasks.push(task); return task;
-    } }, add: { container: (x = 0, y = 0) => Object.assign(make(), { x, y }), graphics: () => make(), circle: () => make(), rectangle: () => make(),
+    } }, add: { container: (x = 0, y = 0) => Object.assign(make(), { x, y }), graphics: () => make(),
+      circle: (x: number, y: number) => Object.assign(make(), { x, y }), rectangle: () => make(),
       text: (x: number, y: number, value: string, style: { fontSize: string }) =>
         Object.assign(make(value), { x, y, fontSize: Number.parseInt(style.fontSize, 10) }) } });
   scene.create();
   if (initialize) { closeShipyardModal(scene); owner.replace(createConquest()); }
   const find = (name: string) => { const found = nodes.find(node => node.name === name && !node.destroyed); if (!found) throw Error(name); return found; };
-  const click = (name: string) => { const node = find(name); if (!node.input.enabled) throw Error(`Disabled ${name}`); node.emit('pointerdown'); };
-  return { scene, owner, nodes, events, keyboard, tasks, storage, read, write, find, click };
+  const click = (name: string) => {
+    const node = find(name); if (!node.input.enabled) throw Error(`Disabled ${name}`);
+    const pointer = { x: node.x, y: node.y, id: 1, isDown: true, leftButtonDown: () => true };
+    node.emit('pointerdown', pointer); node.emit('pointerup', pointer);
+  };
+  return { scene, owner, nodes, events, keyboard, input, tasks, storage, read, write, find, click };
 }
 
 it.each([[1280, 720], [390, 844]])('shows domain breakdown and persisted own research journal at %sx%s without another turn', (width, height) => {
@@ -115,6 +126,48 @@ it.each([[1280, 720], [390, 844]])('shows domain breakdown and persisted own res
   expect(test.find('choice-0').text).toContain('открытие: ход 1');
   expect(test.find('choice-1').text).toContain('конца хода 3');
   expect(test.owner.state).toEqual(before);
+  test.events.emit('shutdown');
+});
+
+it('navigates generated256 without commands/IO, selects projected worlds and resets only on replacement', () => {
+  const test = fixture(), generated = browserGenerator.generateBrowserGalaxy(256, 12345);
+  if (!generated.ok) throw Error(generated.message);
+  test.owner.replace(createConquest({ mode: 'local' }, getDefaultResearchTree(), 12345, generated.map));
+  const before = structuredClone(test.owner.state);
+  test.read.mockClear(); test.write.mockClear();
+  while (test.find('conquest-map-plus').input.enabled) test.click('conquest-map-plus');
+  expect(test.find('conquest-map-scale').text).toBe('1600%');
+  const obsolete = test.find('conquest-map-fit').listeners('pointerdown')[0];
+  test.owner.render(); obsolete();
+  expect(test.find('conquest-map-scale').text).toBe('1600%');
+  test.click('conquest-map-fit');
+  const marker = test.nodes.find(node => !node.destroyed && node.name.startsWith('conquest-system-') &&
+    node.name !== `conquest-system-${test.owner.selected}`);
+  if (!marker) throw Error('Expected a world marker');
+  test.click(marker.name); expect(test.owner.selected).toBe(marker.name.slice('conquest-system-'.length));
+  test.click('conquest-map-plus'); test.click('conquest-tab-fleet');
+  expect(test.find('conquest-map-scale').text).toBe('125%');
+  expect(test.owner.state).toEqual(before);
+  expect(test.read).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  test.owner.replace(before); expect(test.find('conquest-map-scale').text).toBe('100%');
+  test.events.emit('shutdown');
+  for (const event of ['pointermove', 'pointerup', 'pointerupoutside', 'gameout']) expect(test.input.listenerCount(event)).toBe(0);
+});
+
+it('mobile map closes on selection/ESC without a turn and retains zoom until the next party', () => {
+  const test = fixture(new Map(), true, 390, 844), before = structuredClone(test.owner.state);
+  test.read.mockClear(); test.write.mockClear();
+  test.click('conquest-open-map'); test.click('conquest-map-plus');
+  expect(test.find('conquest-map-scale').text).toBe('125%');
+  test.click('conquest-system-eden');
+  expect(test.owner.selected).toBe('eden');
+  expect(test.nodes.some(node => !node.destroyed && node.name === 'conquest-map-close')).toBe(false);
+  test.click('conquest-open-map'); expect(test.find('conquest-map-scale').text).toBe('125%');
+  test.keyboard.emit('keydown-ESC');
+  expect(test.nodes.some(node => !node.destroyed && node.name === 'conquest-map-close')).toBe(false);
+  expect(test.owner.state).toEqual(before);
+  expect(test.read).not.toHaveBeenCalled(); expect(test.write).not.toHaveBeenCalled();
+  expect(test.input.listenerCount('pointermove')).toBe(0);
   test.events.emit('shutdown');
 });
 

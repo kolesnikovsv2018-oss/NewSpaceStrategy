@@ -14,6 +14,7 @@ import { createCampaignMatch, executeMatchCommand, executeMatchAiTurn, convertMa
   type CampaignMatch, type CampaignScenario, type CampaignOutcome, type MatchAiTurnResult } from '../domain/campaignMatch';
 import type { CampaignControl } from '../domain/campaignControl';
 import type { AiTurnRequest } from '../domain/campaignAiPlanner';
+import type { GalaxyMapState } from '../ui/GalaxyMapWidget';
 
 interface PendingOperation {
   action: CampaignConfirmation;
@@ -75,6 +76,7 @@ export class MainScene extends Phaser.Scene {
   private fleetTravelOpen = false;
   private fleetDestinationIndex = 0;
   private fleetTransitPage = 0;
+  private mapState: GalaxyMapState = {};
 
   constructor() { super({ key: 'MainScene' }); }
 
@@ -88,6 +90,7 @@ export class MainScene extends Phaser.Scene {
       this.invalidateOperation();
       this.input.keyboard?.off('keydown-ESC', this.onEscape);
       this.panel?.destroy(); this.panel = undefined;
+      this.mapState = {};
       this.match = undefined; this.pending = undefined; this.aiPhase = 'idle';
       this.message = ''; this.error = false;
       this.aiSummary = undefined;
@@ -105,6 +108,7 @@ export class MainScene extends Phaser.Scene {
     const result = createCampaignMatch(mode === 'local' ? { mode } : { mode, aiPolicy: 'expansion-v1' }, scenario);
     if (!result.ok) { this.error = true; this.message = result.message; this.render(); return; }
     this.match = result.match;
+    this.mapState = {};
     this.aiPhase = 'idle';
     this.factionId = 'blue'; this.selectedId = 'sol'; this.pending = undefined;
     this.productionOpen = false; this.catalog = undefined; this.choiceIndex = 0; this.completedPage = 0;
@@ -137,6 +141,7 @@ export class MainScene extends Phaser.Scene {
     this.completedPage = Math.max(0, Math.min(this.completedPage, view.production.completed.filter(record => record.systemId === systemId).length - 1));
     this.shipsPage = Math.max(0, Math.min(this.shipsPage, view.ships.filter(ship => isShipAtColony(ship, systemId)).length - 1));
     this.panel = new CampaignPanel(this, view, {
+      map: this.mapState,
       selectedId: this.selectedId, message: this.message, error: this.error, pending: this.pending,
       aiSummary: aiMode ? undefined : this.aiSummary,
       aiMode, aiPhase: this.aiPhase, running: this.executing,
@@ -151,6 +156,7 @@ export class MainScene extends Phaser.Scene {
           fleetPage: this.fleetPage, memberPage: this.fleetMemberPage,
           travel: this.fleetTravelOpen ? { fleetPage: this.fleetPage, destinationIndex: this.fleetDestinationIndex, transitPage: this.fleetTransitPage } : undefined } : undefined } : undefined
     }, {
+      mapChange: state => { this.mapState = state; },
       select: id => {
         if (this.pending) return;
         this.aiSummary = undefined;
@@ -522,6 +528,7 @@ export class MainScene extends Phaser.Scene {
 
   private replaceMatch(match: CampaignMatch): void {
     this.invalidateOperation(); this.match = match; this.clearPanels();
+    this.mapState = {};
     const run = match.run;
     this.aiPhase = this.isRedAi() ? 'paused' : 'idle';
     this.factionId = run.control.mode === 'human-vs-ai' ? 'blue' : run.session.turn % 2 ? 'blue' : 'red';

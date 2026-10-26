@@ -5,6 +5,7 @@ import { ProductionPanel, type ProductionPanelState, type ProductionPanelActions
 import { BudgetPanel } from './BudgetPanel';
 import type { AiTurnSummary } from '../domain/campaignAiExecutor';
 import type { CampaignOutcome, CampaignScenario } from '../domain/campaignMatch';
+import { GalaxyMapWidget, type GalaxyMapState } from './GalaxyMapWidget';
 
 export type CampaignConfirmation = 'new' | 'menu' | 'save' | 'load' | 'ai' | 'resume' | 'takeover';
 const confirmationText: Record<CampaignConfirmation, string> = {
@@ -32,6 +33,7 @@ interface PanelState {
   outcome?: CampaignOutcome;
   budgetOpen?: boolean;
   production?: ProductionPanelState;
+  map: GalaxyMapState;
 }
 interface PanelActions {
   select: (id: SystemId) => void;
@@ -43,6 +45,7 @@ interface PanelActions {
   toggleProduction: () => void;
   toggleBudget: () => void;
   production: ProductionPanelActions;
+  mapChange: (state: GalaxyMapState) => void;
   pause?: () => void;
   chooseMode?: (mode: 'local' | 'human-vs-ai') => void;
   chooseScenario?: (scenario: CampaignScenario) => void;
@@ -56,6 +59,7 @@ export class CampaignPanel {
   private disposed = false;
   private production?: ProductionPanel;
   private budget?: BudgetPanel;
+  private map?: GalaxyMapWidget;
 
   constructor(private readonly scene: Phaser.Scene, session: CampaignSessionView, state: PanelState, actions: PanelActions) {
     const view = session.galaxy;
@@ -97,22 +101,17 @@ export class CampaignPanel {
       this.production = new ProductionPanel(scene, session, state.selectedId, state.production, actions.production, blocked, readOnly);
     } else {
       this.label(46, 620, '○ Неизвестно     ◇ Разведано     ● Колония', 15, '#b5c7dc');
-      const positions = new Map(view.systems.map(system => [system.id, { x: 115 + system.x * 208, y: 348 - system.y * 108 }]));
-      for (const [from, to] of view.lanes) {
-        const a = positions.get(from), b = positions.get(to);
-        if (a && b) graphics.lineStyle(2, 0x34536d).lineBetween(a.x, a.y, b.x, b.y);
-      }
-      for (const system of view.systems) {
-        const point = positions.get(system.id)!;
-        const known = system.visibility === 'explored';
-        const color = !known ? 0x728398 : system.ownerId === 'blue' ? 0x60bdff : system.ownerId === 'red' ? 0xff927d : 0x88e5ca;
-        if (system.id === state.selectedId) graphics.lineStyle(2, 0xe2f5ff).strokeCircle(point.x, point.y, 29);
-        graphics.fillStyle(color, 0.12).fillCircle(point.x, point.y, 22);
-        graphics.fillStyle(color).fillCircle(point.x, point.y, known ? 9 : 4);
-        const marker = !known ? '○' : system.ownerId === null ? '◇' : '●';
-        this.button(point.x - 67, point.y + 34, `${marker} ${system.name}`, `system-${system.id}`,
-          () => actions.select(system.id), blocked);
-      }
+      this.map = new GalaxyMapWidget(scene, this.root, {
+        area: { x: 46, y: 274, width: 776, height: 332 }, toolbarY: 218,
+        worlds: view.systems.map(system => ({
+          id: system.id, name: system.name, x: system.x, y: -system.y,
+          color: system.visibility === 'unknown' ? 0x728398 : system.ownerId === 'blue' ? 0x60bdff : system.ownerId === 'red' ? 0xff927d : 0x88e5ca,
+          marker: system.visibility === 'unknown' ? '○' : system.ownerId === null ? '◇' : '●'
+        })), lanes: view.lanes, state: state.map, selectedId: state.selectedId,
+        prefix: 'campaign', worldPrefix: 'system-',
+        enabled: () => !this.disposed && !blocked,
+        change: actions.mapChange, select: actions.select
+      });
     }
     this.label(892, 126, 'СТОРОНА НАБЛЮДЕНИЯ', 13, '#859bb6');
     this.label(892, 150, ownerName(view.factionId), 22, view.factionId === 'blue' ? '#60bdff' : '#ff927d').setName('campaign-side');
@@ -189,5 +188,5 @@ export class CampaignPanel {
     text.on('pointerdown', () => { if (!this.disposed) action(); });
   }
 
-  destroy(): void { if (this.disposed) return; this.disposed = true; this.production?.destroy(); this.budget?.destroy(); this.root.destroy(); }
+  destroy(): void { if (this.disposed) return; this.disposed = true; this.map?.destroy(); this.production?.destroy(); this.budget?.destroy(); this.root.destroy(); }
 }

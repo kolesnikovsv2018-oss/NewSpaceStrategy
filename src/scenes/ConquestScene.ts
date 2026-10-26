@@ -19,6 +19,7 @@ import { button, text, fitText, chooseItem, conquestDialogLayout, CONQUEST_HELP 
 import { resizeCampaignViewport } from '../ui/CampaignViewport';
 import { openShipyardModal, closeShipyardModal, isShipyardModalOpen } from '../ui/ShipyardModal';
 import { CampaignProjectPanel } from '../ui/CampaignProjectPanel';
+import { GalaxyMapWidget, type GalaxyMapState } from '../ui/GalaxyMapWidget';
 
 type Tab = 'research' | 'production' | 'fleet' | 'battles';
 function productionTiming(view: ConquestView, systemId: SystemId): string {
@@ -66,6 +67,8 @@ export class ConquestScene extends Phaser.Scene {
   private projectPanel?: CampaignProjectPanel;
   private projectGeneration = 0;
   private narrowWorkersOpen = false;
+  private mapState: GalaxyMapState = {};
+  private mapWidget?: GalaxyMapWidget;
 
   constructor(private readonly mapRepository: GalaxyMapRepository = new LocalGalaxyMapRepository()) {
     super({ key: 'ConquestScene' });
@@ -87,6 +90,7 @@ export class ConquestScene extends Phaser.Scene {
       closeShipyardModal(this); this.root?.destroy(true); this.root = undefined; this.replay = undefined; this.frames = undefined;
       this.projectGeneration++;
       this.projectPanel?.destroy(); this.projectPanel = undefined;
+      this.mapWidget?.destroy(); this.mapWidget = undefined; this.mapState = {};
       Reflect.deleteProperty(this, 'state');
       this.scale?.setGameSize(1280, 720);
     });
@@ -122,6 +126,7 @@ export class ConquestScene extends Phaser.Scene {
     this.projectPanel?.destroy(); this.projectPanel = undefined;
     this.pauseAi();
     this.state = conquestSchema.parse(state);
+    this.mapState = {};
     this.observer = this.state.control.mode === 'human-vs-ai' ? 'blue' : this.state.session.turn % 2 ? 'blue' : 'red';
     this.selected = this.homeSelection();
     this.phase = this.isAiTurn() ? 'paused' : 'idle';
@@ -407,6 +412,7 @@ export class ConquestScene extends Phaser.Scene {
 
   private render(): void {
     if (this.disposed) return;
+    this.mapWidget?.destroy(); this.mapWidget = undefined;
     this.root?.destroy(true);
     const root = this.add.container(0, 0).setName('conquest-root'); this.root = root;
     if (this.narrow) { this.renderNarrow(); return; }
@@ -469,21 +475,9 @@ export class ConquestScene extends Phaser.Scene {
       manual && selected.visibility === 'explored' && !Object.prototype.hasOwnProperty.call(view.environmentKnowledge, this.selected), 180);
     const generated = !!this.state.session.galaxy.map;
     if (generated) text(this, root, 24, 118, `Миров: ${view.galaxy.systems.length} · seed: ${this.state.session.galaxy.map!.seed}`, 12);
-    const positions = new Map(view.galaxy.systems.map(system => [system.id, generated
-      ? { x: 40 + system.x * 0.65, y: 135 + system.y * 0.16 }
-      : { x: 85 + system.x * 160, y: 150 + (1 - system.y) * 48 }]));
-    for (const system of view.galaxy.systems) {
-      const position = positions.get(system.id)!;
-      const color = system.visibility === 'unknown' ? 0x54606a : system.ownerId === 'blue' ? 0x55baff : system.ownerId === 'red' ? 0xf08070 : 0x8edfc1;
-      const node = this.add.circle(position.x, position.y, generated ? 3 : 14, color).setName(`conquest-system-${system.id}`);
-      if (!generated) node.setInteractive({ useHandCursor: true });
-      if (this.selected === system.id) node.setStrokeStyle(3, 0xffffff);
-      node.on('pointerdown', () => {
-        if (this.root !== root || this.disposed || this.projectPanel || isShipyardModalOpen(this)) return;
-        this.selected = system.id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
-      }); root.add(node);
-      if (!generated || this.selected === system.id) text(this, root, position.x - 35, position.y + 8, this.shorten(system.name, 10), 14);
-    }
+    this.mapWidget = this.createMap(view, root, { x: 24, y: 188, width: 680, height: 130 }, 136,
+      () => this.root === root && !this.projectPanel && !isShipyardModalOpen(this));
+    this.control(370, 136, 'Развернуть карту', () => this.openMap(), 'conquest-open-map', true, 190);
     const tabs: [Tab, string][] = [['research', 'Исследования'], ['production', 'Производство'], ['fleet', 'Корабли и группы'], ['battles', 'Бои']];
     tabs.forEach(([tab, label], index) => this.control(24 + index * 195, 340, label, () => {
       this.tab = tab; this.narrowSection = tab; this.page = 0;
@@ -495,6 +489,46 @@ export class ConquestScene extends Phaser.Scene {
     if (this.tab === 'fleet') this.renderFleet(view, manual);
     if (this.tab === 'battles') this.renderBattles(view);
     text(this, root, 24, 675, this.message, 14, '#ffc08a').setWordWrapWidth(1210).setName('conquest-message');
+  }
+
+  private createMap(view: ConquestView, parent: Phaser.GameObjects.Container,
+    area: { x: number; y: number; width: number; height: number }, toolbarY: number,
+    enabled: () => boolean, select?: (id: string) => void): GalaxyMapWidget {
+    const generated = !!this.state.session.galaxy.map;
+    return new GalaxyMapWidget(this, parent, {
+      area, toolbarY, state: this.mapState, selectedId: this.selected, prefix: 'conquest', worldPrefix: 'conquest-system-',
+      worlds: view.galaxy.systems.map(system => ({
+        id: system.id, name: system.name, x: system.x, y: generated ? system.y : -system.y,
+        color: system.visibility === 'unknown' ? 0x54606a : system.ownerId === 'blue' ? 0x55baff : system.ownerId === 'red' ? 0xf08070 : 0x8edfc1,
+        marker: system.visibility === 'unknown' ? '○' : system.ownerId ? '●' : '◇'
+      })),
+      enabled: () => !this.disposed && enabled(),
+      change: state => { this.mapState = state; },
+      select: select ?? (id => {
+        this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+      })
+    });
+  }
+
+  private openMap(): void {
+    this.pauseAi(); this.render();
+    const modal = openShipyardModal(this);
+    if (!modal) return;
+    const source = this.state, root = this.root;
+    const width = this.cameras.main.width, height = this.cameras.main.height;
+    text(this, modal.overlay, 12, 20, 'Карта галактики · перенос указателем', 16);
+    const widget = this.createMap(getConquestView(source, this.observer), modal.overlay,
+      { x: 12, y: 124, width: width - 24, height: height - 200 }, 64,
+      () => this.state === source && this.root === root && isShipyardModalOpen(this),
+      id => {
+        if (!modal.close()) return;
+        this.selected = id; this.selectedShips = []; this.selectedGroup = undefined; this.page = 0; this.render();
+      });
+    modal.overlay.once('destroy', () => {
+      widget.destroy();
+      if (!this.disposed && this.state === source && this.root === root) this.render();
+    });
+    button(this, modal.overlay, 12, height - 64, 'Закрыть · ESC', () => modal.close(), 'conquest-map-close', width - 24);
   }
 
   private renderResearch(view: ConquestView, manual: boolean): void {
@@ -872,6 +906,7 @@ export class ConquestScene extends Phaser.Scene {
       const index = view.galaxy.systems.findIndex(system => system.id === this.selected);
       this.control(12, 346, '← Мир', () => this.moveWorld(view, index - 1), 'conquest-world-prev', index > 0, half);
       this.control(20 + half, 346, 'Мир →', () => this.moveWorld(view, index + 1), 'conquest-world-next', index + 1 < view.galaxy.systems.length, half);
+      control(680, 'Карта галактики', () => this.openMap(), 'conquest-open-map');
       label(402, this.populationLabel(view) ??
         `Свои корабли: ${view.ships.filter(ship => !ship.transit && ship.systemId === this.selected).length} · чужие: ${view.enemies.filter(ship => ship.systemId === this.selected).length}`, 'conquest-population');
       label(450, `Основание: 1 млн переселенцев · ${view.foundingCost.credits}/${view.foundingCost.minerals} кр/мин`);
