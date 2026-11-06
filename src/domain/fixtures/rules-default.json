@@ -1,7 +1,7 @@
 {
   "format": "orion-rules-snapshot",
-  "schemaVersion": 12,
-  "rulesVersion": 12,
+  "schemaVersion": 13,
+  "rulesVersion": 13,
   "id": "campaign-rules-v1",
   "treeId": "orion-technologies-v11",
   "treeVersion": "research-tree-v11",
@@ -33,6 +33,47 @@
     "surveyCost": {
       "credits": 10,
       "minerals": 5
+    }
+  },
+  "diplomacy": {
+    "proposalDeadlineRounds": 4,
+    "armisticeRounds": 4,
+    "maxPendingPerSide": 1,
+    "exchangeMaxAmount": 10000,
+    "vetoWindowRounds": 4,
+    "coop": {
+      "bonusPerOwnTurn": 25,
+      "ownTurnsLimit": 4,
+      "totalCap": 100
+    },
+    "breach": {
+      "reputationPenalty": 25,
+      "trustPenalty": 50
+    },
+    "trustChanges": {
+      "exchangeAccepted": 10,
+      "coopAccepted": 10
+    },
+    "culture": {
+      "transferPerOwnTurn": 5,
+      "influenceCap": 100
+    },
+    "score": {
+      "reputationOffset": 50,
+      "reputationDivisor": 2,
+      "reputationCap": 25,
+      "trustDivisor": 4,
+      "trustCap": 25,
+      "cultureDivisor": 10,
+      "cultureCap": 10,
+      "exchangeCreditsDivisor": 10,
+      "exchangeMineralsDivisor": 5,
+      "exchangeBenefitCap": 50,
+      "coopBase": 10,
+      "armisticeBase": 0,
+      "threatCap": 10,
+      "acceptThreshold": 0,
+      "armisticeThreshold": 1
     }
   },
   "terraforming": {

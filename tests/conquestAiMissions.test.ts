@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { baselineMatrix, createBaselineStart, runBaseline } from '../src/diagnostics/conquestBaseline';
 import { conquestSchema, getConquestView, type Conquest, type ConquestCommand } from '../src/domain/conquest';

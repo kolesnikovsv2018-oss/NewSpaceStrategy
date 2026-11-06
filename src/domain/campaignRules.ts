@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { worldTypeSchema } from './worldEnvironment';
 import defaultFixture from './fixtures/rules-default.json';
+import { diplomacyRulesSchema } from './campaignDiplomacy';
 
 export const RULES_SNAPSHOT_FORMAT = 'orion-rules-snapshot';
-export const RULES_SNAPSHOT_SCHEMA_VERSION = 12;
-export const RULES_SNAPSHOT_RULES_VERSION = 12;
+export const RULES_SNAPSHOT_SCHEMA_VERSION = 13;
+export const RULES_SNAPSHOT_RULES_VERSION = 13;
 
 export const COLONY_EFFECT_TARGETS = [
   'growth-rate', 'capacity-add', 'production-output', 'science-output', 'culture-output'
@@ -286,7 +287,8 @@ export const rulesSnapshotSchema = z.object({
     productionCost: populationAmountSchema.positive()
   }).strict(),
   planetology: z.object({ policy: z.literal('survey-v1'),
-    surveyCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict() }).strict()
+    surveyCost: z.object({ credits: populationAmountSchema, minerals: populationAmountSchema }).strict() }).strict(),
+  diplomacy: diplomacyRulesSchema
 }).strict().superRefine((snapshot, ctx) => {
   const duplicateIds = new Set<string>();
   for (const effect of snapshot.effects) {

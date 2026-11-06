@@ -226,6 +226,7 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     const full = runBaseline(input);
     expect(full.status).toBe('completed');
     if (full.status !== 'completed') throw new Error('Expected completed horizon');
+    if (full.outcome.status !== 'completed') throw new Error('Expected completed outcome');
     const side = full.outcome.winner;
     const horizon = full.turnsExecuted;
     const pre = runBaseline({ ...input, maxTurns: horizon - 1 });

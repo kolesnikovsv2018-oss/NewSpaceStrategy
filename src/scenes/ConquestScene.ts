@@ -11,6 +11,7 @@ import { createColonizerDesign } from '../domain/civilianPresets';
 import type { BattleFrame } from '../domain/conquestBattle';
 import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
 import { MAX_GALAXY_WORLDS } from '../domain/galaxyMap';
+import type { DiplomacyProposal } from '../domain/campaignDiplomacy';
 import { generateBrowserGalaxy, createGalaxySeed } from '../utils/BrowserGalaxyGenerator';
 import { LocalGalaxyMapRepository, type GalaxyMapRepository } from '../utils/GalaxyMapRepository';
 import { ConquestSaveManager } from '../utils/ConquestSaveManager';
@@ -21,7 +22,7 @@ import { openShipyardModal, closeShipyardModal, isShipyardModalOpen } from '../u
 import { CampaignProjectPanel } from '../ui/CampaignProjectPanel';
 import { GalaxyMapWidget, type GalaxyMapState } from '../ui/GalaxyMapWidget';
 
-type Tab = 'research' | 'production' | 'fleet' | 'battles';
+type Tab = 'research' | 'production' | 'fleet' | 'battles' | 'diplomacy';
 function productionTiming(view: ConquestView, systemId: SystemId): string {
   const forecast = view.colonyOutput.forecast.production.find(row => row.systemId === systemId);
   if (!forecast?.orderId) return 'нет заказа';
@@ -445,7 +446,7 @@ export class ConquestScene extends Phaser.Scene {
     this.control(400, 20, 'Сохранить', () => this.save(), 'conquest-save');
     this.control(560, 20, 'Загрузить', () => this.requestLoad(), 'conquest-load');
     this.control(720, 20, 'Меню', () => this.escape(), 'conquest-menu');
-    this.control(800, 340, 'Справка', () => this.help(), 'conquest-help', true, 140);
+    this.control(870, 340, 'Справка', () => this.help(), 'conquest-help', true, 140);
     this.control(1080, 20, 'Выбрать мир', () => this.selectWorld(view), 'conquest-select-world', true, 170);
     if (this.state.control.mode === 'human-vs-ai') {
       this.control(880, 20, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?', () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover', true, 190);
@@ -484,16 +485,17 @@ export class ConquestScene extends Phaser.Scene {
     this.mapWidget = this.createMap(view, root, { x: 24, y: 188, width: 680, height: 130 }, 136,
       () => this.root === root && !this.projectPanel && !isShipyardModalOpen(this));
     this.control(370, 136, 'Развернуть карту', () => this.openMap(), 'conquest-open-map', true, 190);
-    const tabs: [Tab, string][] = [['research', 'Исследования'], ['production', 'Производство'], ['fleet', 'Корабли и группы'], ['battles', 'Бои']];
-    tabs.forEach(([tab, label], index) => this.control(24 + index * 195, 340, label, () => {
+    const tabs: [Tab, string][] = [['research', 'Исследования'], ['production', 'Производство'], ['fleet', 'Корабли и группы'], ['battles', 'Бои'], ['diplomacy', 'Дипломатия']];
+    tabs.forEach(([tab, label], index) => this.control(24 + index * 169, 340, label, () => {
       this.tab = tab; this.narrowSection = tab; this.page = 0;
       this.render();
-    }, `conquest-tab-${tab}`, true, 180));
+    }, `conquest-tab-${tab}`, true, 161));
     this.control(1020, 340, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects', true, 220);
     if (this.tab === 'research') this.renderResearch(view, manual);
     if (this.tab === 'production') this.renderProduction(view, manual);
     if (this.tab === 'fleet') this.renderFleet(view, manual);
     if (this.tab === 'battles') this.renderBattles(view);
+    if (this.tab === 'diplomacy') this.renderDiplomacy(view);
     text(this, root, 24, 675, this.message, 14, '#ffc08a').setWordWrapWidth(1210).setName('conquest-message');
   }
 
@@ -676,6 +678,95 @@ export class ConquestScene extends Phaser.Scene {
     });
     this.control(930, 385, 'Воспроизвести последний', () => this.openReplay(), 'conquest-replay', !!this.frames, 295);
     this.pager(view.battles.length, 4);
+  }
+
+  private proposalLabel(proposal: DiplomacyProposal): string {
+    const names: Record<DiplomacyProposal['kind'], string> = { coop: 'сотрудничество', armistice: 'перемирие', exchange: 'обмен' };
+    const payload = proposal.payload ? ` (${proposal.payload.credits} кр / ${proposal.payload.minerals} мин)` : '';
+    return `${names[proposal.kind]}${payload} · до раунда ${proposal.deadlineRound}`;
+  }
+
+  private requestExchange(view: ConquestView): void {
+    const variants = [
+      { credits: Math.floor(view.treasury.credits / 4), minerals: Math.floor(view.treasury.minerals / 4) },
+      { credits: Math.floor(view.treasury.credits / 2), minerals: Math.floor(view.treasury.minerals / 2) }
+    ].filter(payload => payload.credits > 0 && payload.minerals > 0);
+    if (variants.length === 0) { this.message = 'Казна пуста — для обмена нужны и кредиты, и минералы'; this.render(); return; }
+    const source = this.state;
+    chooseItem(this, 'Предложить обмен ресурсами', variants.map(payload => ({
+      label: `Отдать ${payload.credits} кр / ${payload.minerals} мин`, value: payload
+    })), payload => {
+      if (this.disposed || this.state !== source) return;
+      this.command({ kind: 'proposeDiplomacy', offerKind: 'exchange', payload });
+    });
+  }
+
+  private renderDiplomacy(view: ConquestView): void {
+    const dip = view.diplomacy;
+    const other = this.observer === 'blue' ? 'Красные' : 'Синие';
+    const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
+      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+    const canOffer = manual && dip.contacted && !dip.ownPending;
+    text(this, this.root!, 24, 385, dip.war ? `Война с фракцией ${other}` :
+      dip.armisticeExpiryRound !== null ? `Перемирие с фракцией ${other} · до раунда ${dip.armisticeExpiryRound}` :
+      dip.contacted ? `Мир с фракцией ${other}` : 'Контакта ещё нет — разверните корабли или наблюдение', 17);
+    text(this, this.root!, 24, 415, `Раунд дипломатии ${dip.round} · доверие ${dip.trust} · репутация ${dip.ownReputation} / ${dip.otherReputation}` +
+      ` · влияние ${dip.ownInfluence} / ${dip.otherInfluence}${dip.otherVetoActive ? ` · вето на предложения ${other.toLowerCase()}` : ''}`, 14).setWordWrapWidth(890);
+    dip.treaties.slice(-3).forEach((treaty, index) => {
+      const details = treaty.kind === 'coop' && treaty.coopBonusUsed && treaty.coopTurnsLeft ?
+        ` · бонус ${treaty.coopBonusUsed[this.observer]} (${treaty.coopTurnsLeft[this.observer]} ходов)` : '';
+      text(this, this.root!, 24, 442 + index * 22, `${treaty.kind === 'coop' ? 'Сотрудничество' : 'Перемирие'} · ${treaty.active ? 'активен' : 'завершён'}` +
+        `${treaty.expiryRound !== null ? ` до раунда ${treaty.expiryRound}` : ''}${details}`, 14);
+    });
+    if (dip.incomingPending) {
+      const proposal = dip.incomingPending;
+      this.control(24, 528, `Принять: ${this.proposalLabel(proposal)}`, () => this.command({ kind: 'acceptDiplomacy', proposalId: proposal.id }), 'conquest-dip-accept', manual, 440);
+      this.control(476, 528, 'Отклонить', () => this.command({ kind: 'declineDiplomacy', proposalId: proposal.id }), 'conquest-dip-decline', manual, 200);
+    } else text(this, this.root!, 24, 528, 'Входящих предложений нет', 14);
+    if (dip.ownPending) {
+      const proposal = dip.ownPending;
+      this.control(24, 578, `Отозвать своё: ${this.proposalLabel(proposal)}`, () => this.command({ kind: 'withdrawDiplomacy', proposalId: proposal.id }), 'conquest-dip-withdraw', manual, 440);
+    } else text(this, this.root!, 24, 578, 'Своих предложений нет', 14);
+    this.control(930, 385, 'Предложить сотрудничество', () => this.command({ kind: 'proposeDiplomacy', offerKind: 'coop', payload: null }), 'conquest-dip-coop', canOffer && !dip.war, 295);
+    this.control(930, 429, 'Предложить обмен ресурсами', () => this.requestExchange(view), 'conquest-dip-exchange', canOffer && !dip.war, 295);
+    this.control(930, 473, 'Предложить перемирие', () => this.command({ kind: 'proposeDiplomacy', offerKind: 'armistice', payload: null }), 'conquest-dip-armistice', canOffer && dip.war, 295);
+    this.control(930, 517, 'Объявить войну', () => this.confirm('Объявить войну? Репутация −25, доверие −50, вето на приём ваших предложений 4 раунда.', () => this.command({ kind: 'declareWar' })), 'conquest-dip-war', manual && !dip.war, 295);
+    dip.journal.slice(-2).forEach((entry, index) => {
+      text(this, this.root!, 24, 628 + index * 18, `Журнал: раунд ${entry.round} · ${entry.text}`, 14, '#8ea9c4').setWordWrapWidth(1200);
+    });
+  }
+
+  private openDiplomacy(view: ConquestView): void {
+    const dip = view.diplomacy;
+    const other = this.observer === 'blue' ? 'синими' : 'красными';
+    const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
+      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+    const items: Array<{ label: string; value: 'accept' | 'decline' | 'withdraw' | 'coop' | 'exchange' | 'armistice' | 'war' }> = [];
+    if (dip.incomingPending) {
+      items.push({ label: `Принять: ${this.proposalLabel(dip.incomingPending)}`, value: 'accept' });
+      items.push({ label: 'Отклонить входящее', value: 'decline' });
+    }
+    if (dip.ownPending) items.push({ label: `Отозвать: ${this.proposalLabel(dip.ownPending)}`, value: 'withdraw' });
+    if (manual && dip.contacted && !dip.ownPending && !dip.war) {
+      items.push({ label: 'Предложить сотрудничество', value: 'coop' });
+      items.push({ label: 'Предложить обмен (доля казны)', value: 'exchange' });
+    }
+    if (manual && dip.contacted && !dip.ownPending && dip.war) items.push({ label: 'Предложить перемирие', value: 'armistice' });
+    if (manual && !dip.war) items.push({ label: 'Объявить войну', value: 'war' });
+    const summary = `${dip.war ? `Война с ${other}` : dip.armisticeExpiryRound !== null ? `Перемирие до раунда ${dip.armisticeExpiryRound}` :
+      dip.contacted ? `Мир с ${other}` : 'Контакта нет'} · раунд ${dip.round} · доверие ${dip.trust} · репутация ${dip.ownReputation}`;
+    if (items.length === 0) { this.message = `Дипломатия: ${summary}. Доступных действий нет`; this.render(); return; }
+    const source = this.state;
+    chooseItem(this, summary, items, action => {
+      if (this.disposed || this.state !== source) return;
+      if (action === 'accept' && dip.incomingPending) this.command({ kind: 'acceptDiplomacy', proposalId: dip.incomingPending.id });
+      if (action === 'decline' && dip.incomingPending) this.command({ kind: 'declineDiplomacy', proposalId: dip.incomingPending.id });
+      if (action === 'withdraw' && dip.ownPending) this.command({ kind: 'withdrawDiplomacy', proposalId: dip.ownPending.id });
+      if (action === 'coop') this.command({ kind: 'proposeDiplomacy', offerKind: 'coop', payload: null });
+      if (action === 'armistice') this.command({ kind: 'proposeDiplomacy', offerKind: 'armistice', payload: null });
+      if (action === 'exchange') this.requestExchange(view);
+      if (action === 'war') this.confirm('Объявить войну? Репутация −25, доверие −50, вето на приём ваших предложений 4 раунда.', () => this.command({ kind: 'declareWar' }));
+    });
   }
 
   private showColonyEffects(view: ConquestView): void {
@@ -930,8 +1021,10 @@ export class ConquestScene extends Phaser.Scene {
       `Ход ${view.turn} · ${view.activeFactionId === 'blue' ? 'Синие' : 'Красные'}${this.isAiTurn() ? ` · AI: ${this.phase}` : ''}`, 'conquest-status');
     label(44, `Кредиты ${view.treasury.credits} · Минералы ${view.treasury.minerals}`);
     const half = (width - 8) / 2;
-    this.control(12, 72, 'Завершить ход', () => this.command({ kind: 'endTurn' }), 'conquest-end', manual, half);
-    this.control(20 + half, 72, 'Справка', () => this.help(), 'conquest-help', true, half);
+    const topThird = Math.floor((width - 16) / 3);
+    this.control(12, 72, 'Завершить ход', () => this.command({ kind: 'endTurn' }), 'conquest-end', manual, topThird);
+    this.control(12 + topThird + 4, 72, 'Справка', () => this.help(), 'conquest-help', true, topThird);
+    this.control(12 + 2 * (topThird + 4), 72, 'Дипломатия', () => this.openDiplomacy(view), 'conquest-dip-dialog', true, topThird);
     const tabs = [['map', 'Мир'], ['research', 'Наука'], ['production', 'Заказы'], ['fleet', 'Корабли'], ['battles', 'Бои'], ['actions', 'Партия']] as const;
     const third = (width - 16) / 3;
     tabs.forEach(([tab, title], index) => this.control(12 + (index % 3) * (third + 8), 124 + Math.floor(index / 3) * 52, title, () => {

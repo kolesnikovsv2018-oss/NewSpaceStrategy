@@ -226,19 +226,19 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":17', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":18', '"schemaVersion":999'))).toThrow();
 });
 
 it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 17, rulesVersion: 14,
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 18, rulesVersion: 15,
     conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 11 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };
   expect(() => decodeConquestSave(JSON.stringify(oldEnvelope))).toThrow();
-  for (const schemaVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
+  for (const schemaVersion of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]) {
     expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, schemaVersion }))).toThrow();
   }
   expect(() => decodeConquestSave(JSON.stringify({ ...currentEnvelope, rulesVersion: 2 }))).toThrow();

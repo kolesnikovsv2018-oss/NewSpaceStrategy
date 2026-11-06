@@ -7,6 +7,7 @@ import { getProductionQuote } from './production';
 import { getColonyProductionQuote } from './campaignOutput';
 import { createOperationalState } from './campaignOperations';
 import { conquestSchema, executeConquestAction, getConquestOutcome, getConquestView, type ConquestCommand, type ConquestView, type ConquestResult } from './conquest';
+import { shouldAcceptDiplomacyProposal, type DiplomacyScoreInput } from './campaignDiplomacy';
 import { factionIdSchema } from './campaign';
 import type { BattleFrame } from './conquestBattle';
 import { calculateColonyValue } from './campaignColonyEffects';
@@ -276,6 +277,24 @@ function selectConquestMission(view: ConquestView, ship: AiShip, reachable: read
 
 export function planConquestAction(view: ConquestView): ConquestCommand {
   const factionId = view.galaxy.factionId, expectedTurn = view.turn, fields = { factionId, expectedTurn };
+  const diplomacy = view.diplomacy;
+  // Н16: AI-дипломатия — реакция на входящие предложения с проверкой порогов и вето.
+  if (diplomacy.incomingPending) {
+    const proposal = diplomacy.incomingPending;
+    const enemyShips = view.enemies.length, ownShips = view.ships.length;
+    const threat = Math.min(diplomacy.rules.score.threatCap, Math.max(0, enemyShips * 2 - ownShips));
+    const scoreInput: DiplomacyScoreInput = {
+      reputation: diplomacy.otherReputation, trust: diplomacy.trust, influence: diplomacy.otherInfluence,
+      vetoActive: diplomacy.otherVetoActive, kind: proposal.kind, payload: proposal.payload,
+      threat, rules: diplomacy.rules };
+    if (shouldAcceptDiplomacyProposal(scoreInput).acceptable) {
+      return { ...fields, kind: 'acceptDiplomacy', proposalId: proposal.id };
+    }
+    return { ...fields, kind: 'declineDiplomacy', proposalId: proposal.id };
+  }
+  // Н16: входящие предложения обрабатываются выше по score; проактивные инициативы
+  // (coop) перенесены в хвост планировщика — они не должны перехватывать ход у
+  // операционных задач (спасение, deploy, бои, производство).
   const colonies = view.galaxy.systems.filter(system => system.visibility === 'explored' && system.ownerId === factionId);
   const potentialUnknownTarget = (id: string) => view.environmentKnowledge[id] !== 'barren';
   const hasReturnReserve = (from: string, to: string, caps: TravelCapabilities, fuel: number) => {
@@ -500,6 +519,14 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     (left.def.id < right.def.id ? -1 : left.def.id > right.def.id ? 1 : 0))[0];
   if (buildingCandidate) {
     return { ...fields, kind: 'startBuilding', systemId: buildingCandidate.colony.id, buildingId: buildingCandidate.def.id };
+  }
+  // Н16: проактивное сотрудничество — только когда нет операционных задач: инициатива
+  // не перехватывает ход у спасательных/наступательных миссий. Перемирие AI сам не
+  // инициирует; инициатива мира возможна только реакцией на входящее предложение.
+  const diplomacyTail = view.diplomacy;
+  if (!diplomacyTail.ownPending && diplomacyTail.contacted && !diplomacyTail.war &&
+    !diplomacyTail.treaties.some(treaty => treaty.active && treaty.kind === 'coop')) {
+    return { ...fields, kind: 'proposeDiplomacy', offerKind: 'coop', payload: null };
   }
   return { ...fields, kind: 'endTurn' };
 }
