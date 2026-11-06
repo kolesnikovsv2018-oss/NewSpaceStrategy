@@ -38,8 +38,8 @@ export function isColonyEffect(effect: RulesEffect): boolean {
 }
 
 export function calculateColonyValue(base: number, workers: number, target: ColonyEffectTarget,
-  worldType: ColonyWorldType, effects: readonly RulesEffect[], absoluteLimit?: number): ColonyValueBreakdown {
-  const labor = base * workers;
+  worldType: ColonyWorldType, effects: readonly RulesEffect[], absoluteLimit?: number, buildingOutput = 0): ColonyValueBreakdown {
+  const labor = base * workers + buildingOutput;
   if (!Number.isSafeInteger(labor) || labor < 0) throw new Error('Недопустимая база колониального расчёта');
   const selected = effects.filter(effect => effect.kind === 'modifier' &&
     effect.target === target && effect.worldTypes?.includes(worldType))

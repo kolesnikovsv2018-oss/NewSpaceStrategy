@@ -190,7 +190,7 @@ describe('campaign-owned project contract', () => {
     reject(state, { kind: 'replaceProject', projectId: 1, design: createDesign('battleship') }, 'INVALID_DESIGN');
     expect(decodeConquestSave(encodeConquestSave(state))).toEqual(accepted);
     const envelope = JSON.parse(encodeConquestSave(state));
-    expect(envelope.schemaVersion).toBe(16);
+    expect(envelope.schemaVersion).toBe(17);
     expect(() => decodeConquestSave(JSON.stringify({ ...envelope, schemaVersion: 5 }))).toThrow();
   });
 

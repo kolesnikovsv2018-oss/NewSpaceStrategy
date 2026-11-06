@@ -1,5 +1,5 @@
-version: 10
-id: orion-technologies-v10
+version: 11
+id: orion-technologies-v11
 initial:
   hulls:
     - fighter
@@ -31,6 +31,8 @@ nodes:
         component: scanner
       - kind: component-unlock
         component: cargoExpansion
+      - kind: building-unlock
+        buildingId: science-lab
   - id: support
     name: Флотская инфраструктура
     prerequisites: []
@@ -94,6 +96,8 @@ nodes:
     effects:
       - kind: colony-effect
         effectId: automation-output
+      - kind: building-unlock
+        buildingId: factory
   - id: scientific-method
     name: Научные методы
     prerequisites:
@@ -109,6 +113,8 @@ nodes:
     effects:
       - kind: colony-effect
         effectId: cultural-output
+      - kind: building-unlock
+        buildingId: cultural-center
   - id: miniaturization
     name: Миниатюризация
     prerequisites:

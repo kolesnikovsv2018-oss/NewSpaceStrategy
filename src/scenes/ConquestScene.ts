@@ -706,19 +706,24 @@ export class ConquestScene extends Phaser.Scene {
     const quote = view.terraforming.find(item => item.systemId === systemId)?.quote;
     const projects = view.workProjects.filter(project => project.systemId === systemId);
     const forecast = view.colonyOutput.forecast.production.find(item => item.systemId === systemId);
-    const items: Array<{ label: string; value: number }> = projects.map(project => {
+    const items: Array<{ label: string; value: number }> = [{ label: 'Здания колонии…', value: -1 }];
+    for (const project of projects) {
       const refund = getColonyProjectRefund(project);
       const timing = forecast?.orderId !== project.id ? 'ожидает FIFO' : !forecast.productionPoints
         ? 'пауза: нет промышленности' : `${Math.ceil((project.productionCost - project.productionProgress) / forecast.productionPoints)} своих ходов`;
-      return { label: `#${project.id} ${project.kind === 'terraform' ? 'toxic→habitable' : `refit ship#${project.shipId}`}: ${project.productionProgress}/${project.productionCost}, ${timing}. Отмена: ${refund.credits}/${refund.minerals}`,
-        value: project.id };
-    });
+      const title = project.kind === 'terraform' ? 'toxic→habitable' : project.kind === 'building'
+        ? `здание ${view.buildings.find(def => def.id === project.buildingId)?.name ?? project.buildingId}`
+        : `refit ship#${project.shipId}`;
+      items.push({ label: `#${project.id} ${title}: ${project.productionProgress}/${project.productionCost}, ${timing}. Отмена: ${refund.credits}/${refund.minerals}`,
+        value: project.id });
+    }
     items.push({ label: quote?.ok
       ? `Начать toxic→habitable: ${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков общего FIFO`
       : quote?.reason ?? 'Нужна собственная колония', value: 0 });
     chooseItem(this, 'Общий FIFO: корабли и работы мира', items, id => {
       if (this.disposed || this.state !== source) return;
       if (!manual) { this.message = 'Работы доступны только активной управляемой стороне'; this.render(); return; }
+      if (id === -1) { this.showBuildings(view, manual); return; }
       if (id) {
         const project = projects.find(project => project.id === id)!;
         const refund = getColonyProjectRefund(project);
@@ -728,6 +733,40 @@ export class ConquestScene extends Phaser.Scene {
       } else if (quote?.ok) this.confirm(`toxic → habitable: ${quote.cost.credits} кр./${quote.cost.minerals} мин., ${quote.productionCost} очков.\nОплатить проект? Промышленность общая с кораблями; захват отменяет работу без возврата.`, () =>
         this.command({ kind: 'startTerraform', systemId }));
       else { this.message = quote?.reason ?? 'Работа недоступна'; this.render(); }
+    });
+  }
+
+  private showBuildings(view: ConquestView, manual: boolean): void {
+    const systemId = this.selected;
+    const source = this.state;
+    this.pauseAi(); this.render();
+    const forecast = view.colonyOutput.forecast.production.find(item => item.systemId === systemId);
+    const installed = forecast?.buildings ?? [];
+    const usedSlots = installed.reduce((sum, row) => sum + row.levels, 0);
+    const items = view.buildings.map(def => {
+      const entry = installed.find(row => row.buildingId === def.id);
+      const level = entry?.levels ?? 0;
+      const unlock = view.research.completed.includes(def.unlockResearchId);
+      const worldType = view.population.find(item => item.systemId === systemId)?.worldType ?? 'habitable';
+      const compatible = def.worlds.includes(worldType);
+      const reason = !unlock ? 'не изучено' : !compatible ? 'среда несовместима' :
+        level >= def.maxLevels ? 'предел уровней' : 'доступно к постройке';
+      return { label: `${def.name}: уровень ${level}/${def.maxLevels} · +${def.outputPerLevel} очк./уровень · содержание ${def.upkeep} кр./ход · цена ${def.cost.credits} кр./${def.cost.minerals} мин., ${def.productionCost} очков FIFO · ${reason}`,
+        value: def.id };
+    });
+    chooseItem(this, `Здания колонии · мест ${usedSlots}/${view.colonyOutput.rules.colonyBuildingSlots}`, items, buildingId => {
+      if (this.disposed || this.state !== source) return;
+      if (!manual) { this.message = 'Работы доступны только активной управляемой стороне'; this.render(); return; }
+      const def = view.buildings.find(def => def.id === buildingId)!;
+      const entry = installed.find(row => row.buildingId === buildingId);
+      if (entry) {
+        const refund = { credits: Math.floor(def.cost.credits / 2), minerals: Math.floor(def.cost.minerals / 2) };
+        this.confirm(`Снести один уровень здания ${def.name}? Возврат ${refund.credits} кр./${refund.minerals} мин., мгновенно.`, () =>
+          this.command({ kind: 'demolishBuilding', systemId, buildingId }));
+        return;
+      }
+      this.confirm(`${def.name}: ${def.cost.credits} кр./${def.cost.minerals} мин., ${def.productionCost} очков общего FIFO.\nОплатить строительство? Конкурирует с кораблями и работами мира; содержание ${def.upkeep} кр./ход после завершения.`, () =>
+        this.command({ kind: 'startBuilding', systemId, buildingId }));
     });
   }
 

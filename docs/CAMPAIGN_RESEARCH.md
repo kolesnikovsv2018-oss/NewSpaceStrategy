@@ -9,14 +9,18 @@
 
 ## Дерево и эффекты
 
-Текущее дерево Н14 — strict version10. strategic-drive и strategic-tank
+Текущее дерево Н15 — strict version11, ID `orion-technologies-v11`.
+Н15 добавил эффект `building-unlock`: applied открывает `science-lab`,
+automation — `factory`, cultural-practices — `cultural-center`
+([здания](CAMPAIGN_OUTPUT.md), [rules](CAMPAIGN_RULES.md)).
+Н14 исторически: strategic-drive и strategic-tank
 стоят по3000 science после engineering и открывают fast/extended-tank.
 Прежние engineering/ordnance/capital открывают выбор jump400/800/1500,
 не обновляют уже построенные ships. Scanner использует отдельную
 нынешнюю дальность стороны. Формулы/доплаты — [Н14](CAMPAIGN_TRAVEL.md).
 Default YAML/JSON/source и snapshot используют один текущий формат.
 
-Единственная актуальная схема дерева — version9, ID `orion-technologies-v9`.
+Историческая единственная актуальная схема дерева Н12 — version9, ID `orion-technologies-v9`.
 Н12 добавил [миниатюризацию](CAMPAIGN_EQUIPMENT_REFIT.md):4000 науки после
 engineering, typed equipment-variant-unlock compact. Numeric bands
 сохраняются, preset exemption больше нет.

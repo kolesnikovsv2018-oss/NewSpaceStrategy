@@ -5,7 +5,29 @@ description: 'Контекст Orion, стек, карта кода и план 
 
 # Orion: быстрый вход в проект
 
-## Актуальная отправная точка Н14/Д16
+## Актуальная отправная точка Н15/Д16
+
+**Н15 принят2026-11-06:** [контракт зданий](../../../docs/CAMPAIGN_OUTPUT.md),
+[правила snapshot12](../../../docs/CAMPAIGN_RULES.md), [дерево v11](../../../docs/CAMPAIGN_RESEARCH.md),
+[отчёт](../../../reports/2026-11-06/01-n15-implementation.md).
+Каталог rules.buildings: science-lab/factory/cultural-center (unlock applied/automation/
+cultural-practices через building-unlock), цена/productionCost/содержание/maxLevels2/worlds
+habitable+toxic; colonyBuildingSlots=4 (установленные+строящиеся). Проект kind:'building'
+в общем FIFO с кораблями/terraform/refit (MAX_COLONY_QUEUE3, лимит100, общий lastOrderId);
+уровни хранит только колония, derived output не персистится. Вклад здания — до одного
+прохода эффектов Н09; завершённое в T действует со следующего own endTurn; содержание
+после населения/флота, неоплаченное здание детерминированно неактивно (прогноз показывает
+buildingPaid/Shortfall и активность); демонтаж уровня за floor(½ цены); захват/среда не
+чинят save. Commands startBuilding/demolishBuilding; UI «Здания колонии…» в Работы мира
+(места/содержание/маржинальный выпуск); AI строит после флота и terraform в пределах
+слотов и pending. Версии save17/rules14/rules-snapshot12/tree11/baseline13; мирные кодеки
+6/4, 7, 8 не тронуты. Приёмкой исправлены: предсуществующий подсчёт очереди без
+workProjects в AI (QUEUE_FULL) и предел мест без pending. 3989/80 тестов (включая доменные регрессии campaignBuildings 10/10 — негативные ветви приёмки), strict/build;
+диагностики Д13–Д16 перебазированы на текущую схему (новые чекпоинты 40-41 before-199/200
+в reports/2026-11-06/n15-ai-development). Actual Chromium CSS1280×720 и 390×844: 28/28
+на каждом профиле (платный build→FIFO→завершение→save/reload/load oracle→демонтаж→отмена;
+0 pageerrors, 0 console-ошибок приложения, 1 canvas). Каталог/цены — начальный баланс, не
+утверждены пользователем (прецедент Н08). Далее Н16; нижние записи Н14/Д16 — история.
 
 **Д16 выполнен2026-10-26:** [результаты и проверки после Н15–Н19](../../../reports/2026-10-26/02-ai-development-and-post-n15-n19.md).
 Исправлены две неэффективности: чистый прирост industry без головы FIFO

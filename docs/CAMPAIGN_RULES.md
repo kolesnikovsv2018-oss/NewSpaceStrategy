@@ -1,6 +1,14 @@
 # Н04 — библиотечный контракт эффектов и rules snapshot
 
-Н14: текущий snapshot11/rules11/tree10. Travel policy project-travel-v1
+Н15: текущий snapshot12/rules12/tree11. Новый раздел `buildings` — строгий
+каталог зданий (id/name/target/unlockResearchId/cost/productionCost/upkeep/
+outputPerLevel/maxLevels/worlds) с уникальными id и unlock-исследованиями;
+`colonyOutput.colonyBuildingSlots` задаёт предел суммарных уровней на колонию.
+Unlock-эффект дерева `building-unlock` привязан к каталогу в Conquest
+(каждое здание открывается ровно одним узлом). Исполнители и очередь —
+[выпуск колоний](CAMPAIGN_OUTPUT.md).
+
+Н14: исторический snapshot11/rules11/tree10. Travel policy project-travel-v1
 задаёт проектное оснащение и общий quote; scanner initialRange200 остаётся
 отдельным. Default fixture автономен, runtime не читает внешнюю библиотеку.
 Матрица — [сохранения](CAMPAIGN_SAVE.md), формулы — [travel](CAMPAIGN_TRAVEL.md).

@@ -11,7 +11,7 @@ import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveMan
 import { calculateShipStats } from '../domain/shipDesign';
 import { getTravelCapabilities } from '../domain/campaignTravel';
 
-export const BASELINE_VERSION = 12;
+export const BASELINE_VERSION = 13;
 export const BASELINE_TRACE_VERSION = 1;
 export const BASELINE_SEEDS = [
   { mapSeed: 41, campaignSeed: 101 },
@@ -64,7 +64,7 @@ export interface CommandRecord {
 }
 export interface BaselineRun {
   input: BaselineInput;
-  versions: { baseline: 12; save: 16; rules: 13; battlePolicy: Conquest['battlePolicy']; tree: 10; tacticalRules: 'design-combat-v1' };
+  versions: { baseline: 13; save: 17; rules: 14; battlePolicy: Conquest['battlePolicy']; tree: 11; tacticalRules: 'design-combat-v1' };
   map: GalaxyMap;
   lineups: { first: CampaignFactionId; second: CampaignFactionId };
   controllers: 'diagnostic-all-ai-command-runner';
@@ -347,7 +347,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
   const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
   const result: BaselineRun = {
-    input: options, versions: { baseline: 12, save: 16, rules: 13, battlePolicy: state.battlePolicy, tree: 10, tacticalRules: 'design-combat-v1' },
+    input: options, versions: { baseline: 13, save: 17, rules: 14, battlePolicy: state.battlePolicy, tree: 11, tacticalRules: 'design-combat-v1' },
     map: start.map, lineups: { first, second: first === 'blue' ? 'red' : 'blue' },
     controllers: 'diagnostic-all-ai-command-runner', status: 'timeout', outcome: getConquestOutcome(state),
     turnsExecuted: resume?.turnsExecuted ?? 0, commands: [], metrics: { blue: sideMetrics(), red: sideMetrics() },

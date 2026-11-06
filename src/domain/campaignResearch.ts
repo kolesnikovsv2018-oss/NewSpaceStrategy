@@ -14,6 +14,7 @@ const researchEffectSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('component-unlock'), component: kindSchema }).strict(),
   z.object({ kind: z.literal('variant-tier'), tier: z.number().int().min(2).max(4) }).strict(),
   z.object({ kind: z.literal('colony-effect'), effectId: researchIdSchema }).strict(),
+  z.object({ kind: z.literal('building-unlock'), buildingId: researchIdSchema }).strict(),
   z.object({ kind: z.literal('colonization-unlock'), worldType: z.literal('toxic') }).strict(),
   z.object({ kind: z.literal('terraform-unlock'), transitionId: z.literal('toxic-to-habitable') }).strict(),
   z.object({ kind: z.literal('equipment-variant-unlock'), variant: z.literal('compact') }).strict(),
@@ -35,7 +36,7 @@ const variantTierSchema = z.object({
   ammo: z.number().finite().min(0).max(1), rechargeDelay: z.number().finite().min(0).max(60)
 }).strict();
 export const researchTreeSchema = z.object({
-  version: z.literal(10), id: researchIdSchema, initial: unlockSchema,
+  version: z.literal(11), id: researchIdSchema, initial: unlockSchema,
   nodes: z.array(researchNodeSchema).min(1).max(64),
   variantPolicy: z.object({ id: z.literal('component-bands-v1'), tiers: z.array(variantTierSchema).length(4) }).strict()
 }).strict().superRefine((tree, context) => {
@@ -83,14 +84,15 @@ export function parseProfiledResearchTree(input: unknown): ProfiledResearchTree 
 }
 
 const defaultTree: ResearchTree = {
-  version: 10, id: 'orion-technologies-v10',
+  version: 11, id: 'orion-technologies-v11',
   initial: { hulls: ['fighter', 'corvette', 'colonizer'], components: ['engine', 'beam'] },
   nodes: [
     { id: 'engineering', name: 'Инженерные методы', prerequisites: [], researchCost: 2000,
       effects: [{ kind: 'variant-tier', tier: 2 }, { kind: 'strategic-range', maxJumpDistance: 400 }] },
     { id: 'applied', name: 'Прикладные службы', prerequisites: [], researchCost: 2000,
-      effects: ['mining', 'repair', 'scanner', 'cargoExpansion'].map(component =>
-        ({ kind: 'component-unlock' as const, component: kindSchema.parse(component) })) },
+      effects: [...['mining', 'repair', 'scanner', 'cargoExpansion'].map(component =>
+        ({ kind: 'component-unlock' as const, component: kindSchema.parse(component) })),
+        { kind: 'building-unlock', buildingId: 'science-lab' }] },
     { id: 'support', name: 'Флотская инфраструктура', prerequisites: [], researchCost: 3000,
       effects: [{ kind: 'hull-unlock', hullId: 'frigate' }, { kind: 'component-unlock', component: 'shield' },
         { kind: 'component-unlock', component: 'armor' }] },
@@ -106,11 +108,11 @@ const defaultTree: ResearchTree = {
     { id: 'biosphere', name: 'Биосфера', prerequisites: ['biology'], researchCost: 4000,
       effects: [{ kind: 'colony-effect', effectId: 'biosphere-capacity' }] },
     { id: 'automation', name: 'Автоматизация', prerequisites: ['engineering'], researchCost: 3000,
-      effects: [{ kind: 'colony-effect', effectId: 'automation-output' }] },
+      effects: [{ kind: 'colony-effect', effectId: 'automation-output' }, { kind: 'building-unlock', buildingId: 'factory' }] },
     { id: 'scientific-method', name: 'Научные методы', prerequisites: ['applied'], researchCost: 3000,
       effects: [{ kind: 'colony-effect', effectId: 'scientific-output' }] },
     { id: 'cultural-practices', name: 'Культурные практики', prerequisites: [], researchCost: 2000,
-      effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }] },
+      effects: [{ kind: 'colony-effect', effectId: 'cultural-output' }, { kind: 'building-unlock', buildingId: 'cultural-center' }] },
     { id: 'miniaturization', name: 'Миниатюризация', prerequisites: ['engineering'], researchCost: 4000,
       effects: [{ kind: 'equipment-variant-unlock', variant: 'compact' }] },
     { id: 'terraforming', name: 'Терраформирование', prerequisites: ['biosphere', 'toxic-adaptation'], researchCost: 6000,
@@ -332,6 +334,7 @@ export function describeResearchEffect(effect: ResearchEffect, tree: ResearchTre
   if (effect.kind === 'strategic-range') return `стратегическая дальность ${effect.maxJumpDistance} гал. ед.`;
   if (effect.kind === 'hull-unlock') return `корпус ${HULLS[effect.hullId].name}`;
   if (effect.kind === 'component-unlock') return `семейство ${createComponentWithId(effect.component, 'research-label').name}`;
+  if (effect.kind === 'building-unlock') return `доступ к строительству здания ${effect.buildingId}`;
   if (effect.kind === 'colony-effect') {
     const entry = catalog.find(item => item.id === effect.effectId);
     if (!entry) throw new Error('Неизвестный колониальный эффект');

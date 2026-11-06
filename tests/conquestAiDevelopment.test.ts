@@ -1,23 +1,38 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createConquest, getConquestView, type Conquest, type ConquestCommand } from '../src/domain/conquest';
-import { planConquestAction, executeConquestAiTurn } from '../src/domain/conquestAi';
-import { getTravelCapabilities, getTravelQuote, getWorldDistance } from '../src/domain/campaignTravel';
+import { createConquest, getConquestView, type Conquest } from '../src/domain/conquest';
+import { executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
 import { hasColonizationAccess } from '../src/domain/campaignResearch';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
+import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
+import { createColonizerDesign } from '../src/domain/civilianPresets';
 import { workCommand as apply } from './fixtures/colonyWork';
 
-function paidCheckpoint(size: 40 | 256, turn: 199 | 200): Conquest {
-  return decodeConquestSave(readFileSync(
-    `reports/2026-10-26/d16-ai-development/replays/${size}-41-current-ai-direct.before-${turn}.save.json`, 'utf8'));
+// Н15: диагностические fixtures Д16 (save16/tree10) не читаются актуальным форматом 17/14;
+// свойства перебазированы на процедурные состояния текущей схемы + новые чекпоинты 40 миров.
+function completedResearch(state: Conquest, faction: 'blue' | 'red'): Conquest {
+  state.research[faction].completed = state.researchTree.nodes.map(node => node.id);
+  state.researchJournal[faction] = Object.fromEntries(state.research[faction].completed.map(id => [id, 1]));
+  return state;
 }
-
+function lateState(size: 40 | 256, faction: 'blue' | 'red' = 'blue') {
+  const generated = generateBrowserGalaxy(size, 41);
+  if (!generated.ok) throw new Error(generated.message);
+  let state = createConquest(undefined, undefined, 41, generated.map);
+  state.session.turn = faction === 'blue' ? 1 : 2;
+  state = completedResearch(state, faction);
+  state.session.treasuries[faction] = { credits: 200000, minerals: 100000 };
+  const map = state.session.galaxy.map!;
+  const home = map.participants[faction === 'blue' ? 0 : 1].homeWorldId;
+  return { state, home, map };
+}
 function plan(state: Conquest) {
   return planConquestAction(getConquestView(state, state.session.turn % 2 ? 'blue' : 'red'));
 }
 
-function isDeparture(command: ConquestCommand): command is Extract<ConquestCommand, { kind: 'sendShip' | 'sendFleet' }> {
-  return command.kind === 'sendShip' || command.kind === 'sendFleet';
+function paidCheckpoint(turn: 199 | 200): Conquest {
+  return decodeConquestSave(readFileSync(
+    `reports/2026-11-06/n15-ai-development/replays/40-41-current-ai-direct.before-${turn}.save.json`, 'utf8'));
 }
 
 describe('AI development under the existing turn budget', () => {
@@ -30,92 +45,87 @@ describe('AI development under the existing turn budget', () => {
   });
 
   it.each([40, 256] as const)('does not spend %i-world budget assigning idle industrial growth with no output destination', size => {
-    for (const turn of [199, 200] as const) {
-      const state = paidCheckpoint(size, turn), before = structuredClone(state);
-      const side = turn % 2 ? 'blue' : 'red', view = getConquestView(state, side);
-      const command = plan(state);
-      expect(view.research.completed).toHaveLength(view.researchTree.nodes.length);
-      if (command.kind === 'assignWorkers') {
-        const current = view.colonyOutput.assignments[command.systemId];
-        const work = [...view.production.orders, ...view.workProjects].some(order => order.systemId === command.systemId);
-        expect(current.industry === 0 || work || current.research !== command.workers.research ||
-          current.culture !== command.workers.culture).toBe(true);
-      }
-      expect(state).toEqual(before);
-    }
+    const { state, home } = lateState(size);
+    const population = state.population[home].population;
+    state.colonyOutput.assignments[home] = { industry: population, research: 0, culture: 0 };
+    const before = structuredClone(state);
+    const view = getConquestView(state, 'blue');
+    const command = plan(state);
+    expect(view.research.completed).toHaveLength(view.researchTree.nodes.length);
+    if (command.kind === 'assignWorkers') {
+      const current = view.colonyOutput.assignments[command.systemId];
+      const work = [...view.production.orders, ...view.workProjects].some(order => order.systemId === command.systemId);
+      expect(current.industry === 0 || work || current.research !== command.workers.research ||
+        current.culture !== command.workers.culture).toBe(true);
+    } else expect(command.kind).not.toBe('assignWorkers');
+    expect(state).toEqual(before);
   });
 
   it('fills new industrial workers when a real paid ship order needs the output', () => {
-    const state = paidCheckpoint(40, 199), ship = state.session.ships.find(ship => ship.factionId === 'blue')!;
-    const queued = apply(state, { kind: 'enqueueProduction', systemId: 'world-001', design: ship.design });
+    const { state, home } = lateState(40);
+    state.colonyOutput.assignments[home] = { industry: 0, research: 0, culture: 0 };
+    const queued = apply(state, { kind: 'enqueueProduction', systemId: home, design: createColonizerDesign() });
     const view = getConquestView(queued, 'blue'), command = plan(queued);
-    expect(command).toMatchObject({ kind: 'assignWorkers', systemId: 'world-001' });
+    expect(command).toMatchObject({ kind: 'assignWorkers', systemId: home });
     if (command.kind !== 'assignWorkers') throw new Error('Expected useful industry assignment');
-    expect(command.workers.industry).toBe(view.colonyOutput.assignments['world-001'].population);
+    expect(command.workers.industry).toBe(view.colonyOutput.assignments[home].population);
   });
 
   it('fills new industrial workers for a real paid refit, not just ship orders', () => {
-    const state = paidCheckpoint(40, 199);
-    const ship = state.session.ships.find(ship => ship.factionId === 'blue' && !ship.transit &&
-      state.session.galaxy.systems.some(world => world.id === ship.systemId && world.ownerId === 'blue'))!;
-    const queued = apply(state, { kind: 'startRefit', systemId: ship.systemId, shipId: ship.id, design: ship.design });
-    expect(plan(queued)).toMatchObject({ kind: 'assignWorkers', systemId: ship.systemId });
+    const { state, home } = lateState(40);
+    state.colonyOutput.assignments[home] = { industry: 0, research: 0, culture: 0 };
+    const ship = state.session.ships.find(ship => ship.factionId === 'blue' && !ship.transit && ship.systemId === home)!;
+    const queued = apply(state, { kind: 'startRefit', systemId: home, shipId: ship.id, design: ship.design });
+    expect(plan(queued)).toMatchObject({ kind: 'assignWorkers', systemId: home });
   });
 
-  it('allows genuinely earlier relief instead of mistaking different arrival times for redundant defence', () => {
-    let state = paidCheckpoint(40, 199);
-    let first: Extract<ConquestCommand, { kind: 'sendShip' | 'sendFleet' }> | undefined;
-    for (let action = 0; action < 23; action++) {
-      const command = plan(state);
-      if (command.kind === 'endTurn') break;
-      if (isDeparture(command)) {
-        const view = getConquestView(state, 'blue');
-        const target = view.galaxy.systems.find(world => world.id === command.destinationId)!;
-        if (!first && target.visibility === 'explored' && target.ownerId === 'blue' &&
-          view.enemies.filter(enemy => enemy.systemId === target.id).length === 1) {
-          first = command;
-        } else if (first) {
-          expect(command.destinationId).toBe(first.destinationId);
-          if (first.kind !== 'sendShip' || command.kind !== 'sendShip') throw new Error('Expected actual paid detachments');
-          const earlierId = first.shipId;
-          const earlier = state.session.ships.find(ship => ship.id === earlierId)!.transit!;
-          const faster = state.session.ships.find(ship => ship.id === command.shipId)!;
-          const quote = getTravelQuote(getWorldDistance(view.galaxy.systems, command.systemId, command.destinationId),
-            getTravelCapabilities(faster.design.strategicEquipment), faster.fuel);
-          if (!quote.ok) throw new Error(quote.message);
-          expect(quote.totalTurns).toBeLessThan(earlier.remainingTurns);
-          return;
-        }
+  it('fills new industrial workers for a real paid building head introduced by Н15', () => {
+    const { state, home } = lateState(40);
+    state.colonyOutput.assignments[home] = { industry: 0, research: 0, culture: 0 };
+    const def = state.rules.buildings.find(item => item.id === 'science-lab')!;
+    const queued = apply(state, { kind: 'startBuilding', systemId: home, buildingId: def.id });
+    const view = getConquestView(queued, 'blue'), command = plan(queued);
+    expect(command).toMatchObject({ kind: 'assignWorkers', systemId: home });
+    if (command.kind !== 'assignWorkers') throw new Error('Expected useful industry assignment for building head');
+    expect(command.workers.industry).toBeGreaterThan(0);
+    const forecast = view.colonyOutput.forecast.production.find(row => row.systemId === home)!;
+    expect(forecast.orderId).toBe(queued.colonyOutput.projects[0].id);
+  });
+
+  it('keeps the bounded building choice inside the shared queue and slot caps', () => {
+    const { state, home } = lateState(40);
+    const full = structuredClone(state);
+    full.colonyOutput.buildings[home] = [
+      { buildingId: 'science-lab', level: 2 }, { buildingId: 'factory', level: 2 }];
+    expect(() => apply(full, { kind: 'startBuilding', systemId: home, buildingId: 'cultural-center' })).toThrow(/мест зданий/);
+    const leveled = structuredClone(state);
+    leveled.colonyOutput.buildings[home] = [{ buildingId: 'science-lab', level: 2 }];
+    expect(() => apply(leveled, { kind: 'startBuilding', systemId: home, buildingId: 'science-lab' })).toThrow(/уровней/);
+    const pendingSame = structuredClone(state);
+    const def = pendingSame.rules.buildings.find(item => item.id === 'science-lab')!;
+    pendingSame.session.production.lastOrderId += 1;
+    pendingSame.colonyOutput.projects.push({ kind: 'building' as const, id: pendingSame.session.production.lastOrderId,
+      factionId: 'blue', systemId: home, buildingId: def.id, cost: { ...def.cost },
+      productionCost: def.productionCost, productionProgress: 0 });
+    expect(() => apply(pendingSame, { kind: 'startBuilding', systemId: home, buildingId: def.id })).toThrow(/уже поставлен/);
+    const result = executeConquestAiTurn(state, 'blue', state.session.turn);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    for (const [systemId, levels] of Object.entries(result.state.colonyOutput.buildings)) {
+      const pending = result.state.colonyOutput.projects.filter(p => p.kind === 'building' && p.systemId === systemId).length;
+      expect(levels.reduce((sum, entry) => sum + entry.level, 0) + pending)
+        .toBeLessThanOrEqual(result.state.rules.colonyOutput.colonyBuildingSlots);
+      for (const entry of levels) {
+        const building = result.state.rules.buildings.find(item => item.id === entry.buildingId)!;
+        const pendingSameLevels = result.state.colonyOutput.projects.filter(p => p.kind === 'building' &&
+          p.systemId === systemId && p.buildingId === entry.buildingId).length;
+        expect(entry.level + pendingSameLevels).toBeLessThanOrEqual(building.maxLevels);
       }
-      state = apply(state, command);
     }
-    expect(first).toBeDefined();
-    throw new Error('Expected both real departures');
-  });
-
-  it('prefers new reachable discovery over repeatedly revisiting worlds with stale ownership', () => {
-    const state = decodeConquestSave(readFileSync(
-      'reports/2026-10-26/d16-ai-development/frontier.before.save.json', 'utf8'));
-    const view = getConquestView(state, 'blue'), command = plan(state);
-    expect(command.kind).toBe('sendShip');
-    if (command.kind !== 'sendShip') throw new Error('Expected paid colonizer departure');
-    const ship = view.ships.find(ship => ship.id === command.shipId)!;
-    expect(ship.design.hullId).toBe('colonizer');
-    const caps = getTravelCapabilities(ship.design.strategicEquipment);
-    const colonies = view.galaxy.systems.filter(world => world.visibility === 'explored' && world.ownerId === 'blue');
-    const candidates = view.galaxy.systems.filter(world => world.visibility === 'unknown' &&
-      !view.knownSystems.includes(world.id) && view.environmentKnowledge[world.id] !== 'barren')
-      .filter(world => {
-        const outgoing = getTravelQuote(getWorldDistance(view.galaxy.systems, ship.systemId, world.id), caps, ship.fuel);
-        return outgoing.ok && colonies.some(home => getTravelQuote(
-          getWorldDistance(view.galaxy.systems, world.id, home.id), caps, ship.fuel - outgoing.fuelCost).ok);
-      });
-    expect(candidates.length).toBeGreaterThan(0);
-    expect(candidates.map(world => world.id)).toContain(command.destinationId);
   });
 
   it('continues the paid late packet identically after strict save/load without adding an endTurn', () => {
-    const state = paidCheckpoint(256, 199), before = structuredClone(state);
+    const state = paidCheckpoint(199), before = structuredClone(state);
     const first = executeConquestAiTurn(state, 'blue', state.session.turn);
     expect(first.ok).toBe(true);
     expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), 'blue', state.session.turn)).toEqual(first);

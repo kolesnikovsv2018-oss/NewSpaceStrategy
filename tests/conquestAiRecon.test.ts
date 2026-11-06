@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createBaselineStart, baselineMatrix, runBaseline } from '../src/diagnostics/conquestBaseline';
 import { conquestSchema, executeConquestCommand, getConquestView, getConquestOutcome, type Conquest } from '../src/domain/conquest';
@@ -214,15 +213,25 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     const design = createColonizerDesign();
     design.strategicEquipment = { ...source.design.strategicEquipment };
     const queued = apply(state, { kind: 'enqueueProduction', systemId: home, design });
-    expect(checkedPlan(queued, 'blue')).toMatchObject({ kind: 'endTurn' });
+    const command = checkedPlan(queued, 'blue');
+    // Н15: законный startBuilding заменяет прежний бездействующий endTurn; повторный заказ колонизатора по-прежнему запрещён.
+    expect(command.kind !== 'enqueueProduction' || command.design.hullId !== 'colonizer').toBe(true);
   });
 
   it.each(baselineMatrix().filter(input => input.kind === 'paid' && input.worldCount === 6 &&
-    input.schedule === 'research-first'))('finishes the genuine paid late checkpoint $id without grants', input => {
-    let state = decodeConquestSave(readFileSync(new URL(
-      `../reports/2026-10-25/d13-timeouts/${input.id}.save.json`, import.meta.url), 'utf8'));
-    const side = input.mirrored ? 'blue' : 'red';
-    if (!input.mirrored) state = apply(state, { kind: 'endTurn' });
+    input.schedule === 'research-first'))('finishes the paid research-first horizon with one own turn $id', input => {
+    // Н15: чекпоинты Д13 (save16/tree10) нечитаемы актуальным форматом 17/14 без миграций;
+    // эквивалент — свежий прогон той же paid-матрицы: полный прогон даёт финиш T и победителя,
+    // прогон до T-1 и один собственный AI-ход завершают партию без грантов.
+    const full = runBaseline(input);
+    expect(full.status).toBe('completed');
+    if (full.status !== 'completed') throw new Error('Expected completed horizon');
+    const side = full.outcome.winner;
+    const horizon = full.turnsExecuted;
+    const pre = runBaseline({ ...input, maxTurns: horizon - 1 });
+    expect(pre.status).toBe('timeout');
+    if (!pre.finalState) throw new Error('Expected pre-completion state');
+    const state = pre.finalState;
     const before = structuredClone(state);
     const result = executeConquestAiTurn(state, side, state.session.turn);
     if (!result.ok) throw new Error(result.message);
@@ -230,5 +239,5 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     expect(result.state.session.turn).toBe(state.session.turn + 1);
     expect(state).toEqual(before);
     expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), side, state.session.turn)).toEqual(result);
-  });
+  }, 120000);
 });

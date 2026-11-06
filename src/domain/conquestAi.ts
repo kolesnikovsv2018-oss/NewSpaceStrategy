@@ -467,7 +467,8 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
       { credits: view.treasury.credits - 5, minerals: view.treasury.minerals }) }))
       .sort((left, right) => right.value.score - left.value.score ||
         (left.design.id < right.design.id ? -1 : left.design.id > right.design.id ? 1 : 0));
-    const colony = colonies.find(system => orders.filter(order => order.systemId === system.id).length < 3);
+    const colony = colonies.find(system => orders.filter(order => order.systemId === system.id).length +
+      view.workProjects.filter(project => project.systemId === system.id).length < 3);
     if (designs[0] && colony) return { ...fields, kind: 'enqueueProduction', systemId: colony.id, design: designs[0].design };
   }
   const terraform = view.terraforming.find(candidate => candidate.quote.ok &&
@@ -477,6 +478,28 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
     !view.workProjects.some(project => project.systemId === candidate.systemId));
   if (terraform?.quote.ok && afford(terraform.quote.cost.credits + 5, terraform.quote.cost.minerals)) {
     return { ...fields, kind: 'startTerraform', systemId: terraform.systemId };
+  }
+  const buildingCandidate = colonies.flatMap(colony => {
+    const row = view.colonyOutput.forecast.production.find(item => item.systemId === colony.id);
+    if (!row) return [];
+    const queue = view.production.orders.filter(order => order.systemId === colony.id).length +
+      view.workProjects.filter(project => project.systemId === colony.id).length;
+    if (queue >= 3) return [];
+    const worldType = view.population.find(item => item.systemId === colony.id)?.worldType;
+    if (!worldType) return [];
+    const pending = view.workProjects.filter(project => project.kind === 'building' && project.systemId === colony.id);
+    const usedSlots = row.buildings.reduce((sum, entry) => sum + entry.levels, 0) + pending.length;
+    return view.buildings.filter(def => view.research.completed.includes(def.unlockResearchId) &&
+      def.worlds.includes(worldType) &&
+      (row.buildings.find(entry => entry.buildingId === def.id)?.levels ?? 0) < def.maxLevels &&
+      usedSlots < view.colonyOutput.rules.colonyBuildingSlots &&
+      !pending.some(project => project.kind === 'building' && project.buildingId === def.id) &&
+      afford(def.cost.credits + 5, def.cost.minerals))
+      .map(def => ({ colony, def }));
+  }).sort((left, right) => left.def.productionCost - right.def.productionCost ||
+    (left.def.id < right.def.id ? -1 : left.def.id > right.def.id ? 1 : 0))[0];
+  if (buildingCandidate) {
+    return { ...fields, kind: 'startBuilding', systemId: buildingCandidate.colony.id, buildingId: buildingCandidate.def.id };
   }
   return { ...fields, kind: 'endTurn' };
 }

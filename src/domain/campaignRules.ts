@@ -3,8 +3,8 @@ import { worldTypeSchema } from './worldEnvironment';
 import defaultFixture from './fixtures/rules-default.json';
 
 export const RULES_SNAPSHOT_FORMAT = 'orion-rules-snapshot';
-export const RULES_SNAPSHOT_SCHEMA_VERSION = 11;
-export const RULES_SNAPSHOT_RULES_VERSION = 11;
+export const RULES_SNAPSHOT_SCHEMA_VERSION = 12;
+export const RULES_SNAPSHOT_RULES_VERSION = 12;
 
 export const COLONY_EFFECT_TARGETS = [
   'growth-rate', 'capacity-add', 'production-output', 'science-output', 'culture-output'
@@ -60,7 +60,7 @@ export type RuleStackingGroup = (typeof RULES_STACKING_GROUPS)[number];
 export type RuleHandler = (typeof RULES_HANDLERS)[number];
 export type RulePolicy = (typeof RULES_POLICIES)[number];
 
-const ruleIdentifierSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
+export const ruleIdentifierSchema = z.string().min(1).max(64).refine(value => !/[^a-z0-9-]/.test(value));
 const ruleTargetUnitMap: Record<RuleTarget, readonly RuleUnit[]> = {
   'ship-speed': ['percent', 'ratio', 'flat'],
   'ship-growth': ['percent', 'ratio'],
@@ -238,9 +238,24 @@ export const colonyOutputRulesSchema = z.object({
   pointsPerWorker: z.number().int().positive().max(1000),
   productionCreditsPerPoint: z.number().int().positive().max(1_000_000),
   reserveWorkerTurns: z.number().int().positive().max(1_000_000),
+  colonyBuildingSlots: z.number().int().min(1).max(8),
   assignmentReduction: z.literal('proportional-floor-priority-v1')
 }).strict();
 export type ColonyOutputRules = z.infer<typeof colonyOutputRulesSchema>;
+
+export const buildingDefinitionSchema = z.object({
+  id: ruleIdentifierSchema,
+  name: z.string().trim().min(1).max(64),
+  target: z.enum(['production-output', 'science-output', 'culture-output']),
+  unlockResearchId: ruleIdentifierSchema,
+  cost: z.object({ credits: populationAmountSchema.positive(), minerals: populationAmountSchema.positive() }).strict(),
+  productionCost: populationAmountSchema.positive(),
+  upkeep: z.number().int().min(0).max(1000),
+  outputPerLevel: z.number().int().min(1).max(100),
+  maxLevels: z.number().int().min(1).max(4),
+  worlds: z.array(worldTypeSchema).min(1).max(3)
+}).strict();
+export type BuildingDefinition = z.infer<typeof buildingDefinitionSchema>;
 
 export const rulesSnapshotSchema = z.object({
   format: z.literal(RULES_SNAPSHOT_FORMAT),
@@ -250,7 +265,7 @@ export const rulesSnapshotSchema = z.object({
   treeId: ruleIdentifierSchema,
   tablesId: ruleIdentifierSchema,
   policyId: ruleIdentifierSchema,
-  treeVersion: z.literal('research-tree-v10'),
+  treeVersion: z.literal('research-tree-v11'),
   researchPolicy: z.literal('research-points-v1'),
   tablesVersion: z.literal('campaign-tables-v5'),
   policyVersion: z.literal('component-bands-v1'),
@@ -263,6 +278,7 @@ export const rulesSnapshotSchema = z.object({
   effects: z.array(rulesEffectSchema).max(256),
   population: populationRulesSchema,
   colonyOutput: colonyOutputRulesSchema,
+  buildings: z.array(buildingDefinitionSchema).max(16),
   travel: z.object({ policy: z.literal('project-travel-v1'), initialRange: z.literal(200) }).strict(),
   terraforming: z.object({
     id: z.literal('toxic-to-habitable'), source: z.literal('toxic'), target: z.literal('habitable'),
@@ -285,6 +301,18 @@ export const rulesSnapshotSchema = z.object({
     if (effect.policy && !snapshot.policies.includes(effect.policy)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Неизвестная policy для эффекта ${effect.id}` });
     }
+  }
+  const duplicateBuildingIds = new Set<string>();
+  for (const building of snapshot.buildings) {
+    if (duplicateBuildingIds.has(building.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Дубликат building id: ${building.id}` });
+      continue;
+    }
+    duplicateBuildingIds.add(building.id);
+  }
+  const unlockIds = snapshot.buildings.map(building => building.unlockResearchId);
+  if (new Set(unlockIds).size !== unlockIds.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Здания требуют уникальные unlock-исследования' });
   }
 });
 

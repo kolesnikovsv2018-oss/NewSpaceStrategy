@@ -16,7 +16,7 @@ describe('campaign research points', () => {
     expect(parseResearchTreeYaml(readFileSync(new URL('../docs/research-default.yaml', import.meta.url), 'utf8'))).toEqual(tree);
     expect(parseResearchTreeYaml(JSON.stringify(tree))).toEqual(tree);
     expect(await loadResearchTree({ load: async () => tree })).toEqual(tree);
-    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 11]) {
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
       const old = { ...tree, version };
       expect(researchTreeSchema.safeParse(old).success).toBe(false);
       expect(() => parseResearchTreeYaml(JSON.stringify(old))).toThrow();

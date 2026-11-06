@@ -1,10 +1,10 @@
 {
   "format": "orion-rules-snapshot",
-  "schemaVersion": 11,
-  "rulesVersion": 11,
+  "schemaVersion": 12,
+  "rulesVersion": 12,
   "id": "campaign-rules-v1",
-  "treeId": "orion-technologies-v10",
-  "treeVersion": "research-tree-v10",
+  "treeId": "orion-technologies-v11",
+  "treeVersion": "research-tree-v11",
   "researchPolicy": "research-points-v1",
   "tablesId": "campaign-tables",
   "tablesVersion": "campaign-tables-v5",
@@ -80,7 +80,8 @@
     "pointsPerWorker": 1,
     "productionCreditsPerPoint": 10,
     "reserveWorkerTurns": 10,
-    "assignmentReduction": "proportional-floor-priority-v1"
+    "assignmentReduction": "proportional-floor-priority-v1",
+    "colonyBuildingSlots": 4
   },
   "effects": [
     {
@@ -245,6 +246,62 @@
       "activationPhase": "on-research",
       "handler": "component-stats",
       "description": "Библиотечный пример открытия компонента"
+    }
+  ],
+  "buildings": [
+    {
+      "id": "science-lab",
+      "name": "Лаборатория",
+      "target": "science-output",
+      "unlockResearchId": "applied",
+      "cost": {
+        "credits": 60,
+        "minerals": 30
+      },
+      "productionCost": 800,
+      "upkeep": 2,
+      "outputPerLevel": 2,
+      "maxLevels": 2,
+      "worlds": [
+        "habitable",
+        "toxic"
+      ]
+    },
+    {
+      "id": "factory",
+      "name": "Фабрика",
+      "target": "production-output",
+      "unlockResearchId": "automation",
+      "cost": {
+        "credits": 80,
+        "minerals": 40
+      },
+      "productionCost": 1000,
+      "upkeep": 3,
+      "outputPerLevel": 2,
+      "maxLevels": 2,
+      "worlds": [
+        "habitable",
+        "toxic"
+      ]
+    },
+    {
+      "id": "cultural-center",
+      "name": "Культурный центр",
+      "target": "culture-output",
+      "unlockResearchId": "cultural-practices",
+      "cost": {
+        "credits": 50,
+        "minerals": 25
+      },
+      "productionCost": 600,
+      "upkeep": 1,
+      "outputPerLevel": 2,
+      "maxLevels": 2,
+      "worlds": [
+        "habitable",
+        "toxic"
+      ]
     }
   ]
 }

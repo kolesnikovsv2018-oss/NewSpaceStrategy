@@ -28,7 +28,7 @@ describe('Conquest baseline', () => {
     const run = runBaseline(options);
     const verification = verifyBaseline(run);
     expect(verification).toEqual({ repeat: 'passed', roundTrip: run.checkpoint ? 'passed' : 'no-checkpoint-before-stop' });
-    expect(run.versions).toEqual({ baseline: 12, save: 16, rules: 13, tree: 10, tacticalRules: 'design-combat-v1', battlePolicy: 'campaign-v2' });
+    expect(run.versions).toEqual({ baseline: 13, save: 17, rules: 14, tree: 11, tacticalRules: 'design-combat-v1', battlePolicy: 'campaign-v2' });
     expect(run.map.seed).toBe(options.mapSeed);
     expect(run.finalState.seed).toBe(options.campaignSeed);
     expect(run.status).not.toBe('executor-error');

@@ -33,7 +33,7 @@ Bounded40/256 на16 окнах также повторены. Все72 выбр
 bounded-процессами через те же runBaseline/verifyBaseline; исходные18
 включены из полной trace-приёмки с тем же проверенным source fingerprint.
 
-После Н14 актуален baseline12/save16/rules13/tree10, map4, design-combat-v1.
+После Н15 актуален baseline13/save17/rules14/tree11, map4, design-combat-v1.
 Проверены18 six-world до200 окон с repeat/checkpoint:4 completed65–66,
 14 timeout200; четыре boundary до8 и bounded40/256 по16 окон.
 Все24 repeat/checkpoint совпали, executor-error нет.
@@ -224,8 +224,8 @@ executor с ошибочным success не может вызвать беско
 
 ## Формат и смысл метрик
 
-Выход `orion-conquest-baseline`, schemaVersion12 содержит `summary`, `verification`,
-`runs`. Каждая запись сохраняет входы, версии baseline12/save16/rules13/tree10/battlePolicy/tacticalRules,
+Выход `orion-conquest-baseline`, schemaVersion13 содержит `summary`, `verification`,
+`runs`. Каждая запись сохраняет входы, версии baseline13/save17/rules14/tree11/battlePolicy/tacticalRules,
 карту, lineup→faction, полный finalState, журнал команд, промежуточный текущий save
 и метрики. `productionPoints`, `researchPoints` и `culturePoints` — фактически произведённые
 за наблюдавшиеся собственные ходы очки, а не остатки после расходов.

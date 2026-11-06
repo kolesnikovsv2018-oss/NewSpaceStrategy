@@ -226,14 +226,14 @@ it('validates before storage access and preserves previous bytes on write failur
   expect(manager.save(createConquest()).ok).toBe(false);
   expect(bytes).toBe(before);
   expect(manager.load().ok).toBe(true);
-  expect(() => decodeConquestSave(before.replace('"schemaVersion":16', '"schemaVersion":999'))).toThrow();
+  expect(() => decodeConquestSave(before.replace('"schemaVersion":17', '"schemaVersion":999'))).toThrow();
 });
 
 it('accepts only the current conquest save and requires explicit battle policy', () => {
   const current = createConquest();
   const currentEnvelope = JSON.parse(encodeConquestSave(current));
-  expect(currentEnvelope).toMatchObject({ schemaVersion: 16, rulesVersion: 13,
-    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 10 } } });
+  expect(currentEnvelope).toMatchObject({ schemaVersion: 17, rulesVersion: 14,
+    conquest: { battlePolicy: 'campaign-v2', researchTree: { version: 11 } } });
   expect(decodeConquestSave(JSON.stringify(currentEnvelope))).toEqual(current);
   const { battlePolicy: _battlePolicy, ...oldState } = current;
   const oldEnvelope = { ...currentEnvelope, conquest: oldState };

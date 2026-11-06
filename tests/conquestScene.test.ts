@@ -446,7 +446,7 @@ it.each(['cancel', 'shutdown', 'supersede'])('ignores late imported trees after 
   else test.click('conquest-import-tree');
   const old = getDefaultResearchTree(); old.id = 'obsolete-tree'; read.resolve(JSON.stringify(old));
   await stale;
-  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v10');
+  expect(test.find('conquest-tree-choice').text).toContain('orion-technologies-v11');
   expect(test.find('conquest-generation-error').text).toBe('');
   test.events.emit('shutdown');
 });
