@@ -2,14 +2,15 @@ import { createConquest, conquestSchema, executeConquestCommand, convertConquest
   getConquestOutcome, type Conquest, type ConquestCommand, type ConquestResult, type ConquestView } from '../domain/conquest';
 import { buildConquestDesigns, executeConquestAiTurn } from '../domain/conquestAi';
 import { getDefaultResearchTree, getResearchAccess, isCampaignDesignAvailable, describeResearchEffect, getResearchProgress } from '../domain/campaignResearch';
-import { getColonyProductionQuote, getColonyProductionRefund, getColonyProjectRefund, type Workforce } from '../domain/campaignOutput';
+import { getColonyProductionQuote, getColonyProjectRefund, type Workforce } from '../domain/campaignOutput';
 import { getTravelCapabilities, getFleetTravelQuotes, getStrategicRefuelQuote, formatStrategicFuel, getWorldDistance } from '../domain/campaignTravel';
 import { getFleetTransit } from '../domain/campaignFleets';
 import { getRepairQuote, getAmmunitionQuote, getRefitQuote } from '../domain/campaignOperations';
 import { HULLS, type ShipDesign } from '../domain/shipDesign';
 import { createColonizerDesign } from '../domain/civilianPresets';
 import type { BattleFrame } from '../domain/conquestBattle';
-import { getGalaxyDefinition, type CampaignFactionId, type SystemId } from '../domain/campaign';
+import { getCampaignParticipants, type ParticipantId, type SystemId } from '../domain/campaign';
+import { getActiveParticipant } from '../domain/campaignSchedule';
 import { MAX_GALAXY_WORLDS } from '../domain/galaxyMap';
 import type { DiplomacyProposal } from '../domain/campaignDiplomacy';
 import { generateBrowserGalaxy, createGalaxySeed } from '../utils/BrowserGalaxyGenerator';
@@ -39,7 +40,7 @@ function researchTiming(view: ConquestView): string {
 
 export class ConquestScene extends Phaser.Scene {
   private state!: Conquest;
-  private observer: CampaignFactionId = 'blue';
+  private observer: ParticipantId = 'player-01';
   private selected: SystemId = 'sol';
   private tab: Tab = 'research';
   private root?: Phaser.GameObjects.Container;
@@ -128,7 +129,8 @@ export class ConquestScene extends Phaser.Scene {
     this.pauseAi();
     this.state = conquestSchema.parse(state);
     this.mapState = {};
-    this.observer = this.state.control.mode === 'human-vs-ai' ? 'blue' : this.state.session.turn % 2 ? 'blue' : 'red';
+    // Наблюдатель: человек в режиме campaign, иначе активный по расписанию участник.
+    this.observer = this.state.control.mode === 'campaign' ? this.state.control.human : getActiveParticipant(this.state.session.schedule);
     this.selected = this.homeSelection();
     this.phase = this.isAiTurn() ? 'paused' : 'idle';
     this.tab = 'research'; this.page = 0; this.choice = 0;
@@ -139,12 +141,25 @@ export class ConquestScene extends Phaser.Scene {
   }
 
   private isAiTurn(): boolean {
-    return !!this.state && this.state.control.mode === 'human-vs-ai' && this.state.session.turn % 2 === 0 && getConquestOutcome(this.state).status === 'ongoing';
+    return !!this.state && this.state.control.mode === 'campaign' &&
+      getActiveParticipant(this.state.session.schedule) !== this.state.control.human && getConquestOutcome(this.state).status === 'ongoing';
   }
 
   private homeSelection(): SystemId {
     return this.state.session.galaxy.systems.find(system => system.ownerId === this.observer)?.id ??
-      getGalaxyDefinition(this.state.session.galaxy).factions.find(faction => faction.id === this.observer)!.homeSystemId;
+      getCampaignParticipants(this.state.session.galaxy).find(participant => participant.id === this.observer)!.homeSystemId;
+  }
+
+  /** Имя и цвет — только из metadata участников (палитра Н17.1), не из enum. */
+  private participantName(id: ParticipantId): string {
+    return this.state.participants.find(participant => participant.id === id)?.name ?? id;
+  }
+  private participantColor(id: ParticipantId | null): number {
+    return id === null ? 0x8edfc1 : this.state.participants.find(participant => participant.id === id)?.color ?? 0x8edfc1;
+  }
+  /** До Н17.4 дипломатия Н16 адресует стороны blue/red; отображение позиционное. */
+  private diplomacySideOf(id: ParticipantId): 'blue' | 'red' {
+    return this.state.session.schedule.order.indexOf(id) === 0 ? 'blue' : 'red';
   }
 
   private selectSystem(id: SystemId): void {
@@ -168,7 +183,7 @@ export class ConquestScene extends Phaser.Scene {
       this.ticket = undefined;
       if (this.disposed || this.state !== source || !this.isAiTurn() || isShipyardModalOpen(this)) return;
       this.phase = 'running';
-      const result = executeConquestAiTurn(source, 'red', source.session.turn);
+      const result = executeConquestAiTurn(source, getActiveParticipant(source.session.schedule), source.session.schedule.turn);
       if (this.disposed || this.state !== source) return;
       this.phase = result.ok ? 'idle' : 'failed';
       this.accept(result);
@@ -200,7 +215,7 @@ export class ConquestScene extends Phaser.Scene {
 
   private command(payload: Omit<ConquestCommand, 'factionId' | 'expectedTurn'> | Record<string, unknown>): void {
     if (this.disposed || this.projectPanel || isShipyardModalOpen(this) || this.phase === 'running' || this.ticket) return;
-    const result = executeConquestCommand(this.state, { ...payload, factionId: this.observer, expectedTurn: this.state.session.turn });
+    const result = executeConquestCommand(this.state, { ...payload, factionId: this.observer, expectedTurn: this.state.session.schedule.turn });
     this.accept(result);
     if (result.ok && payload.kind === 'endTurn') this.scheduleAi();
   }
@@ -276,7 +291,7 @@ export class ConquestScene extends Phaser.Scene {
     this.pauseAi();
     const source = this.state;
     const factionId = this.observer;
-    const expectedTurn = source.session.turn;
+    const expectedTurn = source.session.schedule.turn;
     const generation = ++this.projectGeneration;
     const view = getConquestView(source, factionId);
     const access = getResearchAccess(view.research, view.researchTree);
@@ -288,14 +303,14 @@ export class ConquestScene extends Phaser.Scene {
       projects: view.projects,
       factionId,
       readOnly: view.outcome.status === 'completed' || view.activeFactionId !== factionId ||
-        (source.control.mode === 'human-vs-ai' && factionId === 'red'),
+        (source.control.mode === 'campaign' && factionId !== source.control.human),
       hulls: access.hulls.map(id => ({ id, name: HULLS[id].name })),
       components: access.components,
       research: view.research,
       tree: view.researchTree,
       run: payload => {
         if (this.disposed || this.projectPanel !== panel || this.projectGeneration !== generation ||
-          this.observer !== factionId || this.state !== currentSource || this.state.session.turn !== expectedTurn) {
+          this.observer !== factionId || this.state !== currentSource || this.state.session.schedule.turn !== expectedTurn) {
           return { ok: false, code: 'STALE_TURN', message: 'Контекст проекта изменился; откройте редактор снова' };
         }
         const result = executeConquestCommand(currentSource, {
@@ -378,7 +393,7 @@ export class ConquestScene extends Phaser.Scene {
         const seed = createGalaxySeed();
         const generated = generateBrowserGalaxy(worldCount, seed);
         if (!generated.ok) { notice.setText(generated.message); return; }
-        const candidate = createConquest(ai ? { mode: 'human-vs-ai', aiPolicy: 'conquest-v1' } : { mode: 'local' },
+        const candidate = createConquest(ai ? { mode: 'campaign', human: generated.map.participants[0].id, aiPolicy: 'conquest-v1' } : { mode: 'local' },
           tree, seed, generated.map);
         const saving = this.mapRepository.save(generated.map);
         const saved = saving instanceof Promise ? await saving : saving;
@@ -435,7 +450,7 @@ export class ConquestScene extends Phaser.Scene {
     }
     const view = getConquestView(this.state, this.observer);
     const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket && this.phase !== 'running' &&
-      !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+      !(this.state.control.mode === 'campaign' && this.observer !== this.state.control.human);
     const background = this.add.graphics(); root.add(background);
     background.fillStyle(0x101820).fillRect(0, 0, 1280, 720);
     for (let index = 0; index < 90; index++) background.fillStyle(0x6b818c, 0.35).fillCircle((index * 137) % 1280, (index * 79) % 320, 1);
@@ -448,21 +463,23 @@ export class ConquestScene extends Phaser.Scene {
     this.control(720, 20, 'Меню', () => this.escape(), 'conquest-menu');
     this.control(870, 340, 'Справка', () => this.help(), 'conquest-help', true, 140);
     this.control(1080, 20, 'Выбрать мир', () => this.selectWorld(view), 'conquest-select-world', true, 170);
-    if (this.state.control.mode === 'human-vs-ai') {
+    if (this.state.control.mode === 'campaign') {
       this.control(880, 20, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?', () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover', true, 190);
     }
     const outcome = view.outcome;
-    text(this, root, 24, 93, outcome.status === 'completed' ? `Победа: ${outcome.winner === 'blue' ? 'Синий союз' : 'Красная лига'}` :
-      `Ход ${view.turn} · ${view.activeFactionId === 'blue' ? 'Синий союз' : 'Красная лига'}`, 18, outcome.status === 'completed' ? '#8edfc1' : '#e5efef').setName('conquest-status');
-    this.control(730, 84, this.observer === 'blue' ? 'Синий союз' : 'Красная лига', () => {
-      this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selectSystem(this.homeSelection());
+    text(this, root, 24, 93, outcome.status === 'completed' ? `Победа: ${this.participantName(outcome.winner)}` :
+      `Ход ${view.turn} · ${this.participantName(view.activeFactionId)}`, 18, outcome.status === 'completed' ? '#8edfc1' : '#e5efef').setName('conquest-status');
+    this.control(730, 84, this.participantName(this.observer), () => {
+      const order = this.state.session.schedule.order;
+      this.observer = order[(order.indexOf(this.observer) + 1) % order.length];
+      this.selectSystem(this.homeSelection());
     }, 'conquest-side', this.state.control.mode === 'local');
     if (this.isAiTurn()) {
       this.control(890, 84, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
         if (this.ticket) { this.pauseAi(); this.render(); } else this.confirm('Выполнить ход компьютера?', () => this.scheduleAi());
       }, 'conquest-resume', true, 165);
     } else if (this.state.control.mode === 'local') this.control(890, 84, 'AI: один ход', () => this.confirm('Поручить один ход компьютеру?', () => {
-      this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.turn));
+      this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.schedule.turn));
     }), 'conquest-ai', manual, 165);
     this.control(1080, 84, 'Завершить ход', () => this.command({ kind: 'endTurn' }), 'conquest-end', manual, 170);
     text(this, root, 740, 137, `Кредиты: ${view.treasury.credits}    Минералы: ${view.treasury.minerals}`, 17);
@@ -507,7 +524,7 @@ export class ConquestScene extends Phaser.Scene {
       area, toolbarY, state: this.mapState, selectedId: this.selected, prefix: 'conquest', worldPrefix: 'conquest-system-',
       worlds: view.galaxy.systems.map(system => ({
         id: system.id, name: system.name, x: system.x, y: generated ? system.y : -system.y,
-        color: system.visibility === 'unknown' ? 0x54606a : system.ownerId === 'blue' ? 0x55baff : system.ownerId === 'red' ? 0xf08070 : 0x8edfc1,
+        color: system.visibility === 'unknown' ? 0x54606a : this.participantColor(system.ownerId),
         marker: system.visibility === 'unknown' ? '○' : system.ownerId ? '●' : '◇'
       })),
       enabled: () => !this.disposed && enabled(),
@@ -613,7 +630,7 @@ export class ConquestScene extends Phaser.Scene {
       const ypos = 420 + index * 48, order = view.production.orders.find(item => item.id === record.id);
       fitText(text(this, this.root!, 655, ypos, `#${record.id} ${record.design.name}`, 14), 410);
       text(this, this.root!, 655, ypos + 19, order
-        ? `${order.productionProgress}/${order.productionCost} очков · возврат ${getColonyProductionRefund(order).credits} кр. / ${getColonyProductionRefund(order).minerals} мин.`
+        ? `${order.productionProgress}/${order.productionCost} очков · возврат ${getColonyProjectRefund(order).credits} кр. / ${getColonyProjectRefund(order).minerals} мин.`
         : 'Готов к размещению', 12);
       this.control(1080, ypos - 4, order ? 'Отменить' : 'Разместить', () => this.command({
         kind: order ? 'cancelProduction' : 'deployProduction', systemId: this.selected, orderId: record.id
@@ -703,9 +720,10 @@ export class ConquestScene extends Phaser.Scene {
 
   private renderDiplomacy(view: ConquestView): void {
     const dip = view.diplomacy;
-    const other = this.observer === 'blue' ? 'Красные' : 'Синие';
+    const order = this.state.session.schedule.order;
+    const other = this.participantName(order.find(id => id !== this.observer)!);
     const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
-      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+      this.phase !== 'running' && !(this.state.control.mode === 'campaign' && this.observer !== this.state.control.human);
     const canOffer = manual && dip.contacted && !dip.ownPending;
     text(this, this.root!, 24, 385, dip.war ? `Война с фракцией ${other}` :
       dip.armisticeExpiryRound !== null ? `Перемирие с фракцией ${other} · до раунда ${dip.armisticeExpiryRound}` :
@@ -714,7 +732,7 @@ export class ConquestScene extends Phaser.Scene {
       ` · влияние ${dip.ownInfluence} / ${dip.otherInfluence}${dip.otherVetoActive ? ` · вето на предложения ${other.toLowerCase()}` : ''}`, 14).setWordWrapWidth(890);
     dip.treaties.slice(-3).forEach((treaty, index) => {
       const details = treaty.kind === 'coop' && treaty.coopBonusUsed && treaty.coopTurnsLeft ?
-        ` · бонус ${treaty.coopBonusUsed[this.observer]} (${treaty.coopTurnsLeft[this.observer]} ходов)` : '';
+        ` · бонус ${treaty.coopBonusUsed[this.diplomacySideOf(this.observer)]} (${treaty.coopTurnsLeft[this.diplomacySideOf(this.observer)]} ходов)` : '';
       text(this, this.root!, 24, 442 + index * 22, `${treaty.kind === 'coop' ? 'Сотрудничество' : 'Перемирие'} · ${treaty.active ? 'активен' : 'завершён'}` +
         `${treaty.expiryRound !== null ? ` до раунда ${treaty.expiryRound}` : ''}${details}`, 14);
     });
@@ -738,9 +756,9 @@ export class ConquestScene extends Phaser.Scene {
 
   private openDiplomacy(view: ConquestView): void {
     const dip = view.diplomacy;
-    const other = this.observer === 'blue' ? 'синими' : 'красными';
+    const other = this.participantName(this.state.session.schedule.order.find(id => id !== this.observer)!);
     const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
-      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
+      this.phase !== 'running' && !(this.state.control.mode === 'campaign' && this.observer !== this.state.control.human);
     const items: Array<{ label: string; value: 'accept' | 'decline' | 'withdraw' | 'coop' | 'exchange' | 'armistice' | 'war' }> = [];
     if (dip.incomingPending) {
       items.push({ label: `Принять: ${this.proposalLabel(dip.incomingPending)}`, value: 'accept' });
@@ -1016,9 +1034,9 @@ export class ConquestScene extends Phaser.Scene {
     }
     const view = getConquestView(this.state, this.observer);
     const manual = view.outcome.status === 'ongoing' && view.activeFactionId === this.observer && !this.ticket &&
-      this.phase !== 'running' && !(this.state.control.mode === 'human-vs-ai' && this.observer === 'red');
-    label(12, view.outcome.status === 'completed' ? `Победа: ${view.outcome.winner === 'blue' ? 'Синие' : 'Красные'} · только просмотр` :
-      `Ход ${view.turn} · ${view.activeFactionId === 'blue' ? 'Синие' : 'Красные'}${this.isAiTurn() ? ` · AI: ${this.phase}` : ''}`, 'conquest-status');
+      this.phase !== 'running' && !(this.state.control.mode === 'campaign' && this.observer !== this.state.control.human);
+    label(12, view.outcome.status === 'completed' ? `Победа: ${this.participantName(view.outcome.winner)} · только просмотр` :
+      `Ход ${view.turn} · ${this.participantName(view.activeFactionId)}${this.isAiTurn() ? ` · AI: ${this.phase}` : ''}`, 'conquest-status');
     label(44, `Кредиты ${view.treasury.credits} · Минералы ${view.treasury.minerals}`);
     const half = (width - 8) / 2;
     const topThird = Math.floor((width - 16) / 3);
@@ -1059,16 +1077,17 @@ export class ConquestScene extends Phaser.Scene {
       this.control(12, 292, 'Сохранить', () => this.save(), 'conquest-save', true, half);
       this.control(20 + half, 292, 'Загрузить', () => this.requestLoad(), 'conquest-load', true, half);
       control(344, 'Проекты кораблей', () => this.openProjectEditor(), 'conquest-projects');
-      control(396, this.observer === 'blue' ? 'Наблюдение: синие' : 'Наблюдение: красные', () => {
-        this.observer = this.observer === 'blue' ? 'red' : 'blue'; this.selectSystem(this.homeSelection());
+      control(396, `Наблюдение: ${this.participantName(this.observer)}`, () => {
+        const order = this.state.session.schedule.order;
+        this.observer = order[(order.indexOf(this.observer) + 1) % order.length]; this.selectSystem(this.homeSelection());
       }, 'conquest-side', this.state.control.mode === 'local');
       if (this.isAiTurn()) control(448, this.ticket ? 'Пауза AI' : 'Продолжить AI', () => {
         if (this.ticket) { this.pauseAi(); this.render(); } else this.confirm('Выполнить ход компьютера?', () => this.scheduleAi());
       }, 'conquest-resume');
       else if (this.state.control.mode === 'local') control(448, 'AI: один ход', () => this.confirm('Поручить один ход компьютеру?', () => {
-        this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.turn));
+        this.accept(executeConquestAiTurn(this.state, this.observer, this.state.session.schedule.turn));
       }), 'conquest-ai', manual);
-      if (this.state.control.mode === 'human-vs-ai') control(500, 'Ручное управление', () => this.confirm('Передать красную сторону человеку?',
+      if (this.state.control.mode === 'campaign') control(500, 'Ручное управление', () => this.confirm('Передать сторону человека компьютеру?',
         () => this.replace(convertConquestToLocal(this.state))), 'conquest-takeover');
       control(552, 'Меню', () => this.escape(), 'conquest-menu');
       const budget = view.economyForecast;
@@ -1148,7 +1167,7 @@ export class ConquestScene extends Phaser.Scene {
         const record = records[this.page], order = record && view.production.orders.find(item => item.id === record.id);
         if (record) {
           fitText(label(544, `#${record.id} ${record.design.name}`), width);
-          label(572, order ? `${order.productionProgress}/${order.productionCost} очков · возврат ${getColonyProductionRefund(order).credits} кр. / ${getColonyProductionRefund(order).minerals} мин.` : 'Готов к размещению');
+          label(572, order ? `${order.productionProgress}/${order.productionCost} очков · возврат ${getColonyProjectRefund(order).credits} кр. / ${getColonyProjectRefund(order).minerals} мин.` : 'Готов к размещению');
         } else label(544, 'Очередь и готовые корабли: пусто');
         if (record) control(604, order ? 'Отменить заказ' : 'Разместить', () => this.command({
           kind: order ? 'cancelProduction' : 'deployProduction', systemId: selected.id, orderId: record.id
@@ -1260,7 +1279,7 @@ export class ConquestScene extends Phaser.Scene {
     replay.graphics.clear();
     for (const ship of frame.ships) {
       const xpos = 30 + (ship.x - replay.left) * replay.scale, ypos = 80 + (ship.y - replay.top) * replay.scale;
-      replay.graphics.fillStyle(ship.hull > 0 ? ship.factionId === 'blue' ? 0x55baff : 0xf08070 : 0x444444);
+      replay.graphics.fillStyle(ship.hull > 0 ? this.participantColor(ship.factionId) : 0x444444);
       replay.graphics.fillTriangle(xpos, ypos - 7, xpos - 6, ypos + 6, xpos + 6, ypos + 6);
     }
     for (const event of frame.events) if (event.type === 'WeaponFired') replay.graphics.lineStyle(1, event.hit ? 0xffd77a : 0x667788)

@@ -6,7 +6,7 @@ import { LocalGalaxyMapRepository } from '../src/utils/GalaxyMapRepository';
 import { createConquest, conquestSchema, executeConquestCommand, getConquestOutcome, getConquestView,
   type Conquest } from '../src/domain/conquest';
 import { executeConquestAiTurn } from '../src/domain/conquestAi';
-import { getGalaxyDefinition, type CampaignFactionId } from '../src/domain/campaign';
+import { getGalaxyDefinition, type ParticipantId } from '../src/domain/campaign';
 import { isWorldInRange } from '../src/domain/campaignTravel';
 import { createDesign } from '../src/domain/shipDesign';
 import { getColonyProductionQuote } from '../src/domain/campaignOutput';
@@ -15,6 +15,7 @@ import { campaignSessionSchema } from '../src/domain/campaignSession';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { createComponentWithId } from '../src/domain/shipDesign';
 import { buildConquestDesigns } from '../src/domain/conquestAi';
+import { activeOf } from './fixtures/conquestSides';
 
 function map(count = 12, seed = 12345): GalaxyMap {
   const generated = generateBrowserGalaxy(count, seed);
@@ -25,7 +26,7 @@ function map(count = 12, seed = 12345): GalaxyMap {
 function command(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
   const result = executeConquestCommand(state, {
-    factionId: state.session.turn % 2 ? 'blue' : 'red', expectedTurn: state.session.turn, ...payload
+    factionId: activeOf(state), expectedTurn: state.session.schedule.turn, ...payload
   });
   expect(state).toEqual(before);
   if (!result.ok) throw new Error(result.message);
@@ -37,9 +38,9 @@ function round(state: Conquest): Conquest {
   return command(command(state, { kind: 'endTurn' }), { kind: 'endTurn' });
 }
 
-function payAndBuild(count: number, faction: CampaignFactionId = 'blue'): Conquest {
+function payAndBuild(count: number, faction: ParticipantId = 'player-01'): Conquest {
   let state = createConquest({ mode: 'local' }, undefined, 12345, map());
-  if (faction === 'red') state = command(state, { kind: 'endTurn' });
+  if (faction === 'player-02') state = command(state, { kind: 'endTurn' });
   const design = createDesign('fighter', true);
   const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   const home = getGalaxyDefinition(state.session.galaxy).factions.find(side => side.id === faction)!.homeSystemId;
@@ -122,13 +123,18 @@ describe('generated campaign snapshots', () => {
     for (const system of state.session.galaxy.systems) {
       expect(system.exploredBy).toEqual(system.ownerId ? [system.ownerId] : []);
     }
-    expect(executeConquestCommand(state, { kind: 'explore', factionId: 'blue', expectedTurn: 1, systemId: 'world-999' }).ok).toBe(false);
+    expect(executeConquestCommand(state, { kind: 'explore', factionId: 'player-01', expectedTurn: 1, systemId: 'world-999' }).ok).toBe(false);
     expect(conquestSchema.safeParse({ ...state, session: { ...state.session,
       galaxy: { ...state.session.galaxy, systems: state.session.galaxy.systems.slice(1) } } }).success).toBe(false);
     const three = generateGalaxy({ worldCount: 12, participantCount: 3, seed: snapshot.seed,
       generatorVersion: snapshot.generatorVersion, profileId: snapshot.profile.id });
     if (!three.ok) throw new Error(three.message);
-    expect(() => createConquest(undefined, undefined, snapshot.seed, three.map)).toThrow();
+    // Н17.2: платформа принимает карты 2..8 участников; опубликованная игровая граница P=2
+    // остаётся на старте (браузерный диалог), домен трёх участников не отклоняет.
+    const threeSide = createConquest(undefined, undefined, snapshot.seed, three.map);
+    expect(threeSide.session.schedule.order).toEqual(['player-01', 'player-02', 'player-03']);
+    expect(threeSide.participants.map(participant => participant.id)).toEqual(['player-01', 'player-02', 'player-03']);
+    expect(Object.keys(threeSide.session.treasuries)).toEqual(['player-01', 'player-02', 'player-03']);
     snapshot.worlds[0].name = 'External change';
     expect(state.session.galaxy.map!.worlds[0].name).not.toBe('External change');
   });
@@ -143,16 +149,16 @@ describe('generated campaign snapshots', () => {
     expect(uniqueTarget).toBeDefined();
     expect(firstDefinition.lanes).toEqual([]);
     expect(getGalaxyDefinition(first.session.galaxy)).toEqual(firstDefinition);
-    const view = getConquestView(first, 'blue');
+    const view = getConquestView(first, 'player-01');
     expect(view).not.toHaveProperty('map'); expect(view.galaxy).not.toHaveProperty('map');
     expect(view.galaxy.systems.filter(system => system.visibility === 'unknown').every(system =>
       !('ownerId' in system) && !('habitable' in system))).toBe(true);
   });
 
-  it.each(['blue', 'red'] as const)('pays for %s ships, creates a fleet and reaches both guaranteed nearest worlds', faction => {
+  it.each(['player-01', 'player-02'] as const)('pays for %s ships, creates a fleet and reaches both guaranteed nearest worlds', faction => {
     let state = payAndBuild(2, faction);
     const snapshot = structuredClone(state.session.galaxy.map!);
-    const participant = snapshot.participants[faction === 'blue' ? 0 : 1];
+    const participant = snapshot.participants[faction === 'player-01' ? 0 : 1];
     const nearest = getNearestNeutralWorlds(snapshot, participant.homeWorldId, 2);
     const memberIds = state.session.ships.filter(ship => ship.factionId === faction && ship.design.hullId === 'fighter').map(ship => ship.id);
     state = command(state, { kind: 'createFleet', systemId: participant.homeWorldId, shipIds: memberIds });
@@ -173,18 +179,19 @@ describe('generated campaign snapshots', () => {
     }
     expect(state.session.galaxy.map).toEqual(snapshot);
     const invalid = structuredClone(state);
-    invalid.session.ships[0].transit = { destinationId: 'world-999', remainingTurns: 1 };
+    // Неполная форма транзита отвергается схемой военной кампании наравне с чужим миром.
+    invalid.session.ships[0].transit = { destinationId: 'world-999', remainingTurns: 1 } as never;
     expect(conquestSchema.safeParse(invalid).success).toBe(false);
   });
 
-  it.each(['blue', 'red'] as const)('reaches a legitimate %s victory on a generated galaxy through the real AI', faction => {
-    const snapshot = map(6, faction === 'blue' ? 51 : 52);
+  it.each(['player-01', 'player-02'] as const)('reaches a legitimate %s victory on a generated galaxy through the real AI', faction => {
+    const snapshot = map(6, faction === 'player-01' ? 51 : 52);
     let state = createConquest(undefined, undefined, snapshot.seed, snapshot);
     for (let step = 0; step < 600 && getConquestOutcome(state).status === 'ongoing'; step++) {
-      const active = state.session.turn % 2 ? 'blue' : 'red';
+      const active = activeOf(state);
       if (active === faction) {
-        const result = executeConquestAiTurn(state, faction, state.session.turn);
-        if (!result.ok) throw new Error(`turn ${state.session.turn}: ${result.message}`);
+        const result = executeConquestAiTurn(state, faction, state.session.schedule.turn);
+        if (!result.ok) throw new Error(`turn ${state.session.schedule.turn}: ${result.message}`);
         state = result.state;
       } else state = command(state, { kind: 'endTurn' });
       if (step % 20 === 0) state = decodeConquestSave(encodeConquestSave(state));
@@ -192,8 +199,8 @@ describe('generated campaign snapshots', () => {
     expect(getConquestOutcome(state)).toEqual({ status: 'completed', winner: faction, reason: 'all-planets' });
     expect(state.session.galaxy.systems.every(system => system.ownerId === faction)).toBe(true);
     expect(state.session.galaxy.map).toEqual(snapshot);
-    expect(executeConquestCommand(state, { kind: 'endTurn', factionId: state.session.turn % 2 ? 'blue' : 'red',
-      expectedTurn: state.session.turn }).ok).toBe(false);
+    expect(executeConquestCommand(state, { kind: 'endTurn', factionId: activeOf(state),
+      expectedTurn: state.session.schedule.turn }).ok).toBe(false);
   });
 
   it('uses every habitable world, not six IDs or the enemy capital alone, for the victory denominator', () => {
@@ -201,12 +208,12 @@ describe('generated campaign snapshots', () => {
     for (const system of state.session.galaxy.systems) {
       const habitable = state.session.galaxy.map!.worlds.find(world => world.id === system.id)!.type === 'habitable';
       if (habitable || state.environment[system.id] === 'toxic') {
-        system.ownerId = 'blue'; system.exploredBy = ['blue'];
-        state.surveys.blue[system.id] = state.environment[system.id];
+        system.ownerId = 'player-01'; system.exploredBy = ['player-01'];
+        state.surveys['player-01'][system.id] = state.environment[system.id];
       }
     }
     const checked = conquestSchema.parse(state);
-    expect(getConquestView(checked, 'blue').totalHabitableWorlds).toBe(10);
+    expect(getConquestView(checked, 'player-01').totalHabitableWorlds).toBe(10);
     expect(getConquestOutcome(checked).status).toBe('completed');
     const target = checked.session.galaxy.systems.find(system => getGalaxyDefinition(checked.session.galaxy).systems
       .some(definition => definition.id === system.id && definition.habitable))!;
@@ -221,11 +228,11 @@ describe('generated campaign snapshots', () => {
       const state = createConquest(undefined, undefined, 99, snapshot);
       state.session.production.lastOrderId = 2;
       state.session.ships = [
-        { id: 1, factionId: 'blue', systemId: 'world-003', fuel: 3000, design },
-        { id: 2, factionId: 'red', systemId: 'world-003', fuel: 3000, design: weak }
+        { id: 1, factionId: 'player-01', systemId: 'world-003', fuel: 3000, design },
+        { id: 2, factionId: 'player-02', systemId: 'world-003', fuel: 3000, design: weak }
       ];
       state.operations = { '1': createOperationalState(design), '2': { ...createOperationalState(weak), hull: 1 } };
-      const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+      const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 });
       if (!result.ok) throw new Error(result.message);
       return result;
     };
@@ -241,26 +248,26 @@ describe('generated campaign snapshots', () => {
   it('diagnostic mining and scanner queries use the generated map and conceal unseen enemy details', () => {
     const snapshot = map(), state = createConquest(undefined, undefined, snapshot.seed, snapshot);
     const barren = snapshot.worlds.find(world => world.type === 'barren')!;
-    state.surveys.blue[barren.id] = 'barren';
-    state.research.blue.completed = ['engineering', 'applied', 'support', 'ordnance'];
-    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
-    const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
+    state.surveys['player-01'][barren.id] = 'barren';
+    state.research['player-01'].completed = ['engineering', 'applied', 'support', 'ordnance'];
+    state.researchJournal['player-01'] = Object.fromEntries(state.research['player-01'].completed.map(id => [id, 1]));
+    const design = buildConquestDesigns(state.research['player-01'], state.researchTree).find(item => item.hullId === 'corvette')!;
     design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
     design.slots.find(slot => slot.id === 'service_2')!.component = createComponentWithId('scanner', 'scanner');
     state.session.production.lastOrderId = 1;
-    state.session.ships = [{ id: 1, factionId: 'blue', systemId: barren.id, fuel: 3000, design }];
+    state.session.ships = [{ id: 1, factionId: 'player-01', systemId: barren.id, fuel: 3000, design }];
     state.operations = { '1': createOperationalState(design) };
     let checked = conquestSchema.parse(state);
-    const view = getConquestView(checked, 'blue');
+    const view = getConquestView(checked, 'player-01');
     expect(view.income.minerals).toBe(5008);
     expect(view.economyForecast.ok && view.economyForecast.treasuryAfter.minerals).toBe(5058);
     const neighbour = snapshot.worlds.find(world => isWorldInRange(snapshot.worlds, barren.id, world.id, 800))!.id;
     checked = command(checked, { kind: 'explore', systemId: neighbour });
-    expect(getConquestView(checked, 'blue').galaxy.systems.find(system => system.id === neighbour)?.visibility).toBe('explored');
+    expect(getConquestView(checked, 'player-01').galaxy.systems.find(system => system.id === neighbour)?.visibility).toBe('explored');
     const next = command(checked, { kind: 'endTurn' });
-    expect(next.session.treasuries.blue.minerals).toBe(5058);
+    expect(next.session.treasuries['player-01'].minerals).toBe(5058);
     expect(next.session.galaxy.systems.find(system => system.id === barren.id)?.ownerId).toBeNull();
     expect(decodeConquestSave(encodeConquestSave(next))).toEqual(next);
-    expect(getConquestView(next, 'blue')).not.toHaveProperty('treasuries');
+    expect(getConquestView(next, 'player-01')).not.toHaveProperty('treasuries');
   });
 });

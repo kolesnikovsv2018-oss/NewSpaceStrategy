@@ -4,32 +4,34 @@ import { createDefaultRulesSnapshot, decodeRulesSnapshot, encodeRulesSnapshot } 
 import { createConquest, conquestSchema, executeConquestCommand, getConquestView, type Conquest } from '../src/domain/conquest';
 import { createDesign, createComponentWithId } from '../src/domain/shipDesign';
 import { createOperationalState } from '../src/domain/campaignOperations';
+import { diagnosticTransit } from './fixtures/colonyWork';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import { type CampaignFactionId } from '../src/domain/campaign';
+import { type ParticipantId } from '../src/domain/campaign';
 import { buildConquestDesigns, executeConquestAiTurn, planConquestAction } from '../src/domain/conquestAi';
 import { getWorldDistance } from '../src/domain/campaignTravel';
+import { activeOf } from './fixtures/conquestSides';
 
 const rules = createDefaultRulesSnapshot().population;
 function placeColonizer(state: Conquest, systemId: 'eden' | 'nexus', armed = false): number {
-  const colonizer = state.session.ships.find(item => item.factionId === 'blue' && item.design.hullId === 'colonizer')!;
+  const colonizer = state.session.ships.find(item => item.factionId === 'player-01' && item.design.hullId === 'colonizer')!;
   colonizer.systemId = systemId;
-  state.surveys.blue[systemId] = state.environment[systemId];
+  state.surveys['player-01'][systemId] = state.environment[systemId];
   if (armed) colonizer.design.slots.find(slot => slot.id === 'beam_1')!.component = createComponentWithId('beam', 'colonizer-beam');
   state.operations[String(colonizer.id)] = createOperationalState(colonizer.design);
   return colonizer.id;
 }
-function ship(state: Conquest, systemId: 'eden' | 'nexus' | 'sol', factionId: CampaignFactionId = 'blue', armed = true) {
+function ship(state: Conquest, systemId: 'eden' | 'nexus' | 'sol', factionId: ParticipantId = 'player-01', armed = true) {
   const design = createDesign('fighter', true);
   if (!armed) design.slots.find(slot => slot.id === 'beam_1')!.component = null;
   const id = ++state.session.production.lastOrderId;
   state.session.ships.push({ id, factionId, systemId, fuel: 3000, design });
   state.operations[String(id)] = createOperationalState(design);
-  state.surveys.blue.rift = 'barren';
+  state.surveys['player-01'].rift = 'barren';
 }
 function command(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
-  const result = executeConquestCommand(state, { factionId: state.session.turn % 2 ? 'blue' : 'red',
-    expectedTurn: state.session.turn, ...payload });
+  const result = executeConquestCommand(state, { factionId: activeOf(state),
+    expectedTurn: state.session.schedule.turn, ...payload });
   expect(state).toEqual(before);
   if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
   return result.state;
@@ -90,20 +92,20 @@ describe('campaign demographic boundary', () => {
     const red = command(blue, { kind: 'endTurn' });
     expect(red.population.sol).toEqual(blue.population.sol);
     expect(red.population.vega.population).toBe(5100);
-    expect(executeConquestCommand(red, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
-    const view = getConquestView(red, 'blue');
+    expect(executeConquestCommand(red, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 }).ok).toBe(false);
+    const view = getConquestView(red, 'player-01');
     expect(view.population.map(item => item.systemId)).toEqual(['sol']);
     expect(view).not.toHaveProperty('rules');
     expect(view).not.toHaveProperty('treasuries');
     view.population[0].next.population = 0;
-    expect(getConquestView(red, 'blue').population[0].next.population).toBe(5202);
+    expect(getConquestView(red, 'player-01').population[0].next.population).toBe(5202);
   });
 
   it.each(['population', 'rules'])('rejects missing %s rather than supplying legacy defaults', field => {
     const state: Record<string, unknown> = createConquest();
     delete state[field];
     expect(conquestSchema.safeParse(state).success).toBe(false);
-    expect(executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
+    expect(executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 }).ok).toBe(false);
   });
 
   it.each([
@@ -127,11 +129,11 @@ describe('campaign demographic boundary', () => {
 
   it('selects the nearest eligible source by public lanes then ASCII ID, independently of array order', () => {
     const state = createConquest();
-    state.session.galaxy.systems.find(system => system.id === 'nexus')!.ownerId = 'blue';
-    state.session.galaxy.systems.find(system => system.id === 'nexus')!.exploredBy.push('blue');
+    state.session.galaxy.systems.find(system => system.id === 'nexus')!.ownerId = 'player-01';
+    state.session.galaxy.systems.find(system => system.id === 'nexus')!.exploredBy.push('player-01');
     state.population.nexus.population = 2000;
     const galaxy = state.session.galaxy;
-    const quote = () => quoteFounding(galaxy, state.population, 'blue', 'eden', state.session.treasuries.blue, rules);
+    const quote = () => quoteFounding(galaxy, state.population, 'player-01', 'eden', state.session.treasuries['player-01'], rules);
     expect(quote()).toEqual({ ok: true, sourceId: 'nexus', cost: { credits: 20, minerals: 10 } });
     galaxy.systems.reverse();
     expect(quote()).toEqual({ ok: true, sourceId: 'nexus', cost: { credits: 20, minerals: 10 } });
@@ -142,13 +144,13 @@ describe('campaign demographic boundary', () => {
   it.each([true, false])('manual founding transfers real population and pays once (armed=%s)', armed => {
     const state = createConquest(), shipId = placeColonizer(state, 'eden', armed);
     state.population.sol.remainder = 17;
-    state.session.treasuries.blue = { credits: 20, minerals: 10 };
+    state.session.treasuries['player-01'] = { credits: 20, minerals: 10 };
     const next = command(freeze(state), { kind: 'colonize', systemId: 'eden', shipId });
     expect(next.population.sol).toEqual({ population: 4000, remainder: 17 });
     expect(next.population.eden).toEqual({ population: 1000, remainder: 0 });
-    expect(next.session.treasuries.blue).toEqual({ credits: 0, minerals: 0 });
-    expect(next.session.turn).toBe(1);
-    expect(executeConquestCommand(next, { kind: 'colonize', systemId: 'eden', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
+    expect(next.session.treasuries['player-01']).toEqual({ credits: 0, minerals: 0 });
+    expect(next.session.schedule.turn).toBe(1);
+    expect(executeConquestCommand(next, { kind: 'colonize', systemId: 'eden', factionId: 'player-01', expectedTurn: 1 }).ok).toBe(false);
     const grown = command(next, { kind: 'endTurn' });
     expect(grown.population.eden.population).toBe(1020);
     expect(grown.population.sol).toEqual({ population: 4080, remainder: 17 });
@@ -160,21 +162,21 @@ describe('campaign demographic boundary', () => {
       state.population.sol.population = 1999;
       state.colonyOutput.assignments.sol.industry = 1999;
     }
-    else state.session.treasuries.blue[missing] = missing === 'credits' ? 19 : 9;
+    else state.session.treasuries['player-01'][missing] = missing === 'credits' ? 19 : 9;
     const before = structuredClone(state);
-    const result = executeConquestCommand(freeze(state), { kind: 'colonize', systemId: 'eden', shipId, factionId: 'blue', expectedTurn: 1 });
+    const result = executeConquestCommand(freeze(state), { kind: 'colonize', systemId: 'eden', shipId, factionId: 'player-01', expectedTurn: 1 });
     expect(result).toMatchObject({ ok: false, code: missing === 'source' ? 'NO_SETTLERS' : 'INSUFFICIENT_RESOURCES' });
     expect(state).toEqual(before);
   });
 
   it('armed presence no longer auto-founds, spends settlers or charges a founding payment', () => {
     const state = createConquest(); ship(state, 'eden');
-    const budget = getConquestView(state, 'blue').economyForecast;
+    const budget = getConquestView(state, 'player-01').economyForecast;
     if (!budget.ok) throw new Error(budget.code);
     const next = command(state, { kind: 'endTurn' });
     expect(next.population.sol.population).toBe(5100);
     expect(next.population.eden).toEqual({ population: 0, remainder: 0 });
-    expect(next.session.treasuries.blue).toEqual(budget.treasuryAfter);
+    expect(next.session.treasuries['player-01']).toEqual(budget.treasuryAfter);
     expect(command(next, { kind: 'endTurn' }).population.eden).toEqual(next.population.eden);
   });
 
@@ -184,14 +186,14 @@ describe('campaign demographic boundary', () => {
       state.population.sol.population = 1000;
       state.colonyOutput.assignments.sol.industry = 1000;
     } else {
-      state.session.treasuries.blue.credits = 0;
+      state.session.treasuries['player-01'].credits = 0;
       state.rules.population.foundingCost.credits = 10000;
     }
-    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 });
     expect(result).toMatchObject({ ok: true });
     expect(result).not.toHaveProperty('notices');
     if (!result.ok) throw new Error(result.message);
-    expect(result.state.session.turn).toBe(2);
+    expect(result.state.session.schedule.turn).toBe(2);
     expect(result.state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBeNull();
     expect(result.state.population.eden.population).toBe(0);
     expect(result.turnReceipt?.populationIncome).toEqual({
@@ -211,31 +213,31 @@ describe('campaign demographic boundary', () => {
   });
 
   it('capture retains residents and remainder without charging or granting attacker growth until next own end', () => {
-    let state = createConquest(); ship(state, 'sol', 'red');
+    let state = createConquest(); ship(state, 'sol', 'player-02');
     state.population.sol = { population: 4000, remainder: 53 };
     state.colonyOutput.assignments.sol.industry = 4000;
     state = command(state, { kind: 'endTurn' });
-    expect(state.session.galaxy.systems.find(system => system.id === 'sol')!.ownerId).toBe('red');
+    expect(state.session.galaxy.systems.find(system => system.id === 'sol')!.ownerId).toBe('player-02');
     expect(state.population.sol).toEqual({ population: 4080, remainder: 53 });
-    expect(state.session.treasuries.red).toEqual({ credits: 100, minerals: 50 });
-    expect(getConquestView(state, 'blue').population).toEqual([]);
-    expect(getConquestView(state, 'red').population.map(item => item.systemId)).toContain('sol');
+    expect(state.session.treasuries['player-02']).toEqual({ credits: 100, minerals: 50 });
+    expect(getConquestView(state, 'player-01').population).toEqual([]);
+    expect(getConquestView(state, 'player-02').population.map(item => item.systemId)).toContain('sol');
     state = command(state, { kind: 'endTurn' });
     expect(state.population.sol).toEqual({ population: 4162, remainder: 13 });
   });
 
   it('a late mining overflow rejects the complete turn including demographic changes', () => {
     const state = createConquest(); ship(state, 'eden');
-    state.research.blue.completed = ['support', 'applied'];
-    state.researchJournal.blue = { support: 1, applied: 1 };
-    const design = buildConquestDesigns(state.research.blue, state.researchTree).find(item => item.hullId === 'corvette')!;
+    state.research['player-01'].completed = ['support', 'applied'];
+    state.researchJournal['player-01'] = { support: 1, applied: 1 };
+    const design = buildConquestDesigns(state.research['player-01'], state.researchTree).find(item => item.hullId === 'corvette')!;
     design.slots.find(slot => slot.id === 'service_1')!.component = createComponentWithId('mining', 'miner');
     const id = ++state.session.production.lastOrderId;
-    state.session.ships.push({ id, factionId: 'blue', systemId: 'rift', fuel: 3000, design });
+    state.session.ships.push({ id, factionId: 'player-01', systemId: 'rift', fuel: 3000, design });
     state.operations[String(id)] = createOperationalState(design);
-    state.session.treasuries.blue.minerals = 1_000_000_000 - 5000;
+    state.session.treasuries['player-01'].minerals = 1_000_000_000 - 5000;
     const before = structuredClone(state);
-    expect(executeConquestCommand(freeze(state), { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }).ok).toBe(false);
+    expect(executeConquestCommand(freeze(state), { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 }).ok).toBe(false);
     expect(state).toEqual(before);
   });
 
@@ -257,13 +259,13 @@ describe('campaign demographic boundary', () => {
   it('preserves founded and grown population through a real battle capture, save and next own growth', () => {
     let state = createConquest(); const shipId = placeColonizer(state, 'eden');
     state = command(state, { kind: 'colonize', systemId: 'eden', shipId });
-    ship(state, 'eden', 'blue', false);
+    ship(state, 'eden', 'player-01', false);
     state = command(state, { kind: 'endTurn' });
     expect(state.population.eden).toEqual({ population: 1020, remainder: 0 });
-    ship(state, 'eden', 'red');
+    ship(state, 'eden', 'player-02');
     state = command(state, { kind: 'endTurn' });
-    expect(state.battles.at(-1)).toMatchObject({ systemId: 'eden', winner: 'red' });
-    expect(state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBe('red');
+    expect(state.battles.at(-1)).toMatchObject({ systemId: 'eden', winner: 'player-02' });
+    expect(state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBe('player-02');
     expect(state.population.eden).toEqual({ population: 1020, remainder: 0 });
     const loaded = decodeConquestSave(encodeConquestSave(freeze(state)));
     expect(loaded).toEqual(state);
@@ -273,12 +275,12 @@ describe('campaign demographic boundary', () => {
   });
 
   it('AI uses own demographic eligibility for legal founding and avoids retrying impossible colonization', () => {
-    let state = createConquest(); state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
-    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
+    let state = createConquest(); state.research['player-01'].completed = state.researchTree.nodes.map(node => node.id);
+    state.researchJournal['player-01'] = Object.fromEntries(state.research['player-01'].completed.map(id => [id, 1]));
     placeColonizer(state, 'eden');
     state = command(state, { kind: 'explore', systemId: 'eden' });
-    expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'colonize', systemId: 'eden' });
-    const result = executeConquestAiTurn(state, 'blue', 1);
+    expect(planConquestAction(getConquestView(state, 'player-01'))).toMatchObject({ kind: 'colonize', systemId: 'eden' });
+    const result = executeConquestAiTurn(state, 'player-01', 1);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.message);
     expect(result.state.population.eden.population).toBe(1024);
@@ -288,22 +290,22 @@ describe('campaign demographic boundary', () => {
     });
     state.population.sol.population = 1000;
     state.colonyOutput.assignments.sol.industry = 1000;
-    expect(planConquestAction(getConquestView(state, 'blue')).kind).not.toBe('colonize');
+    expect(planConquestAction(getConquestView(state, 'player-01')).kind).not.toBe('colonize');
   });
 
   it('splits equally distant AI targets by ship ID without needing hidden knowledge', () => {
     const state = createConquest();
-    state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
-    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
+    state.research['player-01'].completed = state.researchTree.nodes.map(node => node.id);
+    state.researchJournal['player-01'] = Object.fromEntries(state.research['player-01'].completed.map(id => [id, 1]));
     ship(state, 'sol'); ship(state, 'sol');
-    const view = getConquestView(state, 'blue');
+    const view = getConquestView(state, 'player-01');
     const nexus = view.galaxy.systems.find(system => system.id === 'nexus')!;
     nexus.x = -1; nexus.y = 1;
     expect(getWorldDistance(view.galaxy.systems, 'sol', 'eden')).toBe(getWorldDistance(view.galaxy.systems, 'sol', 'nexus'));
     view.production.orders = [];
     const first = planConquestAction(view);
     expect(first).toMatchObject({ kind: 'sendShip', shipId: 1 });
-    view.ships[0].transit = { destinationId: 'eden', remainingTurns: 1 };
+    view.ships[0].transit = diagnosticTransit(view.ships[0].systemId, 'eden', view.ships[0].design, state.session.galaxy);
     const second = planConquestAction(view);
     expect(second).toMatchObject({ kind: 'sendShip', shipId: 3 });
     if (first.kind !== 'sendShip' || second.kind !== 'sendShip') throw new Error('Expected movement');
@@ -312,7 +314,7 @@ describe('campaign demographic boundary', () => {
 
   it('standalone demographic advance does not mutate the initial map or population', () => {
     const state = freeze(createConquest());
-    const next = advancePopulation(state.session.galaxy, state.population, 'blue', rules);
+    const next = advancePopulation(state.session.galaxy, state.population, 'player-01', rules);
     expect(next.sol.population).toBe(5100);
     expect(state.population.sol.population).toBe(5000);
     expect(next.vega).not.toBe(state.population.vega);

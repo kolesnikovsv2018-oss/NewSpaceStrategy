@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import type { ConquestResult } from '../domain/conquest';
-import { MAX_CAMPAIGN_PROJECTS, type CampaignProject, type ProjectCommand } from '../domain/campaignProjects';
+import { MAX_CAMPAIGN_PROJECTS, type ConquestProject, type ConquestProjectCommand } from '../domain/campaignProjects';
+import type { ParticipantId } from '../domain/campaign';
 import { designSchema, createDesign, createComponentWithId, acceptsComponent, HULLS, withTacticalVariant,
   type ComponentKind, type ShipDesign } from '../domain/shipDesign';
 import { getResearchAccess, isCampaignComponentVariantAvailable, isCampaignDraftAvailable, hasCompactEquipment } from '../domain/campaignResearch';
@@ -11,15 +12,15 @@ import { openShipyardModal } from './ShipyardModal';
 import { COMBAT_PRESET_NAMES, createCombatDesign, type CombatPresetId } from '../domain/combatPresets';
 import { CIVILIAN_PRESET_NAMES, createCivilianDesign, type CivilianPresetId } from '../domain/civilianPresets';
 
-type CampaignProjectCommandPayload = ProjectCommand extends infer Command
-  ? Command extends ProjectCommand ? Omit<Command, 'factionId' | 'expectedTurn'> : never
+type CampaignProjectCommandPayload = ConquestProjectCommand extends infer Command
+  ? Command extends ConquestProjectCommand ? Omit<Command, 'factionId' | 'expectedTurn'> : never
   : never;
 
 export interface CampaignProjectPanelOptions {
   width: number;
   height: number;
-  projects: CampaignProject[];
-  factionId: 'blue' | 'red';
+  projects: ConquestProject[];
+  factionId: ParticipantId;
   readOnly: boolean;
   hulls: CampaignProjectPanelHull[];
   components: ComponentKind[];
@@ -29,13 +30,13 @@ export interface CampaignProjectPanelOptions {
   close: () => void;
 }
 
-export interface CampaignProjectPanelHull { id: CampaignProject['design']['hullId']; name: string }
+export interface CampaignProjectPanelHull { id: ConquestProject['design']['hullId']; name: string }
 
 export class CampaignProjectPanel {
   private readonly container: Phaser.GameObjects.Container;
   private readonly blocker: Phaser.GameObjects.Rectangle;
   private readonly editor: ShipBuilderPanel;
-  private projects: CampaignProject[];
+  private projects: ConquestProject[];
   private selectedId?: number;
   private draft: ShipDesign;
   private components: ReturnType<typeof createComponentWithId>[] = [];
@@ -146,13 +147,13 @@ export class CampaignProjectPanel {
     if (!enabled) item.disableInteractive().setAlpha(0.45);
   }
 
-  private updateProjects(projects: CampaignProject[]): void {
+  private updateProjects(projects: ConquestProject[]): void {
     this.projects = structuredClone(projects);
     this.page = Math.min(this.page, Math.max(0, Math.ceil(this.projects.length / 8) - 1));
     this.render();
   }
 
-  private select(project: CampaignProject): void {
+  private select(project: ConquestProject): void {
     if (!this.options.readOnly && this.editor.hasUnsavedChanges()) {
       this.confirmDiscard(() => this.selectConfirmed(project));
       return;
@@ -242,7 +243,7 @@ export class CampaignProjectPanel {
     this.render();
   }
 
-  private selectConfirmed(project: CampaignProject): void {
+  private selectConfirmed(project: ConquestProject): void {
     this.page = Math.floor(this.projects.findIndex(item => item.id === project.id) / 8);
     this.selectedId = project.id;
     this.draft = designSchema.parse(project.design);
@@ -275,7 +276,7 @@ export class CampaignProjectPanel {
     this.copyConfirmed(project);
   }
 
-  private copyConfirmed(project: CampaignProject): void {
+  private copyConfirmed(project: ConquestProject): void {
     const result = this.options.run({ kind: 'copyProject', projectId: project.id });
     if (!result.ok) { this.message = result.message; this.render(); return; }
     this.projects = structuredClone(result.state.projects[this.faction()].items);
@@ -312,7 +313,7 @@ export class CampaignProjectPanel {
     this.renameConfirmed(project);
   }
 
-  private renameConfirmed(project: CampaignProject): void {
+  private renameConfirmed(project: ConquestProject): void {
     const name = globalThis.prompt('Название проекта', project.name);
     if (name === null) return;
     const result = this.options.run({ kind: 'renameProject', projectId: project.id, name });
@@ -330,7 +331,7 @@ export class CampaignProjectPanel {
     this.deleteConfirmed(project);
   }
 
-  private deleteConfirmed(project: CampaignProject): void {
+  private deleteConfirmed(project: ConquestProject): void {
     const modal = openShipyardModal(this.scene);
     if (!modal) return;
     const content = this.scene.add.container(this.scene.cameras.main.width / 2 - 210, this.scene.cameras.main.height / 2 - 100);
@@ -375,7 +376,7 @@ export class CampaignProjectPanel {
     return isCampaignDraftAvailable(design, this.options.research, this.options.tree);
   }
 
-  private faction(): 'blue' | 'red' {
+  private faction(): ParticipantId {
     return this.options.factionId;
   }
 

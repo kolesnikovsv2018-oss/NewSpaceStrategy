@@ -1,10 +1,13 @@
 import { z } from 'zod';
-import { factionIdSchema, systemIdSchema, type CampaignFactionId, type SystemId } from './campaign';
+import { factionIdSchema, participantIdSchema, systemIdSchema, type CampaignFactionId, type ParticipantId, type SystemId } from './campaign';
 import { flightDesignSchema, orderIdSchema } from './production';
 import type { Treasury } from './campaignEconomy';
 import { getTravelCapabilities, STRATEGIC_TRAVEL_POLICY } from './campaignTravel';
+import { MAX_PARTICIPANTS } from './galaxyMap';
 
 export const MAX_CAMPAIGN_SHIPS = 100; // Per faction, independent of pending/completed capacity.
+/** Н17.1: глобальный предел массива — фиксированная константа «per-faction × MAX_PARTICIPANTS», без «×2». */
+export const MAX_CONQUEST_SHIPS = MAX_CAMPAIGN_SHIPS * MAX_PARTICIPANTS;
 // Provisional strategic units, deliberately independent of hull, tactical battery and cargo.
 export const CAMPAIGN_FUEL_CAPACITY = 3;
 export const TRAVEL_FUEL_COST = 1;
@@ -38,8 +41,9 @@ export const strategicTransitSchema = z.object({
   remainingTurns: z.number().int().min(1).max(1_000_000_000),
   fuelCost: z.number().int().min(1).max(9000)
 }).strict();
+/** Н17.2: военный корабль принадлежит участнику `player-NN`, не enum. */
 export const strategicShipSchema = z.object({
-  id: orderIdSchema, factionId: factionIdSchema, systemId: systemIdSchema, design: flightDesignSchema,
+  id: orderIdSchema, factionId: participantIdSchema, systemId: systemIdSchema, design: flightDesignSchema,
   fuel: z.number().int().min(0).max(9000), transit: strategicTransitSchema.optional()
 }).strict().superRefine((ship, ctx) => {
   if (ship.fuel > getTravelCapabilities(ship.design.strategicEquipment).fuelCapacity ||
@@ -55,20 +59,28 @@ export function getRefuelQuote(fuel: number): { amount: number; cost: Treasury }
   return { amount, cost: { credits: amount * REFUEL_CREDITS_PER_UNIT, minerals: amount * REFUEL_MINERALS_PER_UNIT } };
 }
 
-function makeShipsSchema(military: boolean) {
-  return z.array(military ? strategicShipSchema : campaignShipSchema).max(MAX_CAMPAIGN_SHIPS * 2).superRefine((ships, ctx) => {
-  if (new Set(ships.map(ship => ship.id)).size !== ships.length) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Идентификаторы кораблей должны быть уникальны' });
-  }
-  for (const faction of factionIdSchema.options) {
-    if (ships.filter(ship => ship.factionId === faction).length > MAX_CAMPAIGN_SHIPS) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Превышен предел стратегических кораблей стороны' });
+function makePeaceShipsSchema() {
+  return z.array(campaignShipSchema).max(MAX_CAMPAIGN_SHIPS * 2).superRefine((ships, ctx) => {
+    if (new Set(ships.map(ship => ship.id)).size !== ships.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Идентификаторы кораблей должны быть уникальны' });
     }
-  }
+    for (const faction of factionIdSchema.options) {
+      if (ships.filter(ship => ship.factionId === faction).length > MAX_CAMPAIGN_SHIPS) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Превышен предел стратегических кораблей стороны' });
+      }
+    }
   });
 }
-export const campaignShipsSchema = makeShipsSchema(false);
-export const strategicShipsSchema = makeShipsSchema(true);
+/** Н17.2: массив кораблей военной кампании; per-participant предел проверяет сессия по списку участников. */
+function makeConquestShipsSchema() {
+  return z.array(strategicShipSchema).max(MAX_CONQUEST_SHIPS).superRefine((ships, ctx) => {
+    if (new Set(ships.map(ship => ship.id)).size !== ships.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Идентификаторы кораблей должны быть уникальны' });
+    }
+  });
+}
+export const campaignShipsSchema = makePeaceShipsSchema();
+export const conquestShipsSchema = makeConquestShipsSchema();
 
 /** Typed projection selector: a travelling ship is at neither endpoint until arrival. */
 export function isShipAtColony(ship: CampaignShip, systemId: SystemId): boolean {
@@ -76,8 +88,7 @@ export function isShipAtColony(ship: CampaignShip, systemId: SystemId): boolean 
 }
 
 /** Advance only own trips; the session publishes matching fleet arrivals atomically. */
-export function advanceShipTravel(input: CampaignShip[], factionId: CampaignFactionId, military = false): CampaignShip[] {
-  const ships: CampaignShip[] = (military ? strategicShipsSchema : campaignShipsSchema).parse(input), faction = factionIdSchema.parse(factionId);
+function advanceTravel<Ship extends CampaignShip>(ships: Ship[], faction: string): Ship[] {
   for (const ship of ships) {
     if (ship.factionId !== faction || !ship.transit) continue;
     if ('policy' in ship.transit && ship.transit.remainingTurns > 1) {
@@ -88,4 +99,15 @@ export function advanceShipTravel(input: CampaignShip[], factionId: CampaignFact
     delete ship.transit;
   }
   return ships;
+}
+
+export function advanceShipTravel(input: unknown, factionId: CampaignFactionId): z.infer<typeof campaignShipsSchema> {
+  const ships = campaignShipsSchema.parse(input);
+  return advanceTravel(ships, factionIdSchema.parse(factionId));
+}
+
+/** Н17.2: движение кораблей военной кампании по participant IDs. */
+export function advanceConquestShipTravel(input: unknown, participant: ParticipantId): z.infer<typeof conquestShipsSchema> {
+  const ships = conquestShipsSchema.parse(input);
+  return advanceTravel(ships, participantIdSchema.parse(participant));
 }

@@ -38,7 +38,7 @@ describe('Opt-in baseline trace', () => {
       window.position.factions[0].research.completed.push('trace-only');
       const ship = window.position.ships[0];
       if (ship) ship.operational.hull = 1;
-      window.commands[0].command.factionId = 'red';
+      window.commands[0].command.factionId = 'player-02';
     } });
     expect(BASELINE_TRACE_VERSION).toBe(1);
     expect(traced).toEqual(plain);
@@ -132,6 +132,6 @@ describe('Opt-in baseline trace', () => {
     expect(windows[0].position.ships.every(ship => ship.operational.ammunition.every(weapon => weapon.amount === 0))).toBe(true);
     expect(JSON.stringify(windows)).not.toContain('"frames"');
     expect(windows.at(-1)?.position.factions.map(side => side.budget)).toEqual(
-      (['blue', 'red'] as const).map(side => conquest.getConquestView(run.finalState, side).economyForecast));
+      (['player-01', 'player-02'] as const).map(side => conquest.getConquestView(run.finalState, side).economyForecast));
   });
 });

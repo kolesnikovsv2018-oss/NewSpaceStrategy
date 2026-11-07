@@ -8,7 +8,8 @@ import { getColonyProductionQuote } from './campaignOutput';
 import { createOperationalState } from './campaignOperations';
 import { conquestSchema, executeConquestAction, getConquestOutcome, getConquestView, type ConquestCommand, type ConquestView, type ConquestResult } from './conquest';
 import { shouldAcceptDiplomacyProposal, type DiplomacyScoreInput } from './campaignDiplomacy';
-import { factionIdSchema } from './campaign';
+import { participantIdSchema } from './campaign';
+import { getActiveParticipant } from './campaignSchedule';
 import type { BattleFrame } from './conquestBattle';
 import { calculateColonyValue } from './campaignColonyEffects';
 import { getWorldDistance, isWorldInRange, createStrategicEquipment, getTravelCapabilities,
@@ -534,9 +535,12 @@ export function planConquestAction(view: ConquestView): ConquestCommand {
 export function executeConquestAiTurn(input: unknown, factionInput: unknown, expectedTurn: number): ConquestResult {
   try {
     let state = conquestSchema.parse(input);
-    const faction = factionIdSchema.parse(factionInput);
-    if (expectedTurn !== state.session.turn || faction !== (expectedTurn % 2 ? 'blue' : 'red') ||
-      (state.control.mode === 'human-vs-ai' && faction !== 'red') || getConquestOutcome(state).status === 'completed') {
+    const faction = participantIdSchema.parse(factionInput);
+    // Авторизация по расписанию и контролю до действий: только активный участник; в режиме
+    // campaign человек-сторона AI недоступна; в local helper сохранён для любой активной стороны.
+    if (expectedTurn !== state.session.schedule.turn || faction !== getActiveParticipant(state.session.schedule) ||
+      (state.control.mode === 'campaign' && faction === state.control.human) ||
+      getConquestOutcome(state).status === 'completed') {
       return { ok: false, code: 'CONTROLLER_FORBIDDEN', message: 'AI-ход недоступен' };
     }
     let frames: BattleFrame[] | undefined;

@@ -7,12 +7,13 @@ import { createCombatDesign } from '../src/domain/combatPresets';
 import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { ConquestSaveManager, decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import { getGalaxyDefinition, type CampaignFactionId } from '../src/domain/campaign';
+import { getGalaxyDefinition, type ParticipantId } from '../src/domain/campaign';
+import { activeOf } from './fixtures/conquestSides';
 
 function apply(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
   const result = executeConquestCommand(state, {
-    factionId: state.session.turn % 2 ? 'blue' : 'red', expectedTurn: state.session.turn, ...payload
+    factionId: activeOf(state), expectedTurn: state.session.schedule.turn, ...payload
   });
   expect(state).toEqual(before);
   if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
@@ -39,15 +40,15 @@ function freeze(value: object): void {
 function reject(state: Conquest, payload: Record<string, unknown>, code: string): void {
   const before = structuredClone(state);
   expect(executeConquestCommand(state, {
-    factionId: state.session.turn % 2 ? 'blue' : 'red', expectedTurn: state.session.turn, ...payload
+    factionId: activeOf(state), expectedTurn: state.session.schedule.turn, ...payload
   })).toMatchObject({ ok: false, code });
   expect(state).toEqual(before);
 }
 
 describe('campaign-owned project contract', () => {
-  it.each(['blue', 'red'] as const)('keeps %s drafts local and independent without money, production, ships or clock access', faction => {
+  it.each(['player-01', 'player-02'] as const)('keeps %s drafts local and independent without money, production, ships or clock access', faction => {
     let source = createConquest();
-    if (faction === 'red') source = apply(source, { kind: 'endTurn' });
+    if (faction === 'player-02') source = apply(source, { kind: 'endTurn' });
     const design = createDesign('fighter'), before = structuredClone(source);
     freeze(source); freeze(design);
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => { throw new Error('clock forbidden'); });
@@ -57,7 +58,7 @@ describe('campaign-owned project contract', () => {
     expect(host).not.toHaveBeenCalled(); host.mockRestore();
     expect(next.projects[faction].items[0]).toMatchObject({ id: 1, factionId: faction, design });
     expect({ ...next, projects: before.projects }).toEqual(before);
-    expect(getConquestView(next, faction === 'blue' ? 'red' : 'blue').projects).toEqual([]);
+    expect(getConquestView(next, faction === 'player-01' ? 'player-02' : 'player-01').projects).toEqual([]);
     const view = getConquestView(next, faction);
     view.projects[0].design.slots[0].component = createComponentWithId('beam', 'mutated');
     view.projects[0].name = 'Mutated';
@@ -68,16 +69,16 @@ describe('campaign-owned project contract', () => {
   it('copies, renames, replaces and deletes without aliases or ID reuse', () => {
     let state = save(createConquest());
     state = apply(state, { kind: 'copyProject', projectId: 1 });
-    expect(state.projects.blue.items.map(item => item.id)).toEqual([1, 2]);
-    expect(state.projects.blue.items[1].design).not.toBe(state.projects.blue.items[0].design);
+    expect(state.projects['player-01'].items.map(item => item.id)).toEqual([1, 2]);
+    expect(state.projects['player-01'].items[1].design).not.toBe(state.projects['player-01'].items[0].design);
     state = apply(state, { kind: 'renameProject', projectId: 2, name: 'Civilian' });
-    expect(state.projects.blue.items[1].design.name).toBe('Civilian');
+    expect(state.projects['player-01'].items[1].design.name).toBe('Civilian');
     const replacement = createDesign('fighter', true);
     state = apply(state, { kind: 'replaceProject', projectId: 1, design: replacement });
-    expect(state.projects.blue.items[0].name).toBe(replacement.name);
+    expect(state.projects['player-01'].items[0].name).toBe(replacement.name);
     state = apply(state, { kind: 'deleteProject', projectId: 1 });
     state = save(state);
-    expect(state.projects.blue.items.map(item => item.id)).toEqual([2, 3]);
+    expect(state.projects['player-01'].items.map(item => item.id)).toEqual([2, 3]);
     expect(state.session.production.lastOrderId).toBe(2);
     reject(state, { kind: 'deleteProject', projectId: 1 }, 'PROJECT_NOT_FOUND');
   });
@@ -85,14 +86,14 @@ describe('campaign-owned project contract', () => {
   it('accepts exactly 25 and rejects 26 and an exhausted independent counter atomically', () => {
     let state = createConquest();
     for (let index = 0; index < MAX_CAMPAIGN_PROJECTS; index++) state = save(state);
-    expect(state.projects.blue.items).toHaveLength(25);
+    expect(state.projects['player-01'].items).toHaveLength(25);
     reject(state, { kind: 'createProject', name: 'Extra', design: createDesign('fighter') }, 'PROJECT_LIMIT');
     reject(state, { kind: 'copyProject', projectId: 1 }, 'PROJECT_LIMIT');
     state = apply(state, { kind: 'deleteProject', projectId: 1 });
-    state.projects.blue.lastProjectId = MAX_PROJECT_ID;
+    state.projects['player-01'].lastProjectId = MAX_PROJECT_ID;
     reject(state, { kind: 'copyProject', projectId: 2 }, 'PROJECT_ID_LIMIT');
     reject(state, { kind: 'createProject', name: 'Extra', design: createDesign('fighter') }, 'PROJECT_ID_LIMIT');
-    expect(apply(state, { kind: 'renameProject', projectId: 2, name: 'Still editable' }).projects.blue.lastProjectId).toBe(MAX_PROJECT_ID);
+    expect(apply(state, { kind: 'renameProject', projectId: 2, name: 'Still editable' }).projects['player-01'].lastProjectId).toBe(MAX_PROJECT_ID);
   });
 
   it.each(['createProject', 'replaceProject'] as const)('rejects closed hull/family/numbers at direct %s', kind => {
@@ -109,22 +110,22 @@ describe('campaign-owned project contract', () => {
 
   it('saves incomplete legal draft, blocks its order and permits unarmed flight-ready civilian designs', () => {
     let state = save(createConquest());
-    reject(state, { kind: 'enqueueProduction', systemId: 'sol', design: state.projects.blue.items[0].design }, 'INVALID_DESIGN');
+    reject(state, { kind: 'enqueueProduction', systemId: 'sol', design: state.projects['player-01'].items[0].design }, 'INVALID_DESIGN');
     const civilian = installComponent(createDesign('fighter'), 'engine_1', createComponentWithId('engine', 'engine'));
-    expect(isCampaignDraftAvailable(civilian, state.research.blue, state.researchTree)).toBe(true);
-    expect(isCampaignDesignAvailable(civilian, state.research.blue, state.researchTree)).toBe(true);
+    expect(isCampaignDraftAvailable(civilian, state.research['player-01'], state.researchTree)).toBe(true);
+    expect(isCampaignDesignAvailable(civilian, state.research['player-01'], state.researchTree)).toBe(true);
     state = apply(state, { kind: 'replaceProject', projectId: 1, design: civilian });
     state = advanceUntil(state, candidate =>
-      candidate.session.treasuries.blue.credits >= getColonyProductionQuote(civilian, candidate.rules.colonyOutput).cost.credits);
+      candidate.session.treasuries['player-01'].credits >= getColonyProductionQuote(civilian, candidate.rules.colonyOutput).cost.credits);
     expect(apply(state, { kind: 'enqueueProduction', systemId: 'sol', design: civilian }).colonyOutput.production.orders).toHaveLength(1);
   });
 
   it('rejects both exact and modified presets outside the common research bands', () => {
     const state = createConquest();
-    state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
-    state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
+    state.research['player-01'].completed = state.researchTree.nodes.map(node => node.id);
+    state.researchJournal['player-01'] = Object.fromEntries(state.research['player-01'].completed.map(id => [id, 1]));
     const preset = createCombatDesign('dreadnought');
-    expect(isCampaignDraftAvailable(preset, state.research.blue, state.researchTree)).toBe(false);
+    expect(isCampaignDraftAvailable(preset, state.research['player-01'], state.researchTree)).toBe(false);
     reject(state, { kind: 'createProject', name: preset.name, design: preset }, 'INVALID_DESIGN');
     const changed = structuredClone(preset);
     const beam = changed.slots.find(slot => slot.component?.kind === 'beam')!.component!;
@@ -139,42 +140,44 @@ describe('campaign-owned project contract', () => {
     if (base.kind !== 'beam') throw new Error('Missing beam');
     const atBoundary = installComponent(createDesign('fighter'), 'beam_1', { ...base, damage: 27.5 });
     const accepted = apply(state, { kind: 'replaceProject', projectId: 1, design: atBoundary });
-    expect(accepted.projects.blue.items[0].design).toEqual(atBoundary);
+    expect(accepted.projects['player-01'].items[0].design).toEqual(atBoundary);
     const beyond = installComponent(atBoundary, 'beam_1', { ...base, damage: 27.500001 });
     reject(accepted, { kind: 'replaceProject', projectId: 1, design: beyond }, 'INVALID_DESIGN');
-    expect(accepted.projects.blue.items[0].design).toEqual(atBoundary);
+    expect(accepted.projects['player-01'].items[0].design).toEqual(atBoundary);
   });
 
   it('enforces stale, own, controller and completed gates before mutation', () => {
     let state = save(createConquest());
     reject(state, { kind: 'renameProject', projectId: 1, name: 'Late', expectedTurn: 2 }, 'STALE_TURN');
-    reject(state, { kind: 'deleteProject', projectId: 1, factionId: 'red' }, 'NOT_ACTIVE_FACTION');
+    reject(state, { kind: 'deleteProject', projectId: 1, factionId: 'player-02' }, 'NOT_ACTIVE_FACTION');
     state = apply(state, { kind: 'endTurn' });
     reject(state, { kind: 'deleteProject', projectId: 1 }, 'PROJECT_NOT_FOUND');
-    state.control = { mode: 'human-vs-ai', aiPolicy: 'conquest-v1' };
+    state.control = { mode: 'campaign', human: 'player-01', aiPolicy: 'conquest-v1' };
     reject(state, { kind: 'createProject', name: 'Forbidden', design: createDesign('fighter') }, 'CONTROLLER_FORBIDDEN');
-    state.control = { mode: 'local' }; state.session.turn = 3;
+    state.control = { mode: 'local' };
+    // Согласованное расписание после полного круга: turn 3, revision 2, round 2.
+    state.session.schedule = { order: state.session.schedule.order, activeIndex: 0, turn: 3, revision: 2, round: 2 };
     for (const system of state.session.galaxy.systems) {
       if (getGalaxyDefinition(state.session.galaxy).systems.find(item => item.id === system.id)!.habitable) {
-        system.ownerId = 'blue'; system.exploredBy = ['blue', 'red'];
-        state.surveys.blue[system.id] = state.environment[system.id];
+        system.ownerId = 'player-01'; system.exploredBy = ['player-01', 'player-02'];
+        state.surveys['player-01'][system.id] = state.environment[system.id];
       }
     }
-    expect(getConquestView(state, 'blue').projects).toHaveLength(1);
+    expect(getConquestView(state, 'player-01').projects).toHaveLength(1);
     reject(state, { kind: 'deleteProject', projectId: 1 }, 'CAMPAIGN_COMPLETED');
   });
 
   it.each(['duplicate', 'owner', 'counter', 'invalid-draft', 'missing'] as const)('rejects hidden invalid catalog: %s', error => {
     const state = save(createConquest());
-    const catalog = state.projects.blue;
+    const catalog = state.projects['player-01'];
     if (error === 'duplicate') catalog.items.push(structuredClone(catalog.items[0]));
-    if (error === 'owner') catalog.items[0].factionId = 'red';
+    if (error === 'owner') catalog.items[0].factionId = 'player-02';
     if (error === 'counter') catalog.lastProjectId = 0;
     if (error === 'invalid-draft') catalog.items[0].design = createDesign('battleship');
     const input = error === 'missing' ? { ...state, projects: undefined } : state;
     expect(conquestSchema.safeParse(input).success).toBe(false);
     expect(() => encodeConquestSave(input)).toThrow();
-    expect(executeConquestCommand(input, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 })).toMatchObject({ ok: false, code: 'INVALID_STATE' });
+    expect(executeConquestCommand(input, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 })).toMatchObject({ ok: false, code: 'INVALID_STATE' });
   });
 
   it('project command rejection and save-port failure preserve different accepted state and bytes', () => {
@@ -190,27 +193,27 @@ describe('campaign-owned project contract', () => {
     reject(state, { kind: 'replaceProject', projectId: 1, design: createDesign('battleship') }, 'INVALID_DESIGN');
     expect(decodeConquestSave(encodeConquestSave(state))).toEqual(accepted);
     const envelope = JSON.parse(encodeConquestSave(state));
-    expect(envelope.schemaVersion).toBe(18);
+    expect(envelope.schemaVersion).toBe(19);
     expect(() => decodeConquestSave(JSON.stringify({ ...envelope, schemaVersion: 5 }))).toThrow();
   });
 
   it('earned research expands the next draft without changing accepted blue/red designs or paid snapshots', () => {
     let state = save(createConquest(), createDesign('corvette', true));
-    const design = structuredClone(state.projects.blue.items[0].design);
+    const design = structuredClone(state.projects['player-01'].items[0].design);
     const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
-    state = advanceUntil(state, candidate => candidate.session.treasuries.blue.credits >= quote.cost.credits + 10);
+    state = advanceUntil(state, candidate => candidate.session.treasuries['player-01'].credits >= quote.cost.credits + 10);
     state = apply(state, { kind: 'enqueueProduction', systemId: 'sol', design });
     state = apply(state, { kind: 'assignWorkers', systemId: 'sol',
       workers: { industry: 3500, research: 1500, culture: 0 } });
     state = apply(state, { kind: 'research', technologyId: 'support' });
     state = round(round(state));
-    expect(state.research.blue.completed).toContain('support');
-    expect(state.projects.blue.items[0].design).toEqual(design);
+    expect(state.research['player-01'].completed).toContain('support');
+    expect(state.projects['player-01'].items[0].design).toEqual(design);
     expect([...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed][0].design).toEqual(design);
     const next = installComponent(design, 'armor_1', createComponentWithId('armor', 'opened-armor'));
-    expect(save(state, next).projects.blue.items).toHaveLength(2);
-    expect(state.projects.blue.items).toHaveLength(1);
-    expect(state.projects.red.items).toEqual([]);
+    expect(save(state, next).projects['player-01'].items).toHaveLength(2);
+    expect(state.projects['player-01'].items).toHaveLength(1);
+    expect(state.projects['player-02'].items).toEqual([]);
   });
 });
 
@@ -223,7 +226,7 @@ it('paid generated campaign projects survive FIFO, deletion, travel and real bat
   if (!generated.ok) throw new Error(generated.message);
   let state = createConquest({ mode: 'local' }, undefined, 101, generated.map);
   const homes = getGalaxyDefinition(state.session.galaxy).factions;
-  const home = (side: CampaignFactionId) => homes.find(item => item.id === side)!.homeSystemId;
+  const home = (side: ParticipantId) => homes.find(item => item.id === side)!.homeSystemId;
   const design = createDesign('fighter', true), quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   state = save(state, design);
   state = apply(state, { kind: 'endTurn' });
@@ -235,39 +238,39 @@ it('paid generated campaign projects survive FIFO, deletion, travel and real bat
     return loaded;
   };
   state = checkpoint(state);
-  state = advanceUntil(state, candidate => candidate.session.treasuries.red.credits >= quote.cost.credits);
-  state = apply(state, { kind: 'enqueueProduction', systemId: home('red'), design: state.projects.red.items[0].design });
+  state = advanceUntil(state, candidate => candidate.session.treasuries['player-02'].credits >= quote.cost.credits);
+  state = apply(state, { kind: 'enqueueProduction', systemId: home('player-02'), design: state.projects['player-02'].items[0].design });
   state = apply(state, { kind: 'endTurn' });
-  state = apply(state, { kind: 'enqueueProduction', systemId: home('blue'), design: state.projects.blue.items[0].design });
+  state = apply(state, { kind: 'enqueueProduction', systemId: home('player-01'), design: state.projects['player-01'].items[0].design });
   state = apply(state, { kind: 'deleteProject', projectId: 1 });
   const snapshots = [...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]
     .sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: structuredClone(item.design) }));
   state = checkpoint(state);
   state = advanceUntil(state, candidate => candidate.colonyOutput.production.completed.length === 2);
   expect([...state.colonyOutput.production.completed].sort((a, b) => a.id - b.id).map(item => ({ id: item.id, design: item.design }))).toEqual(snapshots);
-  state = apply(state, { kind: 'deployProduction', systemId: home('blue'), orderId: 4 });
+  state = apply(state, { kind: 'deployProduction', systemId: home('player-01'), orderId: 4 });
   state = apply(state, { kind: 'endTurn' });
-  state = apply(state, { kind: 'deployProduction', systemId: home('red'), orderId: 3 });
+  state = apply(state, { kind: 'deployProduction', systemId: home('player-02'), orderId: 3 });
   state = apply(state, { kind: 'endTurn' });
-  state = apply(state, { kind: 'assignWorkers', systemId: home('blue'), workers: { industry: 3500, research: 1500, culture: 0 } });
+  state = apply(state, { kind: 'assignWorkers', systemId: home('player-01'), workers: { industry: 3500, research: 1500, culture: 0 } });
   for (const technologyId of ['engineering', 'support', 'ordnance', 'capital', 'strategic-tank']) {
     state = apply(state, { kind: 'research', technologyId });
-    state = advanceUntil(state, candidate => candidate.research.blue.completed.includes(technologyId));
+    state = advanceUntil(state, candidate => candidate.research['player-01'].completed.includes(technologyId));
   }
   const original = state.session.ships.find(item => item.id === 4)!.design;
   const interstellar = { ...structuredClone(original), strategicEquipment: {
     ...original.strategicEquipment, jump: 'galactic' as const, tank: 'extended' as const } };
-  state = apply(state, { kind: 'startRefit', systemId: home('blue'), shipId: 4, design: interstellar });
+  state = apply(state, { kind: 'startRefit', systemId: home('player-01'), shipId: 4, design: interstellar });
   state = advanceUntil(state, candidate => !candidate.colonyOutput.projects.length);
-  state = apply(state, { kind: 'refuelShip', systemId: home('blue'), shipId: 4 });
-  for (const destinationId of [home('red')]) {
+  state = apply(state, { kind: 'refuelShip', systemId: home('player-01'), shipId: 4 });
+  for (const destinationId of [home('player-02')]) {
     const ship = state.session.ships.find(item => item.id === 4)!;
     state = apply(state, { kind: 'sendShip', systemId: ship.systemId, shipId: ship.id, destinationId });
     state = checkpoint(state);
     state = advanceUntil(state, candidate => !candidate.session.ships.find(item => item.id === ship.id)?.transit);
   }
   expect(state.lastBattleId).toBeGreaterThan(0);
-  expect(state.projects.red.items[0].design).toEqual(design);
-  expect(state.projects.blue.items).toEqual([]);
+  expect(state.projects['player-02'].items[0].design).toEqual(design);
+  expect(state.projects['player-01'].items).toEqual([]);
   expect(decodeConquestSave(encodeConquestSave(state))).toEqual(state);
 });

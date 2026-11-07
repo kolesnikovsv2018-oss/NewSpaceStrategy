@@ -3,9 +3,10 @@ import { generateBrowserGalaxy } from '../../src/utils/BrowserGalaxyGenerator';
 import { getGalaxyDefinition } from '../../src/domain/campaign';
 import { getWorldDistance, getTravelCapabilities, getTravelQuote } from '../../src/domain/campaignTravel';
 import type { ShipDesign } from '../../src/domain/shipDesign';
-import type { CampaignState } from '../../src/domain/campaign';
+import type { GalaxyOwnershipView } from '../../src/domain/campaign';
+import { activeOf } from './conquestSides';
 
-export function diagnosticTransit(from: string, destinationId: string, design: ShipDesign, galaxy?: CampaignState) {
+export function diagnosticTransit(from: string, destinationId: string, design: ShipDesign, galaxy?: GalaxyOwnershipView) {
   const capabilities = getTravelCapabilities(design.strategicEquipment);
   const quote = getTravelQuote(getWorldDistance(getGalaxyDefinition(galaxy).systems, from, destinationId), capabilities, capabilities.fuelCapacity);
   if (!quote.ok) throw new Error(`Diagnostic route: ${quote.message}`);
@@ -19,8 +20,8 @@ export function finishWorkTravel(state: Conquest, shipId: number): Conquest {
 }
 
 export function workCommand(state: Conquest, payload: Record<string, unknown>): Conquest {
-  const result = executeConquestCommand(state, { factionId: state.session.turn % 2 ? 'blue' : 'red',
-    expectedTurn: state.session.turn, ...payload });
+  const result = executeConquestCommand(state, { factionId: activeOf(state),
+    expectedTurn: state.session.schedule.turn, ...payload });
   if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
   return result.state;
 }
@@ -29,8 +30,8 @@ export function workRound(state: Conquest): Conquest {
 }
 export function earnWorkTechnology(state: Conquest, technologyId: string): Conquest {
   state = workCommand(state, { kind: 'research', technologyId });
-  for (let round = 0; round < 20 && !state.research.blue.completed.includes(technologyId); round++) state = workRound(state);
-  if (!state.research.blue.completed.includes(technologyId)) throw new Error(`Research deadline: ${technologyId}`);
+  for (let round = 0; round < 20 && !state.research['player-01'].completed.includes(technologyId); round++) state = workRound(state);
+  if (!state.research['player-01'].completed.includes(technologyId)) throw new Error(`Research deadline: ${technologyId}`);
   return state;
 }
 export function paidToxicColony() {

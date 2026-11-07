@@ -29,7 +29,7 @@ function fixture(blueCount = 2, redCount = 2): CampaignSession {
     colony.ownerId = faction; colony.exploredBy = [faction];
   }
   const designs = [createCombatDesign('fighter'), createCombatDesign('dreadnought'), createCivilianDesign('freighter')];
-  state.ships = Array.from({ length: blueCount + redCount }, (_, index): CampaignShip => {
+  state.ships = Array.from({ length: blueCount + redCount }, (_, index) => {
     const factionId = index < blueCount ? 'blue' : 'red';
     return { id: index + 1, factionId, systemId: home[factionId], fuel: index % 4,
       design: structuredClone(designs[index % designs.length]) };

@@ -21,8 +21,8 @@ describe('Development diagnostics, not a second simulation', () => {
     expect(replay.finalState).toEqual(run.finalState);
     expect(replay.windows.map(window => window.turn)).toEqual([1, 2, 3, 4]);
     expect(replay.windows.every(window => window.advanced === 1 && window.commandCount <= 24)).toBe(true);
-    expect(replay.checkpoint?.session.turn).toBe(3);
-    replay.checkpoint!.session.treasuries.blue.credits = 0;
+    expect(replay.checkpoint?.session.schedule.turn).toBe(3);
+    replay.checkpoint!.session.treasuries['player-01'].credits = 0;
     expect(start).toEqual(before);
     expect(commands).toEqual(snapshot);
     expect(replay.finalState).toEqual(run.finalState);
@@ -30,14 +30,14 @@ describe('Development diagnostics, not a second simulation', () => {
 
   it.each([false, true])('distinguishes idle growth from a head that completes during the window (queued=%s)', queued => {
     let state = workRound(createConquest());
-    const design = buildConquestDesigns(state.research.blue, state.researchTree)[0];
+    const design = buildConquestDesigns(state.research['player-01'], state.researchTree)[0];
     if (queued) state = apply(state, { kind: 'enqueueProduction', systemId: 'sol', design });
     const before = structuredClone(state);
-    const population = getConquestView(state, 'blue').colonyOutput.assignments.sol.population;
-    const assign: ConquestCommand = { kind: 'assignWorkers', factionId: 'blue', expectedTurn: state.session.turn,
+    const population = getConquestView(state, 'player-01').colonyOutput.assignments.sol.population;
+    const assign: ConquestCommand = { kind: 'assignWorkers', factionId: 'player-01', expectedTurn: state.session.schedule.turn,
       systemId: 'sol', workers: { industry: population, research: 0, culture: 0 } };
     const assigned = apply(state, assign);
-    const end: ConquestCommand = { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.turn };
+    const end: ConquestCommand = { kind: 'endTurn', factionId: 'player-01', expectedTurn: state.session.schedule.turn };
     const after = apply(assigned, end);
     const result = summarizeDevelopmentWindow(state, after, [{ before: state, command: assign }, { before: assigned, command: end }]);
     expect(result.idleIndustryAssignments).toBe(queued ? 0 : 1);
@@ -53,7 +53,7 @@ describe('Development diagnostics, not a second simulation', () => {
 
   it('rejects an unfinished packet rather than reporting partial development as a complete window', () => {
     const state = workRound(createConquest());
-    const command: ConquestCommand = { kind: 'assignWorkers', factionId: 'blue', expectedTurn: state.session.turn,
+    const command: ConquestCommand = { kind: 'assignWorkers', factionId: 'player-01', expectedTurn: state.session.schedule.turn,
       systemId: 'sol', workers: { industry: 5100, research: 0, culture: 0 } };
     expect(() => replayDevelopmentCommands(state, [command], 4)).toThrow('Незавершённое окно');
     expect(() => summarizeDevelopmentWindow(state, state, [])).toThrow('число команд');
@@ -61,7 +61,7 @@ describe('Development diagnostics, not a second simulation', () => {
 
   it('propagates a real rejected stale command without a successful fallback', () => {
     const state = createConquest();
-    expect(() => replayDevelopmentCommands(state, [{ kind: 'endTurn', factionId: 'blue', expectedTurn: 2 }], 3))
+    expect(() => replayDevelopmentCommands(state, [{ kind: 'endTurn', factionId: 'player-01', expectedTurn: 2 }], 3))
       .toThrow('STALE_TURN');
   });
 
@@ -71,7 +71,7 @@ describe('Development diagnostics, not a second simulation', () => {
       ok: true, state: conquestSchema.parse(input)
     }));
     try {
-      expect(() => replayDevelopmentCommands(state, [{ kind: 'endTurn', factionId: 'blue', expectedTurn: 1 }], 2))
+      expect(() => replayDevelopmentCommands(state, [{ kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 }], 2))
         .toThrow('не продвинуло ход');
       expect(dispatch).toHaveBeenCalledOnce();
     } finally { dispatch.mockRestore(); }

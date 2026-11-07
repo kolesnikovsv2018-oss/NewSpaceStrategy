@@ -1,4 +1,4 @@
-import { getGalaxyDefinition, type CampaignState, type SystemId } from './campaign';
+import { getGalaxyDefinition, type GalaxyOwnershipView, type SystemId } from './campaign';
 import { activateRulesEffects, applyNumericEffects, COLONY_EFFECT_TARGETS,
   type ColonyEffectTarget, type RulesEffect, type RulesSnapshot } from './campaignRules';
 import type { ResearchState, ResearchTree } from './campaignResearch';
@@ -15,7 +15,7 @@ export interface ColonyValueBreakdown {
   effectIds: string[];
 }
 
-export function getColonyWorldType(galaxy: CampaignState, systemId: SystemId, environment?: EnvironmentState): ColonyWorldType {
+export function getColonyWorldType(galaxy: GalaxyOwnershipView, systemId: SystemId, environment?: EnvironmentState): ColonyWorldType {
   if (environment) return getEnvironmentType(environment, systemId);
   if (galaxy.map) {
     const world = galaxy.map.worlds.find(world => world.id === systemId);

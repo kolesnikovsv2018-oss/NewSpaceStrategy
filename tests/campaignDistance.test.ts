@@ -7,11 +7,12 @@ import { getColonyProductionQuote } from '../src/domain/campaignOutput';
 import { encodeConquestSave, decodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { validateGalaxyMap, canReachInitialWorld, getNearestNeutralWorlds } from '../src/domain/galaxyMap';
+import { activeOf } from './fixtures/conquestSides';
 
 function apply(state: Conquest, payload: Record<string, unknown>): Conquest {
   const before = structuredClone(state);
-  const result = executeConquestCommand(state, { factionId: state.session.turn % 2 ? 'blue' : 'red',
-    expectedTurn: state.session.turn, ...payload });
+  const result = executeConquestCommand(state, { factionId: activeOf(state),
+    expectedTurn: state.session.schedule.turn, ...payload });
   expect(state).toEqual(before);
   if (!result.ok) throw new Error(result.message);
   return result.state;
@@ -42,7 +43,7 @@ it('provides an independent valid colonizer project and exactly two full startin
   });
   expect(state.session.production.lastOrderId).toBe(2);
   expect(state.session.ships.map(ship => [ship.id, ship.factionId, ship.systemId, ship.fuel, ship.design.hullId]))
-    .toEqual([[1, 'blue', 'sol', 3000, 'colonizer'], [2, 'red', 'vega', 3000, 'colonizer']]);
+    .toEqual([[1, 'player-01', 'sol', 3000, 'colonizer'], [2, 'player-02', 'vega', 3000, 'colonizer']]);
   expect(Object.keys(state.operations)).toEqual(['1', '2']);
   state.session.ships[0].design.name = 'Changed';
   expect(state.session.ships[1].design.name).toBe('Колонизатор');
@@ -57,38 +58,38 @@ it('requires an explicit selected colonizer and consumes it only after successfu
   state = round(state);
   expect(state.session.galaxy.systems.find(system => system.id === 'eden')!.ownerId).toBeNull();
   expect(executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', shipId: 1,
-    factionId: 'blue', expectedTurn: 3 })).toMatchObject({ ok: false, code: 'NOT_SURVEYED' });
+    factionId: 'player-01', expectedTurn: 3 })).toMatchObject({ ok: false, code: 'NOT_SURVEYED' });
   state = apply(state, { kind: 'survey', systemId: 'eden' });
-  const before = structuredClone(state), treasury = state.session.treasuries.blue;
-  const missingId = executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', factionId: 'blue', expectedTurn: 3 });
+  const before = structuredClone(state), treasury = state.session.treasuries['player-01'];
+  const missingId = executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', factionId: 'player-01', expectedTurn: 3 });
   expect(missingId).toMatchObject({ ok: false, code: 'INVALID_COMMAND' });
-  const wrongId = executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', shipId: 2, factionId: 'blue', expectedTurn: 3 });
+  const wrongId = executeConquestCommand(state, { kind: 'colonize', systemId: 'eden', shipId: 2, factionId: 'player-01', expectedTurn: 3 });
   expect(wrongId).toMatchObject({ ok: false, code: 'COLONIZER_REQUIRED' });
   expect(state).toEqual(before);
   const restored = decodeConquestSave(encodeConquestSave(state));
   const next = apply(restored, { kind: 'colonize', systemId: 'eden', shipId: 1 });
   expect(next).toEqual(apply(state, { kind: 'colonize', systemId: 'eden', shipId: 1 }));
-  expect(next.session.treasuries.blue).toEqual({ credits: treasury.credits - 20, minerals: treasury.minerals - 10 });
+  expect(next.session.treasuries['player-01']).toEqual({ credits: treasury.credits - 20, minerals: treasury.minerals - 10 });
   expect(next.population.sol.population).toBe(state.population.sol.population - 1000);
   expect(next.population.eden).toEqual({ population: 1000, remainder: 0 });
   expect(next.session.ships.map(ship => ship.id)).toEqual([2]);
   expect(next.operations).not.toHaveProperty('1');
   expect(next.session.production.lastOrderId).toBe(2);
   expect(executeConquestCommand(next, { kind: 'colonize', systemId: 'eden', shipId: 1,
-    factionId: 'blue', expectedTurn: 3 }).ok).toBe(false);
+    factionId: 'player-01', expectedTurn: 3 }).ok).toBe(false);
 });
 
 it('earns all four range levels by real scientific spending without changing ship definitions', () => {
   let state = apply(createConquest(), { kind: 'assignWorkers', systemId: 'sol',
     workers: { industry: 0, research: 5000, culture: 0 } });
   const ships = structuredClone(state.session.ships);
-  expect(getConquestView(state, 'blue').strategicRange).toBe(200);
+  expect(getConquestView(state, 'player-01').strategicRange).toBe(200);
   for (const [id, range] of [['engineering', 400], ['support', 400], ['ordnance', 800], ['capital', 1500]] as const) {
     state = apply(state, { kind: 'research', technologyId: id });
-    for (let step = 0; step < 10 && !state.research.blue.completed.includes(id); step++) state = round(state);
-    expect(state.research.blue.completed).toContain(id);
-    expect(getConquestView(state, 'blue').strategicRange).toBe(range);
-    expect(getConquestView(state, 'red').strategicRange).toBe(200);
+    for (let step = 0; step < 10 && !state.research['player-01'].completed.includes(id); step++) state = round(state);
+    expect(state.research['player-01'].completed).toContain(id);
+    expect(getConquestView(state, 'player-01').strategicRange).toBe(range);
+    expect(getConquestView(state, 'player-02').strategicRange).toBe(200);
     state = decodeConquestSave(encodeConquestSave(state));
   }
   expect(state.session.ships).toEqual(ships);

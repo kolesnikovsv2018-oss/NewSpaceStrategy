@@ -9,6 +9,7 @@ import {
 } from '../src/domain/campaignDiplomacy';
 import { createConquest, executeConquestCommand, type Conquest, type ConquestCommand } from '../src/domain/conquest';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
+import { activeOf } from './fixtures/conquestSides';
 
 const rules = defaultDiplomacyRules;
 const richTreasury = { credits: 1000, minerals: 500 };
@@ -364,8 +365,8 @@ describe('campaignDiplomacy scoring and own view', () => {
 
 describe('conquest integration', () => {
   function endTurn(state: Conquest): Conquest {
-    const faction = state.session.turn % 2 ? 'blue' : 'red';
-    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: faction, expectedTurn: state.session.turn });
+    const faction = activeOf(state);
+    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: faction, expectedTurn: state.session.schedule.turn });
     if (!result.ok) throw new Error(result.message);
     return result.state;
   }
@@ -374,7 +375,7 @@ describe('conquest integration', () => {
   type CommandFields = DistributiveOmit<ConquestCommand, 'factionId' | 'expectedTurn'>;
 
   function runCommand(state: Conquest, command: CommandFields): Conquest {
-    const full = { ...command, factionId: state.session.turn % 2 ? 'blue' : 'red', expectedTurn: state.session.turn } as ConquestCommand;
+    const full = { ...command, factionId: activeOf(state), expectedTurn: state.session.schedule.turn } as ConquestCommand;
     const result = executeConquestCommand(state, full);
     if (!result.ok) throw new Error(result.message);
     return result.state;

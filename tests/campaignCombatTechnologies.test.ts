@@ -22,8 +22,8 @@ function exact(design: ShipDesign): ShipDesign {
 function restored(state: Conquest): Conquest {
   const next = decodeConquestSave(encodeConquestSave(state));
   expect(next).toEqual(state);
-  expect(executeConquestCommand(next, { kind: 'endTurn', factionId: 'blue', expectedTurn: next.session.turn }))
-    .toEqual(executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.turn }));
+  expect(executeConquestCommand(next, { kind: 'endTurn', factionId: 'blue', expectedTurn: next.session.schedule.turn }))
+    .toEqual(executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.schedule.turn }));
   return next;
 }
 
@@ -154,10 +154,10 @@ describe('N13: earned integration and bounded observations', () => {
   it('earns branches, builds and refits a paid snapshot, reloads, fights and retains the next oracle', () => {
     let state = createConquest();
     const base = createDesign('corvette', true), next = { ...upgraded(base), hullVariant: 'reinforced' as const };
-    expect(isCampaignDesignAvailable(next, state.research.blue, state.researchTree)).toBe(false);
+    expect(isCampaignDesignAvailable(next, state.research['player-01'], state.researchTree)).toBe(false);
     state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 1000, research: 4000, culture: 0 } });
     for (const id of ['engineering', 'support', 'ordnance', 'capital', 'tactical-propulsion', 'focused-beams', 'reinforced-hulls']) state = earn(state, id);
-    expect(hasTacticalVariant('focused', state.research.blue, state.researchTree)).toBe(true);
+    expect(hasTacticalVariant('focused', state.research['player-01'], state.researchTree)).toBe(true);
     state = apply(state, { kind: 'createProject', name: 'Target', design: next });
     state = apply(state, { kind: 'enqueueProduction', systemId: 'sol', design: base });
     const shipId = state.session.production.lastOrderId;
@@ -165,7 +165,7 @@ describe('N13: earned integration and bounded observations', () => {
     state = apply(state, { kind: 'deployProduction', systemId: 'sol', orderId: shipId });
     const before = structuredClone(state.operations[String(shipId)]), fuel = state.session.ships.find(ship => ship.id === shipId)!.fuel;
     state = apply(state, { kind: 'startRefit', systemId: 'sol', shipId, design: next });
-    state = apply(state, { kind: 'deleteProject', projectId: state.projects.blue.items[0].id });
+    state = apply(state, { kind: 'deleteProject', projectId: state.projects['player-01'].items[0].id });
     state = restored(state);
     for (let step = 0; state.colonyOutput.projects.length && step < 20; step++) state = round(state);
     expect(state.colonyOutput.projects).toEqual([]);

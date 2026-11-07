@@ -11,6 +11,7 @@ import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSav
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { canReachInitialWorld, getNearestNeutralWorlds } from '../src/domain/galaxyMap';
 import { workCommand as apply, workRound as round, earnWorkTechnology as earn } from './fixtures/colonyWork';
+import { activeOf } from './fixtures/conquestSides';
 
 const base = getTravelCapabilities(createStrategicEquipment());
 function scenario() {
@@ -42,26 +43,26 @@ describe('project strategic travel', () => {
       getWorldDistance(setup.map.worlds, ship.systemId, world.id) > 100 &&
       getWorldDistance(setup.map.worlds, ship.systemId, world.id) <= 200);
     if (!target) throw new Error('Нет диагностического barren для двух ходов');
-    state.surveys.blue[target.id] = 'barren';
-    state.session.galaxy.systems.find(world => world.id === target.id)!.exploredBy.push('blue');
+    state.surveys['player-01'][target.id] = 'barren';
+    state.session.galaxy.systems.find(world => world.id === target.id)!.exploredBy.push('player-01');
     state = send(state, ship.id, target.id);
     for (const kind of ['repairShip', 'resupplyShip', 'refuelShip']) {
       const before = structuredClone(state);
       expect(executeConquestCommand(state, { kind, systemId: ship.systemId, shipId: ship.id,
-        factionId: 'blue', expectedTurn: state.session.turn }).ok).toBe(false);
+        factionId: 'player-01', expectedTurn: state.session.schedule.turn }).ok).toBe(false);
       expect(state).toEqual(before);
     }
     const forecast = (source: Conquest) => {
-      const view = getConquestView(source, 'blue');
+      const view = getConquestView(source, 'player-01');
       return view.income.minerals - view.colonyOutput.forecast.income.minerals;
     };
     expect(forecast(state)).toBe(0);
-    const first = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.turn });
+    const first = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: state.session.schedule.turn });
     if (!first.ok) throw new Error(first.message);
     expect(first.turnReceipt!.miningMinerals).toBe(0);
     state = apply(first.state, { kind: 'endTurn' });
     expect(forecast(state)).toBe(8);
-    const last = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.turn });
+    const last = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: state.session.schedule.turn });
     if (!last.ok) throw new Error(last.message);
     expect(last.turnReceipt!.miningMinerals).toBe(8);
     expect(last.state.session.ships[0].transit).toBeUndefined();
@@ -76,7 +77,7 @@ describe('project strategic travel', () => {
     state = send(state, setup.ship.id, setup.target.id);
     const snapshot = structuredClone(state.session.ships[0].transit);
     state = round(state);
-    expect(state.research.blue.completed).toContain('strategic-drive');
+    expect(state.research['player-01'].completed).toContain('strategic-drive');
     expect(state.session.ships[0].transit).toEqual({ ...snapshot, remainingTurns: 1 });
     const restored = decodeConquestSave(encodeConquestSave(state));
     expect(round(restored)).toEqual(round(state));
@@ -129,10 +130,10 @@ describe('project strategic travel', () => {
     const first = structuredClone(state.session.ships[0].transit);
     expect(first).toMatchObject({ policy: 'project-travel-v1', totalTurns: 2, remainingTurns: 2 });
     if (!first || !('distance' in first)) throw new Error('Нет военного снимка маршрута');
-    expect(getConquestView(state, 'blue').ships[0].transit).toEqual(first);
-    expect(getConquestView(state, 'red').enemies.some(item => item.id === ship.id)).toBe(false);
+    expect(getConquestView(state, 'player-01').ships[0].transit).toEqual(first);
+    expect(getConquestView(state, 'player-02').enemies.some(item => item.id === ship.id)).toBe(false);
     expect(state.session.ships[0].fuel).toBe(3000 - Math.ceil(first.distance * 5));
-    const repeat = executeConquestCommand(state, { kind: 'sendShip', factionId: 'blue', expectedTurn: 1,
+    const repeat = executeConquestCommand(state, { kind: 'sendShip', factionId: 'player-01', expectedTurn: 1,
       shipId: ship.id, systemId: ship.systemId, destinationId: target.id });
     expect(repeat).toMatchObject({ ok: false, code: 'SHIP_IN_TRANSIT' });
     state = apply(state, { kind: 'endTurn' });
@@ -163,7 +164,7 @@ describe('project strategic travel', () => {
     second.fuel = 1;
     state.session.ships.push(second); state.operations[String(second.id)] = createOperationalState(second.design);
     state = apply(state, { kind: 'createFleet', systemId: setup.ship.systemId, shipIds: [setup.ship.id, second.id] });
-    const command = { kind: 'sendFleet', factionId: 'blue', expectedTurn: state.session.turn,
+    const command = { kind: 'sendFleet', factionId: 'player-01', expectedTurn: state.session.schedule.turn,
       systemId: setup.ship.systemId, destinationId: setup.target.id, fleetId: 1 };
     const before = structuredClone(state);
     expect(executeConquestCommand(state, command)).toMatchObject({ ok: false, code: 'INSUFFICIENT_FUEL' });
@@ -186,10 +187,10 @@ describe('project strategic travel', () => {
     const original = structuredClone(state.session.ships[0]);
     const design: ShipDesign = { ...createColonizerDesign(), strategicEquipment: {
       policy: 'project-travel-v1', drive: 'fast', jump: 'extended', tank: 'extended' } };
-    expect(isCampaignDesignAvailable(design, state.research.blue, state.researchTree)).toBe(false);
+    expect(isCampaignDesignAvailable(design, state.research['player-01'], state.researchTree)).toBe(false);
     for (const id of ['engineering', 'strategic-drive', 'strategic-tank']) state = earn(state, id);
     expect(state.session.ships[0]).toEqual(original);
-    expect(isCampaignDesignAvailable(design, state.research.blue, state.researchTree)).toBe(true);
+    expect(isCampaignDesignAvailable(design, state.research['player-01'], state.researchTree)).toBe(true);
     expect(getColonyProductionQuote(design, state.rules.colonyOutput).cost).toEqual({ credits: 414, minerals: 19 });
     state = apply(state, { kind: 'startRefit', systemId: 'sol', shipId: 1, design });
     const projectId = state.session.production.lastOrderId;
@@ -199,7 +200,7 @@ describe('project strategic travel', () => {
     expect(state.session.ships[0].fuel).toBe(3000);
     state = apply(state, { kind: 'refuelShip', systemId: 'sol', shipId: 1 });
     expect(state.session.ships[0].fuel).toBe(9000);
-    expect(executeConquestCommand(state, { kind: 'startRefit', factionId: 'blue', expectedTurn: state.session.turn,
+    expect(executeConquestCommand(state, { kind: 'startRefit', factionId: 'player-01', expectedTurn: state.session.schedule.turn,
       systemId: 'sol', shipId: 1, design: createColonizerDesign() })).toMatchObject({ ok: false, code: 'INVALID_DESIGN' });
   });
 
@@ -230,14 +231,14 @@ describe('project strategic travel', () => {
     const result = generateBrowserGalaxy(6, 41);
     if (!result.ok) throw new Error(result.message);
     let state = createConquest(undefined, undefined, 101, result.map);
-    for (const faction of ['blue', 'red'] as const) {
-      if ((state.session.turn % 2 ? 'blue' : 'red') !== faction) state = apply(state, { kind: 'endTurn' });
-      const home = result.map.participants[faction === 'blue' ? 0 : 1].homeWorldId;
+    for (const faction of ['player-01', 'player-02'] as const) {
+      if ((activeOf(state)) !== faction) state = apply(state, { kind: 'endTurn' });
+      const home = result.map.participants[faction === 'player-01' ? 0 : 1].homeWorldId;
       state = apply(state, { kind: 'assignWorkers', systemId: home, workers: { industry: 5000, research: 0, culture: 0 } });
       const targets = getNearestNeutralWorlds(result.map, home);
       for (const [index, target] of targets.entries()) {
         expect(canReachInitialWorld(result.map, home, target.id)).toBe(true);
-        let id = faction === 'blue' ? 1 : 2;
+        let id = faction === 'player-01' ? 1 : 2;
         if (index) {
           const design = createColonizerDesign();
           state = apply(state, { kind: 'enqueueProduction', systemId: home, design });

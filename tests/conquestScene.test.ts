@@ -81,7 +81,7 @@ function fixture(storage = new Map<string, string>(), initialize = true, width =
   const tasks: { callback: () => void; remove: ReturnType<typeof vi.fn> }[] = [];
   const scene = new ConquestScene();
   const owner = scene as unknown as { state: Conquest; phase: string; page: number; tab: string;
-    observer: 'blue' | 'red'; selected: string; replace(state: Conquest): void; render(): void;
+    observer: 'player-01' | 'player-02'; selected: string; replace(state: Conquest): void; render(): void;
     forwardEscape(event: Pick<KeyboardEvent, 'key' | 'defaultPrevented'>): void };
   const input = Object.assign(new EventEmitter(), { keyboard });
   Object.assign(scene, { cameras: { main: { width, height } }, input, events,
@@ -106,29 +106,29 @@ function distinctWorlds(): Conquest {
   // Diagnostic strict-valid snapshot: intentionally different local data at each colony.
   const state = createConquest();
   const eden = state.session.galaxy.systems.find(world => world.id === 'eden')!;
-  eden.ownerId = 'blue'; eden.exploredBy = ['blue'];
-  state.surveys.blue.eden = 'habitable';
+  eden.ownerId = 'player-01'; eden.exploredBy = ['player-01'];
+  state.surveys['player-01'].eden = 'habitable';
   state.population.eden.population = 2100;
   state.colonyOutput.assignments.sol = { industry: 10, research: 20, culture: 30 };
   state.colonyOutput.assignments.eden = { industry: 7, research: 11, culture: 13 };
   for (const [id, systemId] of [[3, 'sol'], [4, 'eden']] as const) {
     const design = createDesign('fighter', true); design.name = `${systemId} queue`;
-    state.colonyOutput.production.orders.push({ id, systemId, factionId: 'blue', design,
+    state.colonyOutput.production.orders.push({ id, systemId, factionId: 'player-01', design,
       ...getColonyProductionQuote(design, state.rules.colonyOutput), productionProgress: id - 3 });
   }
   for (const [id, systemId] of [[5, 'sol'], [6, 'eden']] as const) {
     const design = createDesign('fighter', true); design.name = `${systemId} ready`;
-    state.colonyOutput.production.completed.push({ id, systemId, factionId: 'blue', design });
+    state.colonyOutput.production.completed.push({ id, systemId, factionId: 'player-01', design });
   }
   for (const [id, systemId] of [[7, 'sol'], [8, 'eden'], [9, 'eden']] as const) {
     const design = createDesign('fighter', true); design.name = `${systemId} ship ${id}`;
-    state.session.ships.push({ id, systemId, factionId: 'blue', design, fuel: id * 100 });
+    state.session.ships.push({ id, systemId, factionId: 'player-01', design, fuel: id * 100 });
     state.operations[String(id)] = { ...createOperationalState(design), hull: id + 30 };
   }
   state.session.production.lastOrderId = 9;
   state.session.fleets = { lastFleetId: 2, items: [
-    { id: 1, factionId: 'blue', systemId: 'sol', shipIds: [1, 7] },
-    { id: 2, factionId: 'blue', systemId: 'eden', shipIds: [8, 9] }
+    { id: 1, factionId: 'player-01', systemId: 'sol', shipIds: [1, 7] },
+    { id: 2, factionId: 'player-01', systemId: 'eden', shipIds: [8, 9] }
   ] };
   return conquestSchema.parse(state);
 }
@@ -234,7 +234,7 @@ it.each([[1280, 720], [390, 844]])('shows only the selected colony work and upda
   }
   state.colonyOutput.projects[0].productionProgress = 11999;
   state = workCommand(state, { kind: 'endTurn' });
-  test.owner.replace(state); test.owner.observer = 'blue'; test.owner.render();
+  test.owner.replace(state); test.owner.observer = 'player-01'; test.owner.render();
   chooseWorld(test, setup.target, 'list', width < 1280);
   expect(test.nodes.some(node => !node.destroyed && node.text.includes('пригодная среда'))).toBe(true);
   expect(test.owner.state.environment[setup.target]).toBe('habitable');
@@ -292,8 +292,8 @@ it.each([[1280, 720], [390, 844]])('does not replace unknown or enemy data with 
   const test = fixture(new Map(), true, width, height), state = distinctWorlds();
   state.session.fleets = { lastFleetId: 2, items: [] };
   state.session.ships.find(ship => ship.id === 9)!.systemId = 'vega';
-  state.surveys.blue.nexus = 'toxic';
-  state.session.galaxy.systems.find(world => world.id === 'nexus')!.exploredBy.push('blue');
+  state.surveys['player-01'].nexus = 'toxic';
+  state.session.galaxy.systems.find(world => world.id === 'nexus')!.exploredBy.push('player-01');
   test.owner.replace(state);
   for (const [id, caption] of [['vega', 'чужая колония'], ['nexus', 'нет наблюдения'], ['rift', 'нет наблюдения']]) {
     chooseWorld(test, id, 'list', width < 1280);
@@ -310,13 +310,13 @@ it.each([[1280, 720], [390, 844]])('does not replace unknown or enemy data with 
 });
 
 it.each([
-  [1280, 720, 'local'], [390, 844, 'local'], [1280, 720, 'human-vs-ai'], [390, 844, 'human-vs-ai']
+  [1280, 720, 'local'], [390, 844, 'local'], [1280, 720, 'campaign'], [390, 844, 'campaign']
 ] as const)('loads fresh panels and the existing observer selection in %s×%s %s', (width, height, mode) => {
   const test = fixture(new Map(), true, width, height), state = distinctWorlds();
-  state.control = mode === 'local' ? { mode } : { mode, aiPolicy: 'conquest-v1' };
-  state.session.turn = 2;
+  state.control = mode === 'local' ? { mode } : { mode, human: 'player-01', aiPolicy: 'conquest-v1' };
+  state.session.schedule = { order: state.session.schedule.order, activeIndex: 1, turn: 2, revision: 1, round: 1 };
   test.owner.replace(state);
-  const observer = mode === 'local' ? 'red' : 'blue', home = observer === 'red' ? 'vega' : 'sol';
+  const observer = mode === 'local' ? 'player-02' : 'player-01', home = observer === 'player-02' ? 'vega' : 'sol';
   if (width < 1280) test.click('conquest-tab-actions');
   test.click('conquest-save'); test.click('conquest-confirm');
   test.owner.replace(createConquest());
@@ -328,7 +328,7 @@ it.each([
   expect(test.owner.phase).toBe(mode === 'local' ? 'idle' : 'paused');
   expect(test.find('conquest-population').text).toContain('5/10 млн');
   test.click('conquest-tab-fleet');
-  expect(test.find(`conquest-ship-${observer === 'red' ? 2 : 1}`).text).toContain('Колонизатор');
+  expect(test.find(`conquest-ship-${observer === 'player-02' ? 2 : 1}`).text).toContain('Колонизатор');
   test.events.emit('shutdown');
 });
 
@@ -339,12 +339,12 @@ it.each([[1280, 720], [390, 844]])('shows domain breakdown and persisted own res
     { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 2500, research: 2500, culture: 0 } },
     { kind: 'research', technologyId: 'biology' }, { kind: 'endTurn' }
   ]) {
-    const result = executeConquestCommand(state, { factionId: 'blue', expectedTurn: 1, ...payload });
+    const result = executeConquestCommand(state, { factionId: 'player-01', expectedTurn: 1, ...payload });
     if (!result.ok) throw new Error(result.message);
     state = result.state;
   }
   test.owner.replace(state);
-  test.owner.observer = 'blue'; test.owner.selected = 'sol'; test.owner.render();
+  test.owner.observer = 'player-01'; test.owner.selected = 'sol'; test.owner.render();
   const before = structuredClone(state);
   if (width === 1280) test.click('conquest-tab-production');
   test.click('conquest-effects');
@@ -473,14 +473,14 @@ it.each([[1280, 720], [390, 844]])('switches and pauses research without credit 
   const test = fixture(new Map(), true, width, height);
   test.click('conquest-tab-research');
   test.click('conquest-research-engineering');
-  expect(test.owner.state.research.blue.activeId).toBe('engineering');
-  expect(test.owner.state.session.treasuries.blue.credits).toBe(100);
+  expect(test.owner.state.research['player-01'].activeId).toBe('engineering');
+  expect(test.owner.state.session.treasuries['player-01'].credits).toBe(100);
   if (width < 1280) test.click('conquest-page-next');
   test.click('conquest-research-applied');
-  expect(test.owner.state.research.blue).toEqual({ completed: [], activeId: 'applied',
+  expect(test.owner.state.research['player-01']).toEqual({ completed: [], activeId: 'applied',
     progress: { engineering: 0, applied: 0 } });
   test.click('conquest-research-pause');
-  expect(test.owner.state.research.blue.activeId).toBeNull();
+  expect(test.owner.state.research['player-01'].activeId).toBeNull();
   expect(test.find('conquest-research-forecast').text).toContain('проект не выбран');
   expect(test.write).not.toHaveBeenCalled();
   test.events.emit('shutdown');
@@ -503,7 +503,7 @@ it.each([[1280, 720], [390, 844]])('shows own population and growth, refreshes o
   expect(test.find('conquest-population').text).toContain('5,1/10 млн');
   test.owner.selected = 'vega'; test.owner.render();
   expect(test.find('conquest-population').text).not.toContain('Население');
-  test.owner.observer = 'red'; test.owner.render();
+  test.owner.observer = 'player-02'; test.owner.render();
   expect(test.find('conquest-population').text).toContain('5/10 млн');
   test.events.emit('shutdown');
 });
@@ -551,7 +551,7 @@ it('shows paused industry without inventing a one-turn estimate and refreshes th
   const quote = getColonyProductionQuote(design, state.rules.colonyOutput);
   state.session.production.lastOrderId = 1;
   state.colonyOutput.assignments.sol = { industry: 0, research: 0, culture: 0 };
-  state.colonyOutput.production.orders = [{ id: 1, factionId: 'blue', systemId: 'sol', design,
+  state.colonyOutput.production.orders = [{ id: 1, factionId: 'player-01', systemId: 'sol', design,
     ...quote, productionProgress: 0 }];
   test.owner.replace(conquestSchema.parse(state));
   test.click('conquest-tab-production');
@@ -565,7 +565,7 @@ it('does not report or perform implicit founding for an armed ship', () => {
   const test = fixture();
   const state = createConquest(), design = createDesign('fighter', true);
   state.session.production.lastOrderId = 3;
-  state.session.ships.push({ id: 3, factionId: 'blue', systemId: 'eden', fuel: 3000, design });
+  state.session.ships.push({ id: 3, factionId: 'player-01', systemId: 'eden', fuel: 3000, design });
   state.operations['3'] = createOperationalState(design);
   state.population.sol.population = 1000;
   state.colonyOutput.assignments.sol = { industry: 1000, research: 0, culture: 0 };
@@ -584,28 +584,28 @@ it('saves an owned campaign blueprint without paying production or creating a sh
   expect(test.find('campaign-project-panel')).toBeDefined();
   expect(test.find('campaign-project-save').input.enabled).toBe(true);
   test.click('campaign-project-save');
-  const projects = test.owner.state.projects.blue.items;
+  const projects = test.owner.state.projects['player-01'].items;
   expect(projects).toHaveLength(1);
-  expect(projects[0].factionId).toBe('blue');
-  expect(projects[0].design).not.toBe(beforeProjects.blue.items[0]?.design);
+  expect(projects[0].factionId).toBe('player-01');
+  expect(projects[0].design).not.toBe(beforeProjects['player-01'].items[0]?.design);
   expect(test.owner.state.session).not.toHaveProperty('projects');
   expect(test.owner.state.session.ships).toEqual(before.ships);
   expect(test.owner.state.session.production).toEqual(before.production);
   expect(test.owner.state.session.treasuries).toEqual(before.treasuries);
   expect(test.write).not.toHaveBeenCalled();
   test.click('campaign-project-copy');
-  expect(test.owner.state.projects.blue.items).toHaveLength(2);
-  expect(test.owner.state.projects.blue.items[0].design.slots).toEqual(test.owner.state.projects.blue.items[1].design.slots);
-  expect(test.owner.state.projects.blue.items[0].design).not.toBe(test.owner.state.projects.blue.items[1].design);
+  expect(test.owner.state.projects['player-01'].items).toHaveLength(2);
+  expect(test.owner.state.projects['player-01'].items[0].design.slots).toEqual(test.owner.state.projects['player-01'].items[1].design.slots);
+  expect(test.owner.state.projects['player-01'].items[0].design).not.toBe(test.owner.state.projects['player-01'].items[1].design);
   vi.stubGlobal('prompt', () => 'Renamed');
   test.click('campaign-project-rename');
-  expect(test.owner.state.projects.blue.items[1].name).toBe('Renamed');
+  expect(test.owner.state.projects['player-01'].items[1].name).toBe('Renamed');
   test.click('campaign-project-delete');
   test.click('campaign-delete-confirm');
-  expect(test.owner.state.projects.blue.items).toHaveLength(1);
+  expect(test.owner.state.projects['player-01'].items).toHaveLength(1);
   test.click('campaign-projects-close');
   test.click('campaign-dirty-confirm');
-  expect(test.owner.state.session.turn).toBe(before.turn);
+  expect(test.owner.state.session.schedule.turn).toBe(before.schedule.turn);
   test.events.emit('shutdown');
 });
 
@@ -635,8 +635,8 @@ it.each([[1280, 720], [390, 844]])('reenables save after editing a loaded projec
   test.click('campaign-projects-close');
   test.click('campaign-dirty-cancel');
   test.click('campaign-project-save');
-  const beam = test.owner.state.projects.blue.items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
-  const oldBeam = before.projects.blue.items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
+  const beam = test.owner.state.projects['player-01'].items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
+  const oldBeam = before.projects['player-01'].items[0].design.slots.find(slot => slot.id === 'beam_1')?.component;
   if (beam?.kind !== 'beam' || oldBeam?.kind !== 'beam') throw new Error('Missing beam');
   expect(beam.damage).toBeCloseTo(oldBeam.damage * 1.01);
   expect(test.owner.state.session).toEqual(before.session);
@@ -688,7 +688,7 @@ it('relayouts an open dirty project immediately on resize without losing its bas
   expect(panel.editor.getConfiguration()).toEqual(draft);
   expect(panel.hasUnsavedChanges()).toBe(true);
   test.click('campaign-project-save');
-  expect(test.owner.state.projects.blue.items[0].design).toEqual(draft);
+  expect(test.owner.state.projects['player-01'].items[0].design).toEqual(draft);
   expect(panel.hasUnsavedChanges()).toBe(false);
   test.click('campaign-projects-close');
   expect(() => test.find('campaign-dirty-confirm')).toThrow();
@@ -698,14 +698,14 @@ it('relayouts an open dirty project immediately on resize without losing its bas
 it.each([[1280, 720], [390, 844]])('shows the full refit quote despite a long project name at %ix%i', (width, height) => {
   const test = fixture(new Map(), true, width, height);
   const state = structuredClone(test.owner.state);
-  state.research.blue.completed = state.researchTree.nodes.map(node => node.id);
-  state.researchJournal.blue = Object.fromEntries(state.research.blue.completed.map(id => [id, 1]));
+  state.research['player-01'].completed = state.researchTree.nodes.map(node => node.id);
+  state.researchJournal['player-01'] = Object.fromEntries(state.research['player-01'].completed.map(id => [id, 1]));
   const ship = state.session.ships.find(ship => ship.id === 1)!;
   const design = { ...structuredClone(ship.design), name: 'Н'.repeat(80),
     slots: ship.design.slots.map(slot => ({ ...slot,
       component: slot.component ? { ...slot.component, technologyVariant: 'compact' as const } : null })) };
   const created = executeConquestCommand(state, { kind: 'createProject', name: design.name, design,
-    factionId: 'blue', expectedTurn: state.session.turn });
+    factionId: 'player-01', expectedTurn: state.session.schedule.turn });
   if (!created.ok) throw new Error(created.message);
   test.owner.replace(created.state);
   test.click('conquest-tab-fleet'); test.click('conquest-ship-1'); test.click('conquest-refit'); test.click('choice-0');
@@ -733,7 +733,7 @@ it('limits component variants and excludes presets outside the same research ban
     .some(node => node.text.includes('Истребитель'))).toBe(false);
   test.click('campaign-preset-cancel');
   test.click('campaign-project-save');
-  const savedPreset = test.owner.state.projects.blue.items[0].design;
+  const savedPreset = test.owner.state.projects['player-01'].items[0].design;
   expect(savedPreset.hullId).toBe('fighter');
   expect(isCombatPresetDesign(savedPreset)).toBe(false);
 
@@ -756,15 +756,15 @@ it('limits component variants and excludes presets outside the same research ban
 
   panel.editor.setCampaignDesign(illegal);
   panel.save();
-  expect(test.owner.state.projects.blue.items[0].design).toEqual(savedPreset);
+  expect(test.owner.state.projects['player-01'].items[0].design).toEqual(savedPreset);
   test.events.emit('shutdown');
 });
 
 it('accepts only in-band presets after unlock and does not expose closed preset modules', () => {
   const test = fixture();
   const advanced = structuredClone(test.owner.state);
-  advanced.research.blue.completed = advanced.researchTree.nodes.map(node => node.id);
-  advanced.researchJournal.blue = Object.fromEntries(advanced.research.blue.completed.map(id => [id, 1]));
+  advanced.research['player-01'].completed = advanced.researchTree.nodes.map(node => node.id);
+  advanced.researchJournal['player-01'] = Object.fromEntries(advanced.research['player-01'].completed.map(id => [id, 1]));
   test.owner.replace(conquestSchema.parse(advanced));
   test.click('conquest-projects');
   test.click('campaign-project-preset');
@@ -774,7 +774,7 @@ it('accepts only in-band presets after unlock and does not expose closed preset 
   test.click('campaign-dirty-confirm');
   test.click('campaign-project-save');
 
-  const saved = test.owner.state.projects.blue.items[0];
+  const saved = test.owner.state.projects['player-01'].items[0];
   expect(isCombatPresetDesign(saved.design)).toBe(true);
   const editorOwner = test.owner as unknown as { projectPanel: {
     editor: {
@@ -839,7 +839,7 @@ it('pauses a pending AI ticket when the campaign editor opens and does not resum
   expect(test.tasks[0].remove).toHaveBeenCalledOnce();
   test.click('campaign-projects-close');
   test.click('campaign-dirty-confirm');
-  expect(test.owner.state.session.turn).toBe(2);
+  expect(test.owner.state.session.schedule.turn).toBe(2);
   expect(test.tasks).toHaveLength(1);
   test.events.emit('shutdown');
 });
@@ -945,10 +945,10 @@ it('draws the replay backdrop once and only clears the dynamic layer per frame',
     return object;
   };
   const owner = test.scene as unknown as {
-    frames: { seconds: number; ships: { id: number; factionId: 'blue' | 'red'; x: number; y: number; hull: number }[]; events: [] }[];
+    frames: { seconds: number; ships: { id: number; factionId: 'player-01' | 'player-02'; x: number; y: number; hull: number }[]; events: [] }[];
     openReplay(): void; update(time: number, delta: number): void; pauseAi(): void; render(): void;
   };
-  owner.frames = [{ seconds: 0, ships: [{ id: 1, factionId: 'blue', x: 200, y: 200, hull: 100 }], events: [] }];
+  owner.frames = [{ seconds: 0, ships: [{ id: 1, factionId: 'player-01', x: 200, y: 200, hull: 100 }], events: [] }];
   owner.pauseAi = vi.fn(); owner.render = vi.fn();
 
   owner.openReplay();
@@ -966,12 +966,12 @@ it('draws the replay backdrop once and only clears the dynamic layer per frame',
 it('bounds replay time, ignores invalid deltas and tolerates disappearing frames without changing the campaign', () => {
   const test = fixture(), before = structuredClone(test.owner.state);
   const owner = test.scene as unknown as {
-    frames: { seconds: number; ships: { id: number; factionId: 'blue'; x: number; y: number; hull: number }[]; events: [] }[];
+    frames: { seconds: number; ships: { id: number; factionId: 'player-01'; x: number; y: number; hull: number }[]; events: [] }[];
     replay?: { seconds: number; paused: boolean };
     openReplay(): void;
   };
   owner.frames = [0, 1].map(seconds => ({ seconds,
-    ships: [{ id: 1, factionId: 'blue', x: 200, y: 200, hull: 100 }], events: [] }));
+    ships: [{ id: 1, factionId: 'player-01', x: 200, y: 200, hull: 100 }], events: [] }));
   owner.openReplay();
   for (const delta of [NaN, Infinity, -Infinity, -1]) {
     test.scene.update(0, delta);
@@ -996,13 +996,13 @@ it('guards obsolete callbacks and consumes each scheduled AI ticket only once', 
   test.click('conquest-new'); test.click('conquest-new-ai');
   const oldEnd = test.find('conquest-end').listeners('pointerdown')[0];
   test.click('conquest-end');
-  expect(test.owner.state.session.turn).toBe(2);
+  expect(test.owner.state.session.schedule.turn).toBe(2);
   expect(test.tasks).toHaveLength(1);
-  oldEnd(); expect(test.owner.state.session.turn).toBe(2);
+  oldEnd(); expect(test.owner.state.session.schedule.turn).toBe(2);
   const executor = vi.spyOn(ai, 'executeConquestAiTurn');
   test.tasks[0].callback(); test.tasks[0].callback();
   expect(executor).toHaveBeenCalledTimes(1);
-  expect(test.owner.state.session.turn, `${test.owner.phase}: ${test.find('conquest-message').text}`).toBe(3);
+  expect(test.owner.state.session.schedule.turn, `${test.owner.phase}: ${test.find('conquest-message').text}`).toBe(3);
 });
 
 it('save cancels AI before confirmation and cancel does not reschedule', () => {
@@ -1028,20 +1028,20 @@ it('saves a full version8 snapshot and loads AI-red paused in a fresh scene', ()
   expect(decodeConquestSave(bytes)).toEqual(before);
   test.events.emit('shutdown');
   const restored = fixture(test.storage);
-  expect(restored.owner.state.session.turn).toBe(1);
+  expect(restored.owner.state.session.schedule.turn).toBe(1);
   restored.click('conquest-load'); restored.click('conquest-confirm');
   expect(restored.owner.state).toEqual(before);
   expect(restored.owner.phase).toBe('paused'); expect(restored.tasks).toHaveLength(0);
   restored.click('conquest-resume'); restored.click('conquest-confirm');
   restored.tasks[0].callback();
-  expect(restored.owner.state.session.turn).toBe(3);
+  expect(restored.owner.state.session.schedule.turn).toBe(3);
 });
 
 it('completed campaigns remain readonly while save and inspection stay available', () => {
   const test = fixture(), completed = createConquest();
   for (const system of completed.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
-    system.ownerId = 'blue'; if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
-    completed.surveys.blue[system.id] = completed.environment[system.id];
+    system.ownerId = 'player-01'; if (!system.exploredBy.includes('player-01')) system.exploredBy.push('player-01');
+    completed.surveys['player-01'][system.id] = completed.environment[system.id];
   }
   test.owner.replace(completed);
   expect(test.find('conquest-end').input.enabled).toBe(false);
@@ -1058,7 +1058,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   state.session.ships = []; state.operations = {};
   state.session.production.lastOrderId = 5;
   state.colonyOutput.production.completed = Array.from({ length: 5 }, (_, index) => ({
-    id: index + 1, factionId: 'blue' as const, systemId: 'sol' as const, design: structuredClone(design)
+    id: index + 1, factionId: 'player-01' as const, systemId: 'sol' as const, design: structuredClone(design)
   }));
   test.owner.state = conquestSchema.parse(state);
   test.click('conquest-tab-production');
@@ -1079,7 +1079,7 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   test.owner.render();
   expect(test.nodes.some(node => !node.destroyed && node.text === '2 / 2')).toBe(true);
   const movement = executeConquestCommand(test.owner.state, {
-    kind: 'sendShip', factionId: 'blue', expectedTurn: 1, systemId: 'sol', shipId: 5, destinationId: 'eden'
+    kind: 'sendShip', factionId: 'player-01', expectedTurn: 1, systemId: 'sol', shipId: 5, destinationId: 'eden'
   });
   if (!movement.ok) throw new Error(movement.message);
   test.owner.state = movement.state;
@@ -1091,24 +1091,24 @@ it('clamps production and fleet pages immediately after deploy, arrival and batt
   const casualtyDesign = structuredClone(design);
   casualtyDesign.slots.find(slot => slot.id === 'beam_1')!.component = null;
   for (let id = 6; id <= 10; id++) {
-    test.owner.state.session.ships.push({ id, factionId: 'red', systemId: 'sol', fuel: 3000, design: structuredClone(casualtyDesign) });
+    test.owner.state.session.ships.push({ id, factionId: 'player-02', systemId: 'sol', fuel: 3000, design: structuredClone(casualtyDesign) });
     const operation = createOperationalState(casualtyDesign);
     operation.hull = 1;
     test.owner.state.operations[String(id)] = operation;
   }
   test.owner.state.session.production.lastOrderId = 10;
   test.owner.state = conquestSchema.parse(test.owner.state);
-  test.owner.observer = 'red';
+  test.owner.observer = 'player-02';
   test.owner.selected = 'sol';
   test.owner.page = 1;
   test.owner.render();
   expect(test.nodes.some(node => !node.destroyed && node.text === '2 / 2')).toBe(true);
-  const battle = executeConquestCommand(test.owner.state, { kind: 'endTurn', factionId: 'red', expectedTurn: 2 });
+  const battle = executeConquestCommand(test.owner.state, { kind: 'endTurn', factionId: 'player-02', expectedTurn: 2 });
   if (!battle.ok) throw new Error(battle.message);
   test.owner.state = battle.state;
   test.owner.page = 1;
   test.owner.render();
-  expect(battle.state.session.ships.filter(ship => ship.factionId === 'red' && ship.systemId === 'sol')).toHaveLength(0);
+  expect(battle.state.session.ships.filter(ship => ship.factionId === 'player-02' && ship.systemId === 'sol')).toHaveLength(0);
   expect(test.nodes.some(node => !node.destroyed && node.text === '1 / 1')).toBe(true);
   test.owner.tab = 'battles';
   test.owner.page = 1;
@@ -1173,13 +1173,13 @@ it.each(['Очень длинное название проекта '.repeat(2).
   const design = createDesign('fighter', true); design.name = name;
   const state = test.owner.state;
   state.session.ships = []; state.operations = {};
-  state.session.treasuries.blue.credits = 0;
+  state.session.treasuries['player-01'].credits = 0;
   state.session.production.lastOrderId = 1;
-  state.colonyOutput.production.completed.push({ id: 1, factionId: 'blue', systemId: 'sol', design });
+  state.colonyOutput.production.completed.push({ id: 1, factionId: 'player-01', systemId: 'sol', design });
   test.owner.replace(conquestSchema.parse(state));
   test.click('conquest-tab-research');
   const before = structuredClone(test.owner.state);
-  const result = executeConquestCommand(before, { kind: 'research', factionId: 'blue', expectedTurn: 1, technologyId: 'ordnance' });
+  const result = executeConquestCommand(before, { kind: 'research', factionId: 'player-01', expectedTurn: 1, technologyId: 'ordnance' });
   expect(result.ok).toBe(false);
   for (let page = 0; page < 3; page++) test.click('conquest-page-next');
   test.click('conquest-research-ordnance');
@@ -1222,8 +1222,8 @@ it('mobile help pauses AI and completed controls stay readonly with inspection a
   expect(test.find('conquest-status').text).toContain('paused');
   const completed = createConquest();
   for (const system of completed.session.galaxy.systems.filter(system => ['sol', 'eden', 'nexus', 'vega'].includes(system.id))) {
-    system.ownerId = 'blue'; if (!system.exploredBy.includes('blue')) system.exploredBy.push('blue');
-    completed.surveys.blue[system.id] = completed.environment[system.id];
+    system.ownerId = 'player-01'; if (!system.exploredBy.includes('player-01')) system.exploredBy.push('player-01');
+    completed.surveys['player-01'][system.id] = completed.environment[system.id];
   }
   test.owner.replace(completed);
   expect(test.find('conquest-status').text).toContain('только просмотр');

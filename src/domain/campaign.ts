@@ -1,7 +1,28 @@
 import { z } from 'zod';
-import { validateGalaxyMap, type GalaxyMap } from './galaxyMap';
+import { MAX_PARTICIPANTS, validateGalaxyMap, type GalaxyMap } from './galaxyMap';
 
 export const factionIdSchema = z.enum(['blue', 'red']);
+/**
+ * Н17.2: канонический идентификатор участника военной кампании — стабильный `player-NN`
+ * из снимка карты. Enum blue/red остаётся только в мирной песочнице; новая политика
+ * не выводит участников из enum (docs/CAMPAIGN_MULTI_FACTION.md).
+ */
+export const participantIdSchema = z.string().regex(/^player-[0-9]{2}$/);
+export type ParticipantId = z.infer<typeof participantIdSchema>;
+
+/** Фиксированная палитра Н17.1: цвет по позиции участника, не от seed и не из enum. */
+export const CAMPAIGN_PARTICIPANT_COLORS = Object.freeze([
+  0x55baff, 0xf08070, 0x7fd76a, 0xf2d24b, 0xb07fe8, 0x4fd6c0, 0xe86bb0, 0x9aa8c0
+] as const);
+
+/** Цвет участника по его позиции в расписании; позиции вне палитры недопустимы. */
+export function getParticipantColor(index: number): number {
+  if (!Number.isInteger(index) || index < 0 || index >= CAMPAIGN_PARTICIPANT_COLORS.length) {
+    throw new Error('Позиция участника вне фиксированной палитры');
+  }
+  return CAMPAIGN_PARTICIPANT_COLORS[index];
+}
+
 export const systemIdSchema = z.union([z.enum(['sol', 'eden', 'rift', 'nexus', 'dust', 'vega']),
   z.string().regex(/^world-[0-9]{3}$/)]);
 export type CampaignFactionId = z.infer<typeof factionIdSchema>;
@@ -14,8 +35,13 @@ export interface StarSystemDefinition {
   y: number;
   habitable: boolean;
 }
+export interface CampaignParticipantRef {
+  id: ParticipantId;
+  name: string;
+  homeSystemId: SystemId;
+}
 export interface GalaxyDefinition {
-  factions: { id: CampaignFactionId; name: string; homeSystemId: SystemId }[];
+  factions: { id: CampaignFactionId | ParticipantId; name: string; homeSystemId: SystemId }[];
   systems: StarSystemDefinition[];
   lanes: [SystemId, SystemId][];
 }
@@ -37,13 +63,40 @@ const galaxy: GalaxyDefinition = {
   lanes: [['sol', 'eden'], ['sol', 'rift'], ['eden', 'nexus'], ['rift', 'dust'], ['dust', 'nexus'], ['nexus', 'vega']]
 };
 
-/** Detached definition; callers cannot change the scenario used by commands. */
+/**
+ * Фиксированные участники военного сценария без карты: канонические преемники blue/red
+ * по палитре Н17.1 (позиция 1 — синий, позиция 2 — коралловый). Мирный фиксированный
+ * сценарий выше сохраняет blue/red и не мигрирует.
+ */
+export const fixedCampaignParticipants: readonly CampaignParticipantRef[] = [
+  { id: 'player-01', name: 'Синий союз', homeSystemId: 'sol' },
+  { id: 'player-02', name: 'Красная лига', homeSystemId: 'vega' }
+];
+
+/** Участники военной кампании 1:1 из снимка карты; без карты — фиксированный военный сценарий. */
+export function getCampaignParticipants(state?: { map?: GalaxyMap }): CampaignParticipantRef[] {
+  return state?.map
+    ? state.map.participants.map(participant => ({
+        id: participant.id, name: participant.name, homeSystemId: participant.homeWorldId
+      }))
+    : fixedCampaignParticipants.map(participant => ({ ...participant }));
+}
+
+/** Структурное представление состояния галактики для общих операций мира и военной кампании. */
+export type GalaxyOwnershipView = {
+  map?: GalaxyMap;
+  systems: readonly { id: SystemId; ownerId: string | null }[];
+};
+
+/** Detached definition; callers cannot change the scenario used by commands.
+ * Со снимком карты участники возвращаются 1:1 (`player-NN`), без маппинга «первый blue,
+ * остальные red»; фиксированный мирный сценарий сохраняет blue/red. */
 export function getGalaxyDefinition(state?: { map?: GalaxyMap }): GalaxyDefinition {
   if (state?.map) {
     const map = state.map;
     return {
-      factions: map.participants.map((participant, index) => ({
-        id: index === 0 ? 'blue' : 'red', name: participant.name, homeSystemId: participant.homeWorldId
+      factions: map.participants.map(participant => ({
+        id: participant.id, name: participant.name, homeSystemId: participant.homeWorldId
       })),
       systems: map.worlds.map(world => ({
         id: world.id, name: world.name, x: world.x, y: world.y, habitable: world.type !== 'barren'
@@ -57,6 +110,7 @@ export function getGalaxyDefinition(state?: { map?: GalaxyMap }): GalaxyDefiniti
     lanes: galaxy.lanes.map(([from, to]) => [from, to])
   };
 }
+
 
 const systemStateSchema = z.object({
   id: systemIdSchema,
@@ -73,17 +127,26 @@ const campaignMapSchema = z.unknown().transform((input, ctx) => {
   return checked.map;
 });
 
-function makeCampaignStateSchema(dynamicEnvironment: boolean) { return z.object({
-  map: campaignMapSchema.optional(),
-  systems: z.array(systemStateSchema).min(1).max(256)
-}).strict().superRefine((state, ctx) => {
-  const definition = getGalaxyDefinition(state);
-  if (state.systems.length !== definition.systems.length ||
-    new Set(state.systems.map(system => system.id)).size !== definition.systems.length ||
-    state.systems.some(system => !definition.systems.some(item => item.id === system.id))) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Нужна ровно одна запись каждой системы' });
+/** Н17.2: снимок карты военной кампании — участники 2..8, как поддержано генератором. */
+const conquestMapSchema = z.unknown().transform((input, ctx) => {
+  const checked = validateGalaxyMap(input);
+  if (!checked.ok) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Кампания требует проверенный снимок карты' });
+    return z.NEVER;
   }
-  for (const system of state.systems) {
+  return checked.map;
+});
+
+/** Мирная песочница: состояние без карты, blue/red, формат не мигрирует. */
+function refineGalaxyState(systems: readonly { id: SystemId; ownerId: string | null; exploredBy: readonly string[] }[],
+  definition: GalaxyDefinition, dynamicEnvironment: boolean, ctx: z.RefinementCtx): void {
+  if (systems.length !== definition.systems.length ||
+    new Set(systems.map(system => system.id)).size !== definition.systems.length ||
+    systems.some(system => !definition.systems.some(item => item.id === system.id))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Нужна ровно одна запись каждой системы' });
+    return;
+  }
+  for (const system of systems) {
     if (new Set(system.exploredBy).size !== system.exploredBy.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Стороны разведки не должны повторяться' });
     }
@@ -92,18 +155,54 @@ function makeCampaignStateSchema(dynamicEnvironment: boolean) { return z.object(
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Колония требует пригодную систему, разведанную владельцем' });
     }
   }
+}
+
+function makeCampaignStateSchema(dynamicEnvironment: boolean) { return z.object({
+  map: campaignMapSchema.optional(),
+  systems: z.array(systemStateSchema).min(1).max(256)
+}).strict().superRefine((state, ctx) => {
+  refineGalaxyState(state.systems, getGalaxyDefinition(state), dynamicEnvironment, ctx);
 }); }
 export const campaignStateSchema = makeCampaignStateSchema(false);
-export const conquestGalaxyStateSchema = makeCampaignStateSchema(true);
 export type CampaignState = z.infer<typeof campaignStateSchema>;
 
-export function createCampaignState(map?: GalaxyMap): CampaignState {
-  const snapshot = map ? campaignMapSchema.parse(map) : undefined;
-  const definition = getGalaxyDefinition({ map: snapshot });
+/** Н17.2: состояние галактики военной кампании — владельцы и разведка по participant IDs. */
+const participantSystemStateSchema = z.object({
+  id: systemIdSchema,
+  ownerId: participantIdSchema.nullable(),
+  exploredBy: z.array(participantIdSchema).max(MAX_PARTICIPANTS)
+}).strict();
+
+function makeConquestGalaxyStateSchema() { return z.object({
+  map: conquestMapSchema.optional(),
+  systems: z.array(participantSystemStateSchema).min(1).max(256)
+}).strict().superRefine((state, ctx) => {
+  refineGalaxyState(state.systems, getGalaxyDefinition(state), true, ctx);
+}); }
+export const conquestGalaxyStateSchema = makeConquestGalaxyStateSchema();
+export type ConquestGalaxyState = z.infer<typeof conquestGalaxyStateSchema>;
+
+/** Мирная песочница: только фиксированный сценарий без карты. */
+export function createCampaignState(): CampaignState {
+  const definition = getGalaxyDefinition();
+  return {
+    systems: definition.systems.map(system => {
+      // Mapless peace path only: the fixed scenario keeps the blue/red enum literals.
+      const ownerId = galaxy.factions.find(faction => faction.homeSystemId === system.id)?.id as CampaignFactionId | null ?? null;
+      return { id: system.id, ownerId, exploredBy: ownerId === null ? [] : [ownerId] };
+    })
+  };
+}
+
+/** Военная кампания: участники 1:1 из снимка карты; без карты — фиксированный сценарий. */
+export function createConquestState(map?: GalaxyMap): ConquestGalaxyState {
+  const snapshot = map ? conquestMapSchema.parse(map) : undefined;
+  const definition = getGalaxyDefinition(snapshot ? { map: snapshot } : undefined);
+  const participants = getCampaignParticipants(snapshot ? { map: snapshot } : undefined);
   return {
     ...(snapshot ? { map: snapshot } : {}),
     systems: definition.systems.map(system => {
-      const ownerId = definition.factions.find(faction => faction.homeSystemId === system.id)?.id ?? null;
+      const ownerId = participants.find(participant => participant.homeSystemId === system.id)?.id ?? null;
       return { id: system.id, ownerId, exploredBy: ownerId === null ? [] : [ownerId] };
     })
   };
@@ -115,6 +214,14 @@ export const campaignCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('colonize'), ...commandFields }).strict()
 ]);
 export type CampaignCommand = z.infer<typeof campaignCommandSchema>;
+
+/** Военная кампания: географические команды по participant IDs (используются сессией). */
+export const conquestGalaxyCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('explore'), factionId: participantIdSchema, systemId: systemIdSchema }).strict(),
+  z.object({ kind: z.literal('colonize'), factionId: participantIdSchema, systemId: systemIdSchema }).strict()
+]);
+export type ConquestGalaxyCommand = z.infer<typeof conquestGalaxyCommandSchema>;
+
 export type CampaignErrorCode = 'INVALID_STATE' | 'INVALID_COMMAND' | 'ALREADY_EXPLORED' |
   'OUT_OF_REACH' | 'NOT_EXPLORED' | 'OCCUPIED' | 'UNINHABITABLE';
 export type CampaignCommandResult = { ok: true; state: CampaignState } |
@@ -177,24 +284,49 @@ export interface CampaignView {
   systems: CampaignSystemView[];
   lanes: [SystemId, SystemId][];
 }
+export type ConquestSystemView = PublicSystem & (
+  { visibility: 'unknown' } |
+  { visibility: 'explored'; habitable: boolean; ownerId: ParticipantId | null }
+);
+export interface ConquestGalaxyView {
+  factionId: ParticipantId;
+  systems: ConquestSystemView[];
+  lanes: [SystemId, SystemId][];
+}
+
+function galaxyView<Side extends string, OwnerId extends string>(
+  systems: readonly { id: SystemId; ownerId: OwnerId | null; exploredBy: readonly string[] }[],
+  definition: GalaxyDefinition, faction: Side
+): {
+  systems: (PublicSystem & ({ visibility: 'unknown' } |
+    { visibility: 'explored'; habitable: boolean; ownerId: OwnerId | null }))[];
+  lanes: [SystemId, SystemId][];
+} {
+  return {
+    systems: definition.systems.map(definition => {
+      const system = systems.find(item => item.id === definition.id)!;
+      const { id, name, x, y } = definition;
+      return system.exploredBy.includes(faction)
+        ? { id, name, x, y, visibility: 'explored' as const, habitable: definition.habitable, ownerId: system.ownerId }
+        : { id, name, x, y, visibility: 'unknown' as const };
+    }),
+    lanes: definition.lanes.map(([from, to]) => [from, to])
+  };
+}
 
 /** Public map topology; only explored systems expose current ownership/habitability.
  * Exploration is permanent in S3.1, not a last-seen intelligence snapshot.
  * Invalid query arguments throw ZodError; commands instead return typed failures.
  */
-export function getCampaignView(inputState: CampaignState, factionId: CampaignFactionId, dynamicEnvironment = false): CampaignView {
-  const state = (dynamicEnvironment ? conquestGalaxyStateSchema : campaignStateSchema).parse(inputState);
+export function getCampaignView(inputState: CampaignState, factionId: CampaignFactionId): CampaignView {
+  const state = campaignStateSchema.parse(inputState);
   const faction = factionIdSchema.parse(factionId);
-  const definition = getGalaxyDefinition(state);
-  return {
-    factionId: faction,
-    systems: definition.systems.map(definition => {
-      const system = state.systems.find(item => item.id === definition.id)!;
-      const { id, name, x, y } = definition;
-      return system.exploredBy.includes(faction)
-        ? { id, name, x, y, visibility: 'explored', habitable: definition.habitable, ownerId: system.ownerId }
-        : { id, name, x, y, visibility: 'unknown' };
-    }),
-    lanes: definition.lanes.map(([from, to]) => [from, to])
-  };
+  return { factionId: faction, ...galaxyView(state.systems, getGalaxyDefinition(state), faction) };
+}
+
+/** Военная кампания: проекция карты для участника по participant IDs. */
+export function getConquestGalaxyView(inputState: ConquestGalaxyState, participant: ParticipantId): ConquestGalaxyView {
+  const state = conquestGalaxyStateSchema.parse(inputState);
+  const faction = participantIdSchema.parse(participant);
+  return { factionId: faction, ...galaxyView(state.systems, getGalaxyDefinition(state), faction) };
 }

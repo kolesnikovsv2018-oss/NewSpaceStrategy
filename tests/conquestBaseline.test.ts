@@ -33,9 +33,9 @@ describe('Conquest baseline', () => {
     expect(run.finalState.seed).toBe(options.campaignSeed);
     expect(run.status).not.toBe('executor-error');
     expect(run.turnsExecuted).toBeLessThanOrEqual(16);
-    expect(run.finalState.session.turn).toBe(run.turnsExecuted + 1);
+    expect(run.finalState.session.schedule.turn).toBe(run.turnsExecuted + 1);
     expect(run.outcome.status === 'completed').toBe(run.status === 'completed');
-    for (const side of ['blue', 'red'] as const) expect(run.population[side].capacity).toBe(
+    for (const side of ['player-01', 'player-02'] as const) expect(run.population[side].capacity).toBe(
       conquest.getConquestView(run.finalState, side).population.reduce((sum, colony) => sum + colony.capacity, 0));
   }, 60000);
 
@@ -47,9 +47,9 @@ describe('Conquest baseline', () => {
     expect(start.map.participants[0].homeWorldId).toBe(normal.map.participants[mirrored ? 1 : 0].homeWorldId);
     expect(start.state.session.ships).toHaveLength(2);
     expect(start.state.session.production.lastOrderId).toBe(2);
-    expect(start.state.session.treasuries.blue).toEqual({ credits: 100, minerals: 50 });
+    expect(start.state.session.treasuries['player-01']).toEqual({ credits: 100, minerals: 50 });
     const run = runBaseline(input({ mirrored }));
-    expect(run.lineups.first).toBe(mirrored ? 'red' : 'blue');
+    expect(run.lineups.first).toBe(mirrored ? 'player-02' : 'player-01');
     expect(run.metrics[run.lineups.first].firstResearch.status).toBe('measured');
     expect(run.commands.every(record => record.result === 'accepted')).toBe(true);
   });
@@ -57,11 +57,11 @@ describe('Conquest baseline', () => {
   it.each([false, true])('matches the real existing AI executor packet for each starting side (%s)', redStart => {
     const options = input({ maxTurns: redStart ? 2 : 1 });
     let state = createBaselineStart(options).state;
-    const blue = executeConquestAiTurn(state, 'blue', 1);
+    const blue = executeConquestAiTurn(state, 'player-01', 1);
     if (!blue.ok) throw new Error(blue.message);
     state = blue.state;
     if (redStart) {
-      const red = executeConquestAiTurn(state, 'red', 2);
+      const red = executeConquestAiTurn(state, 'player-02', 2);
       if (!red.ok) throw new Error(red.message);
       state = red.state;
     }
@@ -86,7 +86,7 @@ describe('Conquest baseline', () => {
 
   it('accounts for actual gross releases and spending with an independent paid resource oracle', () => {
     const run = runBaseline(input({ schedule: 'production-first', maxTurns: 8 }));
-    for (const side of ['blue', 'red'] as const) {
+    for (const side of ['player-01', 'player-02'] as const) {
       const metric = run.metrics[side];
       expect(metric.ownEnds).toBeGreaterThan(0);
       const spent = Object.values(metric.spent).reduce((sum, cost) =>
@@ -98,8 +98,8 @@ describe('Conquest baseline', () => {
       expect(metric.researchPoints).toBeGreaterThanOrEqual(0);
       expect(metric.culturePoints).toBeGreaterThanOrEqual(0);
     }
-    expect(run.metrics.blue.firstOrder.status).toBe('measured');
-    expect(run.metrics.blue.firstRelease.status).toBe('measured');
+    expect(run.metrics['player-01'].firstOrder.status).toBe('measured');
+    expect(run.metrics['player-01'].firstRelease.status).toBe('measured');
   });
 
   it('records real executor rejection separately, rolls back the packet and does not invent a code', () => {
@@ -119,16 +119,16 @@ describe('Conquest baseline', () => {
       expect(run.commands[0].result).toBe('rolled-back');
       expect(run.commands.at(-1)).toMatchObject({ result: 'rejected', message: 'Номер хода изменился',
         executorCode: 'STALE_TURN' });
-      expect(run.metrics.blue.gross.credits).toBe(0);
+      expect(run.metrics['player-01'].gross.credits).toBe(0);
     } finally { spy.mockRestore(); }
   });
 
   it('runs symmetric real battles and attributes losses to participants, not ending side', () => {
     const run = runBaseline(input({ kind: 'symmetric-boundary', maxTurns: 2 }));
     expect(run.battles.length).toBeGreaterThan(0);
-    expect(run.metrics.blue.firstEncounter).toEqual({ status: 'measured', turn: 1 });
-    expect(run.metrics.red.firstEncounter).toEqual({ status: 'measured', turn: 1 });
-    expect(run.metrics.blue.losses + run.metrics.red.losses).toBe(
+    expect(run.metrics['player-01'].firstEncounter).toEqual({ status: 'measured', turn: 1 });
+    expect(run.metrics['player-02'].firstEncounter).toEqual({ status: 'measured', turn: 1 });
+    expect(run.metrics['player-01'].losses + run.metrics['player-02'].losses).toBe(
       run.battles.reduce((total, battle) => total + battle.destroyed.length, 0));
     expect(verifyBaseline(run).roundTrip).toBe('passed');
   });
@@ -138,12 +138,12 @@ describe('Conquest baseline', () => {
     expect(run.status).toBe('timeout');
     expect(run.battleTimeouts).toBe(2);
     expect(run.finalState.session.ships).toHaveLength(200);
-    expect(run.metrics.blue.losses + run.metrics.red.losses).toBe(0);
+    expect(run.metrics['player-01'].losses + run.metrics['player-02'].losses).toBe(0);
     expect(run.commands[0].endTurnObservations).toEqual(expect.arrayContaining([
       'ships-with-empty-fuel', 'empty-ammunition', 'boundary-end-only'
     ]));
-    expect(run.metrics.blue.spent.upkeep.credits).toBe(5100);
-    expect(run.metrics.blue.firstShip).toEqual({ status: 'timeout', throughTurn: 2 });
+    expect(run.metrics['player-01'].spent.upkeep.credits).toBe(5100);
+    expect(run.metrics['player-01'].firstShip).toEqual({ status: 'timeout', throughTurn: 2 });
   }, 20000);
 
   it.each(['symmetric-boundary', 'supply-boundary'] as const)(

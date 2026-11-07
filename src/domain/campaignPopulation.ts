@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getGalaxyDefinition, type CampaignFactionId, type CampaignState, type SystemId } from './campaign';
+import { getGalaxyDefinition, type GalaxyOwnershipView, type SystemId } from './campaign';
 import type { PopulationRules } from './campaignRules';
 import type { Treasury } from './campaignEconomy';
 import { calculateColonyValue, getColonyWorldType, type ColonyWorldType } from './campaignColonyEffects';
@@ -20,7 +20,7 @@ export type FoundingErrorCode = 'NO_SETTLERS' | 'INSUFFICIENT_RESOURCES';
 export type FoundingQuote = { ok: true; sourceId: SystemId; cost: Treasury } |
   { ok: false; code: FoundingErrorCode };
 
-export function createPopulation(galaxy: CampaignState, rules: PopulationRules): PopulationState {
+export function createPopulation(galaxy: GalaxyOwnershipView, rules: PopulationRules): PopulationState {
   return Object.fromEntries(getGalaxyDefinition(galaxy).systems.filter(system => system.habitable).map(system =>
     [system.id, { population: galaxy.systems.find(item => item.id === system.id)!.ownerId ? rules.home : 0, remainder: 0 }]));
 }
@@ -48,7 +48,7 @@ export function populationGrowth(record: PopulationRecord, rules: PopulationRule
     remainder: record.population + delta === capacity ? 0 : Number(numerator % 10000n) / 100 } };
 }
 
-export function advancePopulation(galaxy: CampaignState, input: PopulationState, faction: CampaignFactionId,
+export function advancePopulation(galaxy: GalaxyOwnershipView, input: PopulationState, faction: string,
   rules: PopulationRules, effects: readonly RulesEffect[] = [], environment?: EnvironmentState): PopulationState {
   const next = structuredClone(input);
   for (const system of galaxy.systems) if (system.ownerId === faction) {
@@ -57,8 +57,8 @@ export function advancePopulation(galaxy: CampaignState, input: PopulationState,
   return next;
 }
 
-export function quoteFounding(galaxy: CampaignState,
-  population: PopulationState, faction: CampaignFactionId, target: SystemId, treasury: Treasury,
+export function quoteFounding(galaxy: GalaxyOwnershipView,
+  population: PopulationState, faction: string, target: SystemId, treasury: Treasury,
   rules: PopulationRules): FoundingQuote {
   const worlds = getGalaxyDefinition(galaxy).systems;
   const distance = (id: SystemId) => getWorldDistance(worlds, target, id);

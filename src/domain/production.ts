@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { factionIdSchema, systemIdSchema, type CampaignFactionId } from './campaign';
+import { factionIdSchema, participantIdSchema, systemIdSchema, type CampaignFactionId } from './campaign';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { calculateShipStats, designSchema, validateDesign, type ShipDesign } from './shipDesign';
+import { MAX_PARTICIPANTS } from './galaxyMap';
 
 export const MAX_COLONY_QUEUE = 3;
 export const MAX_PRODUCTION_RECORDS = 100; // Per faction: queued + completed, reserves completion capacity.
@@ -29,6 +30,16 @@ const orderSchema = z.object({ ...recordFields, remainingTurns: z.number().int()
     }
   });
 const completedSchema = z.object(recordFields).strict();
+/** Н17.2: записи производства военной кампании адресуются участнику `player-NN`. */
+const conquestRecordFields = { id: orderIdSchema, factionId: participantIdSchema, systemId: systemIdSchema, design: flightDesignSchema };
+const conquestOrderSchema = z.object({ ...conquestRecordFields, remainingTurns: z.number().int().min(1).max(MAX_ORDER_ID) }).strict()
+  .superRefine((order, ctx) => {
+    if (order.remainingTurns > quoteFor(order.design).turns) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Прогресс выходит за срок проекта' });
+    }
+  });
+const conquestCompletedSchema = z.object(conquestRecordFields).strict();
+
 export const productionStateSchema = z.object({
   lastOrderId: z.number().int().min(0).max(MAX_ORDER_ID),
   orders: z.array(orderSchema).max(MAX_PRODUCTION_RECORDS * 2),
@@ -52,18 +63,53 @@ export const productionStateSchema = z.object({
     if (count > 1 && order.remainingTurns !== quoteFor(order.design).turns) fail('Ожидающий заказ не может иметь прогресс');
   }
 });
+/**
+ * Н17.2: массив производства военной кампании — глобальный предел «per-faction ×
+ * MAX_PARTICIPANTS»; per-participant предел (MAX_PRODUCTION_RECORDS) проверяет
+ * сессия по списку участников карты.
+ */
+export const conquestProductionStateSchema = z.object({
+  lastOrderId: z.number().int().min(0).max(MAX_ORDER_ID),
+  orders: z.array(conquestOrderSchema).max(MAX_PRODUCTION_RECORDS * MAX_PARTICIPANTS),
+  completed: z.array(conquestCompletedSchema).max(MAX_PRODUCTION_RECORDS * MAX_PARTICIPANTS)
+}).strict().superRefine((state, ctx) => {
+  const fail = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  const records = [...state.orders, ...state.completed];
+  if (new Set(records.map(record => record.id)).size !== records.length || records.some(record => record.id > state.lastOrderId)) {
+    fail('Идентификаторы заказов должны быть уникальны и выданы счётчиком');
+  }
+  if (state.orders.some((order, index) => index > 0 && order.id <= state.orders[index - 1].id)) fail('Нарушен порядок очереди');
+  const counts = new Map<string, number>();
+  for (const order of state.orders) {
+    const key = `${order.factionId}:${order.systemId}`, count = (counts.get(key) ?? 0) + 1;
+    counts.set(key, count);
+    if (count > MAX_COLONY_QUEUE) fail('Очередь колонии заполнена');
+    if (count > 1 && order.remainingTurns !== quoteFor(order.design).turns) fail('Ожидающий заказ не может иметь прогресс');
+  }
+});
 export type ProductionState = z.infer<typeof productionStateSchema>;
+export type ConquestProductionState = z.infer<typeof conquestProductionStateSchema>;
 export type ProductionOrder = z.infer<typeof orderSchema>;
 export type ProductionView = Pick<ProductionState, 'orders' | 'completed'>;
 
 export function createProductionState(): ProductionState { return { lastOrderId: 0, orders: [], completed: [] }; }
 
 /** Prorated unused turns, rounded down separately. Never refund spent production time. */
-export function getProductionRefund(input: ProductionOrder): Treasury {
-  const order = orderSchema.parse(input), quote = quoteFor(order.design);
-  return { credits: Math.floor(quote.cost.credits * order.remainingTurns / quote.turns),
-    minerals: Math.floor(quote.cost.minerals * order.remainingTurns / quote.turns) };
+function refundFor(design: ShipDesign, remainingTurns: number): Treasury {
+  const quote = quoteFor(design);
+  return { credits: Math.floor(quote.cost.credits * remainingTurns / quote.turns),
+    minerals: Math.floor(quote.cost.minerals * remainingTurns / quote.turns) };
 }
+export function getProductionRefund(input: ProductionOrder): Treasury {
+  const order = orderSchema.parse(input);
+  return refundFor(order.design, order.remainingTurns);
+}
+/** Н17.2: возврат по записи производства военной кампании. */
+export function getConquestProductionRefund(input: ConquestProductionState['orders'][number]): Treasury {
+  const order = conquestOrderSchema.parse(input);
+  return refundFor(order.design, order.remainingTurns);
+}
+export type ConquestProductionView = Pick<ConquestProductionState, 'orders' | 'completed'>;
 
 /** Detached FIFO step: one head per colony, no spillover to its next order this turn. */
 export function advanceProduction(input: ProductionState, factionId: CampaignFactionId): ProductionState {

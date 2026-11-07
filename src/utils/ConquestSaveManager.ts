@@ -4,9 +4,11 @@ import type { StoragePort } from './ShipDesignManager';
 import { z } from 'zod';
 
 const currentConquestSchema = conquestSchema;
-export const CONQUEST_SAVE_VERSION = 18;
+// Н17.2: bump версии сохранения из Н17.1 (18 → 19). Значения правил не менялись — rules 15.
+// Сохранения прежних версий получают явный отказ без изменения state или файлов.
+export const CONQUEST_SAVE_VERSION = 19;
 export const CONQUEST_RULES_VERSION = 15;
-const saveSchema = z.object({ format: z.literal('orion-campaign'), schemaVersion: z.literal(18),
+const saveSchema = z.object({ format: z.literal('orion-campaign'), schemaVersion: z.literal(19),
   rulesVersion: z.literal(15), conquest: currentConquestSchema }).strict();
 const byteLimit = 5_000_000;
 export function encodeConquestSave(input: unknown): string {
@@ -26,7 +28,7 @@ export class ConquestSaveManager {
       const json = (this.providedStorage ?? globalThis.localStorage).getItem(CampaignSaveManager.STORAGE_KEY);
       if (json === null) return { ok: false, message: 'Сохранение отсутствует' };
       return { ok: true, state: decodeConquestSave(json) };
-    } catch { return { ok: false, message: 'Не удалось загрузить кампанию: требуется актуальный формат 18/15. Мирные сохранения открываются на мирной карте.' }; }
+    } catch { return { ok: false, message: 'Не удалось загрузить кампанию: требуется актуальный формат 19/15. Мирные сохранения открываются на мирной карте.' }; }
   }
   save(input: unknown): { ok: true } | { ok: false; message: string } {
     try {

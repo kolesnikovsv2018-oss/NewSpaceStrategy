@@ -1,13 +1,16 @@
 import { z } from 'zod';
-import { factionIdSchema, systemIdSchema, type CampaignFactionId, type CampaignState, type SystemId } from './campaign';
+import { factionIdSchema, participantIdSchema, systemIdSchema, type CampaignFactionId, type CampaignState,
+  type ConquestGalaxyState, type ParticipantId, type SystemId } from './campaign';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import type { EndTurnBudget, EconomyCalculation } from './campaignUpkeep';
 import { flightDesignSchema, getProductionQuote, MAX_COLONY_QUEUE, MAX_PRODUCTION_RECORDS, orderIdSchema } from './production';
 import { ruleIdentifierSchema, type BuildingDefinition, type ColonyOutputRules } from './campaignRules';
 import type { PopulationState } from './campaignPopulation';
 import { calculateColonyValue, getColonyWorldType, type ColonyValueBreakdown } from './campaignColonyEffects';
+import type { ShipDesign } from './shipDesign';
 import type { EnvironmentState } from './worldEnvironment';
 import type { RulesEffect } from './campaignRules';
+import { MAX_PARTICIPANTS } from './galaxyMap';
 
 const amountSchema = z.number().int().min(0).max(1_000_000_000);
 
@@ -20,79 +23,102 @@ export type Workforce = z.infer<typeof workforceSchema>;
 
 const reserveAmountSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const reserveSchema = z.object({ research: reserveAmountSchema, culture: reserveAmountSchema }).strict();
-const productionOrderSchema = z.object({
-  id: orderIdSchema,
-  factionId: factionIdSchema,
-  systemId: systemIdSchema,
-  design: flightDesignSchema,
-  cost: treasurySchema,
-  productionCost: amountSchema.positive(),
-  productionProgress: amountSchema
-}).strict().superRefine((order, context) => {
-  if (order.productionProgress >= order.productionCost) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Готовый заказ не может оставаться в очереди' });
-  }
-});
-const completedProductionSchema = z.object({
-  id: orderIdSchema,
-  factionId: factionIdSchema,
-  systemId: systemIdSchema,
-  design: flightDesignSchema
-}).strict();
-export type ColonyProductionOrder = z.infer<typeof productionOrderSchema>;
-export type ColonyCompletedProduction = z.infer<typeof completedProductionSchema>;
+
+function makeOutputSchemas<Side extends z.ZodType<string>>(sideSchema: Side, arrayLimit: number) {
+  const productionOrderSchema = z.object({
+    id: orderIdSchema,
+    factionId: sideSchema,
+    systemId: systemIdSchema,
+    design: flightDesignSchema,
+    cost: treasurySchema,
+    productionCost: amountSchema.positive(),
+    productionProgress: amountSchema
+  }).strict().superRefine((order, context) => {
+    if (order.productionProgress >= order.productionCost) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Готовый заказ не может оставаться в очереди' });
+    }
+  });
+  const completedProductionSchema = z.object({
+    id: orderIdSchema,
+    factionId: sideSchema,
+    systemId: systemIdSchema,
+    design: flightDesignSchema
+  }).strict();
+  const workFields = {
+    id: orderIdSchema, factionId: sideSchema, systemId: systemIdSchema,
+    cost: treasurySchema, productionCost: amountSchema.positive(), productionProgress: amountSchema
+  };
+  const colonyProjectSchema = z.discriminatedUnion('kind', [
+    z.object({ ...workFields, kind: z.literal('terraform'), source: z.literal('toxic'), target: z.literal('habitable') }).strict(),
+    z.object({ ...workFields, kind: z.literal('refit'), shipId: orderIdSchema, design: flightDesignSchema }).strict(),
+    z.object({ ...workFields, kind: z.literal('building'), buildingId: ruleIdentifierSchema }).strict()
+  ]).refine(project => project.productionProgress < project.productionCost, 'Проект уже завершён');
+  const productionSchema = z.object({
+    orders: z.array(productionOrderSchema).max(arrayLimit),
+    completed: z.array(completedProductionSchema).max(arrayLimit)
+  }).strict().superRefine((production, context) => {
+    const records = [...production.orders, ...production.completed];
+    if (new Set(records.map(record => record.id)).size !== records.length) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Идентификаторы производственных записей должны быть уникальны' });
+    }
+    if (production.orders.some((order, index) => index > 0 && order.id <= production.orders[index - 1].id)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Нарушен порядок FIFO-заказов' });
+    }
+    const colonyCounts = new Map<string, number>();
+    for (const order of production.orders) {
+      const key = `${order.factionId}:${order.systemId}`;
+      const count = (colonyCounts.get(key) ?? 0) + 1;
+      colonyCounts.set(key, count);
+      if (count > MAX_COLONY_QUEUE) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Очередь колонии заполнена' });
+      if (count > 1 && order.productionProgress !== 0) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: 'Ожидающий FIFO-заказ не может иметь прогресс' });
+      }
+    }
+  });
+  return { productionOrderSchema, completedProductionSchema, colonyProjectSchema, productionSchema };
+}
+
+// Мирная песочница: принятый формат с blue/red; per-faction предел записи — в валидаторе состояния.
+const peaceOutput = makeOutputSchemas(factionIdSchema, MAX_PRODUCTION_RECORDS * 2);
+export const colonyProjectSchema = peaceOutput.colonyProjectSchema;
+export type ColonyProject = z.infer<typeof colonyProjectSchema>;
+export type ColonyProductionOrder = z.infer<typeof peaceOutput.productionOrderSchema>;
+export type ColonyCompletedProduction = z.infer<typeof peaceOutput.completedProductionSchema>;
+
+/** Н17.2: записи работ военной кампании адресуются участнику `player-NN`. */
+const conquestOutput = makeOutputSchemas(participantIdSchema, MAX_PRODUCTION_RECORDS * MAX_PARTICIPANTS);
+export const conquestColonyProjectSchema = conquestOutput.colonyProjectSchema;
+export type ConquestColonyProject = z.infer<typeof conquestColonyProjectSchema>;
+export type ConquestColonyProductionOrder = z.infer<typeof conquestOutput.productionOrderSchema>;
+
 export const colonyBuildingLevelSchema = z.object({
   buildingId: ruleIdentifierSchema,
   level: z.number().int().min(1).max(8)
 }).strict();
 export type ColonyBuildingLevel = z.infer<typeof colonyBuildingLevelSchema>;
-const workFields = {
-  id: orderIdSchema, factionId: factionIdSchema, systemId: systemIdSchema,
-  cost: treasurySchema, productionCost: amountSchema.positive(), productionProgress: amountSchema
-};
-export const colonyProjectSchema = z.discriminatedUnion('kind', [
-  z.object({ ...workFields, kind: z.literal('terraform'), source: z.literal('toxic'), target: z.literal('habitable') }).strict(),
-  z.object({ ...workFields, kind: z.literal('refit'), shipId: orderIdSchema, design: flightDesignSchema }).strict(),
-  z.object({ ...workFields, kind: z.literal('building'), buildingId: ruleIdentifierSchema }).strict()
-]).refine(project => project.productionProgress < project.productionCost, 'Проект уже завершён');
-export type ColonyProject = z.infer<typeof colonyProjectSchema>;
-
-const productionSchema = z.object({
-  orders: z.array(productionOrderSchema).max(MAX_PRODUCTION_RECORDS * 2),
-  completed: z.array(completedProductionSchema).max(MAX_PRODUCTION_RECORDS * 2)
-}).strict().superRefine((production, context) => {
-  const records = [...production.orders, ...production.completed];
-  if (new Set(records.map(record => record.id)).size !== records.length) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Идентификаторы производственных записей должны быть уникальны' });
-  }
-  for (const faction of factionIdSchema.options) {
-    if (records.filter(record => record.factionId === faction).length > MAX_PRODUCTION_RECORDS) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Превышен предел производственных записей стороны' });
-    }
-  }
-  if (production.orders.some((order, index) => index > 0 && order.id <= production.orders[index - 1].id)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Нарушен порядок FIFO-заказов' });
-  }
-  const colonyCounts = new Map<string, number>();
-  for (const order of production.orders) {
-    const key = `${order.factionId}:${order.systemId}`;
-    const count = (colonyCounts.get(key) ?? 0) + 1;
-    colonyCounts.set(key, count);
-    if (count > MAX_COLONY_QUEUE) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Очередь колонии заполнена' });
-    if (count > 1 && order.productionProgress !== 0) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Ожидающий FIFO-заказ не может иметь прогресс' });
-    }
-  }
-});
 
 export const colonyOutputStateSchema = z.object({
   assignments: z.record(systemIdSchema, workforceSchema),
   reserves: z.object({ blue: reserveSchema, red: reserveSchema }).strict(),
   buildings: z.record(systemIdSchema, z.array(colonyBuildingLevelSchema)),
   projects: z.array(colonyProjectSchema).max(MAX_PRODUCTION_RECORDS * 2),
-  production: productionSchema
+  production: peaceOutput.productionSchema
 }).strict();
 export type ColonyOutputState = z.infer<typeof colonyOutputStateSchema>;
+
+/**
+ * Н17.2: состояние работ военной кампании — резервы науки/культуры и записи по участникам;
+ * глобальные пределы массивов «per-faction × MAX_PARTICIPANTS»; per-participant пределы
+ * записей проверяет валидатор по списку участников кампании.
+ */
+export const conquestColonyOutputStateSchema = z.object({
+  assignments: z.record(systemIdSchema, workforceSchema),
+  reserves: z.record(participantIdSchema, reserveSchema),
+  buildings: z.record(systemIdSchema, z.array(colonyBuildingLevelSchema)),
+  projects: z.array(conquestColonyProjectSchema).max(MAX_PRODUCTION_RECORDS * MAX_PARTICIPANTS),
+  production: conquestOutput.productionSchema
+}).strict();
+export type ConquestColonyOutputState = z.infer<typeof conquestColonyOutputStateSchema>;
 
 export interface ColonyProductionQuote {
   cost: Treasury;
@@ -104,11 +130,6 @@ export function getColonyProductionQuote(design: unknown, rules: ColonyOutputRul
   return { cost: quote.cost, productionCost: Math.ceil(quote.cost.credits / rules.productionCreditsPerPoint) };
 }
 
-export function getColonyProductionRefund(orderInput: ColonyProductionOrder): Treasury {
-  const order = productionOrderSchema.parse(orderInput);
-  return getColonyProjectRefund(order);
-}
-
 export function getColonyProjectRefund(project: Pick<ColonyProject, 'cost' | 'productionCost' | 'productionProgress'>): Treasury {
   const unused = project.productionCost - project.productionProgress;
   return {
@@ -117,7 +138,14 @@ export function getColonyProjectRefund(project: Pick<ColonyProject, 'cost' | 'pr
   };
 }
 
-export function colonyWorkQueue(state: ColonyOutputState, systemId: SystemId) {
+export function getColonyProductionRefund(orderInput: ColonyProductionOrder): Treasury {
+  const order = peaceOutput.productionOrderSchema.parse(orderInput);
+  return getColonyProjectRefund(order);
+}
+
+export function colonyWorkQueue(state: { production: { orders: readonly { id: number; systemId: SystemId;
+      productionProgress: number; productionCost: number }[] }; projects: readonly { id: number; systemId: SystemId;
+      productionProgress: number; productionCost: number }[] }, systemId: SystemId) {
   return [...state.production.orders, ...state.projects].filter(work => work.systemId === systemId).sort((a, b) => a.id - b.id);
 }
 
@@ -130,9 +158,39 @@ export function createColonyOutputState(galaxy: CampaignState, population: Popul
     buildings: {}, production: { orders: [], completed: [] }, projects: [] };
 }
 
-export function validateColonyOutputState(input: unknown, galaxy: CampaignState, population: PopulationState,
-  sessionLastOrderId: number, rules: ColonyOutputRules, buildings: readonly BuildingDefinition[] = []): ColonyOutputState {
-  const output = colonyOutputStateSchema.parse(input);
+/** Н17.2: казны резервов и записи работ создаются для всех участников карты. */
+export function createConquestColonyOutputState(galaxy: ConquestGalaxyState, population: PopulationState,
+  participants: readonly ParticipantId[]): ConquestColonyOutputState {
+  const assignments = Object.fromEntries(galaxy.systems.filter(system => population[system.id]).map(system => {
+    const workers = system.ownerId ? population[system.id].population : 0;
+    return [system.id, { industry: workers, research: 0, culture: 0 }];
+  }));
+  const reserves = Object.fromEntries(participants.map(id => [id, { research: 0, culture: 0 }]));
+  return { assignments, reserves, buildings: {}, production: { orders: [], completed: [] }, projects: [] };
+}
+
+/** Structural galaxy view shared by the peace and participant-keyed military states. */
+export type GalaxySystemsView = { systems: readonly { id: SystemId; ownerId: string | null }[] };
+
+type CoreWork = {
+  id: number; factionId: string; systemId: SystemId;
+  cost: Treasury; productionCost: number; productionProgress: number;
+} & ({ kind: 'terraform'; source: 'toxic'; target: 'habitable' } |
+  { kind: 'refit'; shipId: number; design: ShipDesign } |
+  { kind: 'building'; buildingId: string });
+type OutputCore = {
+  assignments: Record<string, Workforce>;
+  reserves: Record<string, { research: number; culture: number }>;
+  buildings: Record<string, ColonyBuildingLevel[]>;
+  projects: CoreWork[];
+  production: { orders: { id: number; factionId: string; systemId: SystemId; productionProgress: number; productionCost: number;
+      cost: Treasury; design: ShipDesign }[];
+    completed: { id: number; factionId: string; systemId: SystemId; design: ShipDesign }[] };
+};
+
+function validateColonyOutputCore(output: OutputCore, galaxy: GalaxySystemsView, population: PopulationState,
+  sessionLastOrderId: number, rules: ColonyOutputRules, buildings: readonly BuildingDefinition[],
+  sides: readonly string[]): void {
   const habitable = galaxy.systems.filter(system => population[system.id]);
   if (Object.keys(output.assignments).length !== habitable.length ||
     habitable.some(system => !Object.prototype.hasOwnProperty.call(output.assignments, system.id))) {
@@ -204,7 +262,7 @@ export function validateColonyOutputState(input: unknown, galaxy: CampaignState,
     const installed = output.buildings[project.systemId]?.find(entry => entry.buildingId === project.buildingId)?.level ?? 0;
     if (installed >= def.maxLevels) throw new Error('Уровень здания уже достиг предела каталога');
   }
-  for (const faction of factionIdSchema.options) {
+  for (const faction of sides) {
     if ([...output.production.orders, ...output.production.completed, ...output.projects]
       .filter(work => work.factionId === faction).length > MAX_PRODUCTION_RECORDS) {
       throw new Error('Превышен общий предел производственных записей');
@@ -217,12 +275,27 @@ export function validateColonyOutputState(input: unknown, galaxy: CampaignState,
       throw new Error('Закреплённая цена заказа не совпадает с его проектом и правилами');
     }
   }
-  for (const faction of factionIdSchema.options) {
+  for (const faction of sides) {
     const reserve = output.reserves[faction];
     if (!Number.isSafeInteger(reserve.research) || !Number.isSafeInteger(reserve.culture)) {
       throw new Error('Научный и культурный резервы должны быть целыми безопасными числами');
     }
   }
+}
+
+export function validateColonyOutputState(input: unknown, galaxy: CampaignState, population: PopulationState,
+  sessionLastOrderId: number, rules: ColonyOutputRules, buildings: readonly BuildingDefinition[] = []): ColonyOutputState {
+  const output = colonyOutputStateSchema.parse(input);
+  validateColonyOutputCore(output, galaxy, population, sessionLastOrderId, rules, buildings, factionIdSchema.options);
+  return output;
+}
+
+/** Н17.2: валидация работ военной кампании по списку участников (ровно участники, без чужих ключей). */
+export function validateConquestColonyOutputState(input: unknown, galaxy: ConquestGalaxyState, population: PopulationState,
+  sessionLastOrderId: number, rules: ColonyOutputRules, buildings: readonly BuildingDefinition[],
+  participants: readonly ParticipantId[]): ConquestColonyOutputState {
+  const output = conquestColonyOutputStateSchema.parse(input);
+  validateColonyOutputCore(output, galaxy, population, sessionLastOrderId, rules, buildings, participants);
   return output;
 }
 
@@ -244,8 +317,7 @@ export function reduceWorkforce(assignmentInput: Workforce, populationInput: num
   return { industry: reduced[0], research: reduced[1], culture: reduced[2] };
 }
 
-export interface ColonyOutputForecast {
-  factionId: CampaignFactionId;
+export interface ColonyOutputForecastBase {
   population: number;
   income: Treasury;
   upkeep: { populationCredits: number; shipCount: number; shipCredits: number; dueCredits: number;
@@ -270,12 +342,13 @@ export interface ColonyOutputForecast {
     culture: { current: number; cap: number; produced: number; accepted: number; spent: number; overflow: number; after: number };
   };
 }
+export interface ColonyOutputForecast extends ColonyOutputForecastBase { factionId: CampaignFactionId }
+export interface ConquestColonyOutputForecast extends ColonyOutputForecastBase { factionId: ParticipantId }
 
-export function getColonyOutputForecast(galaxy: CampaignState, population: PopulationState, outputInput: unknown,
-  factionInput: unknown, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = [],
-  environment?: EnvironmentState, buildings: readonly BuildingDefinition[] = [], treasury?: Treasury): ColonyOutputForecast {
-  const faction = factionIdSchema.parse(factionInput);
-  const output = colonyOutputStateSchema.parse(outputInput);
+function getColonyOutputForecastCore(galaxy: GalaxySystemsView, population: PopulationState, output: OutputCore,
+  faction: string, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[],
+  environment: EnvironmentState | undefined, buildings: readonly BuildingDefinition[],
+  treasury: Treasury | undefined): ColonyOutputForecastBase & { factionId: string } {
   const colonies = galaxy.systems.filter(system => system.ownerId === faction && population[system.id]);
   const totalPopulation = colonies.reduce((sum, system) => sum + population[system.id].population, 0);
   const income = { credits: totalPopulation * rules.creditsPerPopulation, minerals: totalPopulation * rules.mineralsPerPopulation };
@@ -353,7 +426,27 @@ export function getColonyOutputForecast(galaxy: CampaignState, population: Popul
     production: rows, reserves: { research: reserveForecast('research'), culture: reserveForecast('culture') } };
 }
 
-export function calculateColonyEndTurnBudget(treasury: Treasury, forecast: ColonyOutputForecast): EconomyCalculation {
+export function getColonyOutputForecast(galaxy: CampaignState, population: PopulationState, outputInput: unknown,
+  factionInput: unknown, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = [],
+  environment?: EnvironmentState, buildings: readonly BuildingDefinition[] = [], treasury?: Treasury): ColonyOutputForecast {
+  const faction = factionIdSchema.parse(factionInput);
+  const output = colonyOutputStateSchema.parse(outputInput);
+  return getColonyOutputForecastCore(galaxy, population, output, faction, rules, shipCount, effects,
+    environment, buildings, treasury) as ColonyOutputForecast;
+}
+
+/** Н17.2: прогноз работ военной кампании для участника по participant IDs. */
+export function getConquestColonyOutputForecast(galaxy: ConquestGalaxyState, population: PopulationState,
+  outputInput: unknown, participantInput: unknown, rules: ColonyOutputRules, shipCount: number,
+  effects: readonly RulesEffect[] = [], environment?: EnvironmentState,
+  buildings: readonly BuildingDefinition[] = [], treasury?: Treasury): ConquestColonyOutputForecast {
+  const faction = participantIdSchema.parse(participantInput);
+  const output = conquestColonyOutputStateSchema.parse(outputInput);
+  return getColonyOutputForecastCore(galaxy, population, output, faction, rules, shipCount, effects,
+    environment, buildings, treasury) as ConquestColonyOutputForecast;
+}
+
+export function calculateColonyEndTurnBudget(treasury: Treasury, forecast: ColonyOutputForecastBase): EconomyCalculation {
   const gross = { credits: treasury.credits + forecast.income.credits,
     minerals: treasury.minerals + forecast.income.minerals };
   if (!treasurySchema.safeParse(gross).success) return { ok: false, code: 'RESOURCE_LIMIT' };
@@ -415,9 +508,54 @@ export function advanceColonyOutput(input: unknown, galaxy: CampaignState, popul
   return { state, forecast, completedIds, completedProjects };
 }
 
+/** Н17.2: шаг работ военной кампании для участника по participant IDs. */
+export function advanceConquestColonyOutput(input: unknown, galaxy: ConquestGalaxyState, population: PopulationState,
+  faction: ParticipantId, rules: ColonyOutputRules, shipCount: number, effects: readonly RulesEffect[] = [],
+  environment?: EnvironmentState, buildings: readonly BuildingDefinition[] = [], treasury?: Treasury): {
+    state: ConquestColonyOutputState;
+    forecast: ConquestColonyOutputForecast;
+    completedIds: number[];
+    completedProjects: ConquestColonyProject[];
+  } {
+  const state = conquestColonyOutputStateSchema.parse(input);
+  const forecast = getConquestColonyOutputForecast(galaxy, population, state, faction, rules, shipCount, effects,
+    environment, buildings, treasury);
+  const completedIds: number[] = [];
+  const completedProjects: ConquestColonyProject[] = [];
+  for (const row of forecast.production) {
+    const project = state.projects.find(item => item.id === row.orderId);
+    if (project) {
+      const progress = Math.min(project.productionCost, project.productionProgress + row.productionPoints);
+      if (progress === project.productionCost) {
+        completedProjects.push(structuredClone(project));
+        state.projects = state.projects.filter(item => item.id !== project.id);
+        if (project.kind === 'building') {
+          const levels = state.buildings[project.systemId] ?? [];
+          const existing = levels.find(entry => entry.buildingId === project.buildingId);
+          if (existing) existing.level += 1;
+          else state.buildings[project.systemId] = [...levels, { buildingId: project.buildingId, level: 1 }];
+        }
+      } else project.productionProgress = progress;
+      continue;
+    }
+    const order = state.production.orders.find(item => item.factionId === faction && item.systemId === row.systemId);
+    if (!order || row.productionStatus === 'paused' || row.productionStatus === 'idle') continue;
+    order.productionProgress = Math.min(order.productionCost, order.productionProgress + row.productionPoints);
+    if (order.productionProgress === order.productionCost) {
+      completedIds.push(order.id);
+      state.production.orders = state.production.orders.filter(item => item.id !== order.id);
+      state.production.completed.push({ id: order.id, factionId: order.factionId, systemId: order.systemId, design: order.design });
+    }
+  }
+  for (const kind of ['research', 'culture'] as const) {
+    state.reserves[faction][kind] = forecast.reserves[kind].after;
+  }
+  return { state, forecast, completedIds, completedProjects };
+}
+
 export function emptyWorkforce(): Workforce { return { industry: 0, research: 0, culture: 0 }; }
 
-export function colonyReserveCap(population: PopulationState, galaxy: CampaignState, faction: CampaignFactionId,
+export function colonyReserveCap(population: PopulationState, galaxy: GalaxySystemsView, faction: string,
   rules: ColonyOutputRules): number {
   return galaxy.systems.filter(system => system.ownerId === faction && population[system.id])
     .reduce((sum, system) => sum + population[system.id].population * rules.reserveWorkerTurns, 0);

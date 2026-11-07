@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import type { GalaxyMap } from './galaxyMap';
-import { factionIdSchema, systemIdSchema, getGalaxyDefinition, type CampaignFactionId, type SystemId } from './campaign';
-import { conquestSessionSchema, createCampaignSession, executeConquestSessionCommand, getConquestSessionView,
-  sessionCommandSchema, MAX_TURN, type CampaignSessionView, type SessionErrorCode } from './campaignSession';
+import { MAX_PARTICIPANTS } from './galaxyMap';
+import { participantIdSchema, systemIdSchema, getGalaxyDefinition, getCampaignParticipants, getParticipantColor,
+  type ParticipantId, type SystemId } from './campaign';
+import { getActiveParticipant } from './campaignSchedule';
+import { conquestSessionSchema, createConquestSession, executeConquestSessionCommand, getConquestSessionView,
+  conquestSessionCommandSchema, MAX_TURN, type ConquestSessionView, type SessionErrorCode } from './campaignSession';
 import { treasurySchema, type Treasury } from './campaignEconomy';
 import { researchTreeSchema, researchStateSchema, researchIdSchema, createResearchState, getDefaultResearchTree,
   isResearchStateValid, isCampaignDesignAvailable, isCampaignDraftAvailable, calculateResearchTurn,
@@ -12,19 +15,21 @@ import { operationalStateSchema, createOperationalState, readOperationalState, g
 import { designSchema } from './shipDesign';
 import { resolveConquestBattle, type BattleFrame } from './conquestBattle';
 import type { CampaignShip } from './campaignShips';
-import { campaignProjectsSchema, createCampaignProjects, projectCommandSchema, editCampaignProject,
+import { conquestProjectsSchema, createConquestProjects, conquestProjectCommandSchema, editConquestProject,
   type ProjectErrorCode } from './campaignProjects';
 import { createDefaultRulesSnapshot, rulesSnapshotSchema, ruleIdentifierSchema } from './campaignRules';
 import { diplomacyStateSchema, createInitialDiplomacyState, proposeDiplomacy, acceptDiplomacyProposal,
   declineDiplomacyProposal, withdrawDiplomacyProposal, declareDiplomacyWar, declareWarByCapture, recordPeaceBattle,
   hasActiveArmistice, grantCoopBonus, computeCultureTransfer, recordDiplomacyContact, getDiplomacyOwnView,
-  advanceDiplomacyRound, diplomacyProposalKindSchema, diplomacyPayloadSchema, DIPLOMACY_PROPOSAL_ID_LIMIT } from './campaignDiplomacy';
+  advanceDiplomacyRound, diplomacyProposalKindSchema, diplomacyPayloadSchema, DIPLOMACY_PROPOSAL_ID_LIMIT,
+  type DiplomacyFactionId } from './campaignDiplomacy';
 import { populationStateSchema, createPopulation, advancePopulation, populationGrowth, getPopulationTechnologyForecast, quoteFounding, transferSettlers,
   type FoundingErrorCode } from './campaignPopulation';
-import { advanceColonyOutput, calculateColonyEndTurnBudget, colonyOutputStateSchema, createColonyOutputState,
-  getColonyOutputForecast, getColonyProductionQuote, getColonyProductionRefund, getColonyProjectRefund, colonyWorkQueue, reduceWorkforce,
-  validateColonyOutputState, workforceSchema, emptyWorkforce, type ColonyOutputForecast,
-  type ColonyProductionOrder, type Workforce } from './campaignOutput';
+import { advanceConquestColonyOutput, calculateColonyEndTurnBudget, conquestColonyOutputStateSchema,
+  createConquestColonyOutputState,
+  getConquestColonyOutputForecast, getColonyProductionQuote, getColonyProjectRefund,
+  colonyWorkQueue, reduceWorkforce, validateConquestColonyOutputState, workforceSchema, emptyWorkforce,
+  type ConquestColonyOutputForecast, type Workforce } from './campaignOutput';
 import { MAX_ORDER_ID } from './production';
 import { MAX_CAMPAIGN_SHIPS } from './campaignShips';
 import { MAX_CAMPAIGN_FLEETS, MAX_FLEET_ID } from './campaignFleets';
@@ -32,14 +37,12 @@ import { getColonyWorldType, getCompletedColonyEffects, isColonyEffect } from '.
 import { isWorldInRange, getTravelCapabilities, STRATEGIC_TRAVEL_POLICY } from './campaignTravel';
 import { createColonizerDesign } from './civilianPresets';
 import { environmentStateSchema, getEnvironmentType, type EnvironmentState } from './worldEnvironment';
+import { conquestControlSchema } from './campaignControl';
+export { conquestControlSchema, getConquestControllerKind, type ConquestControl } from './campaignControl';
 
-export const conquestControlSchema = z.union([
-  z.object({ mode: z.literal('local') }).strict(),
-  z.object({ mode: z.literal('human-vs-ai'), aiPolicy: z.literal('conquest-v1') }).strict()
-]);
 export const conquestVictorySchema = z.object({ kind: z.literal('all-planets-v1') }).strict();
 export const conquestBattlePolicySchema = z.enum(['campaign-v1', 'campaign-v2']);
-export type ConquestOutcome = { status: 'ongoing' } | { status: 'completed'; winner: CampaignFactionId; reason: 'all-planets' };
+export type ConquestOutcome = { status: 'ongoing' } | { status: 'completed'; winner: ParticipantId; reason: 'all-planets' };
 export interface WorkforceAdjustment {
   systemId: SystemId;
   populationBefore: number;
@@ -50,7 +53,7 @@ export interface WorkforceAdjustment {
 export interface ConquestTurnReceipt {
   completedWorldProjectIds: number[];
   cancelledWorldProjectIds: number[];
-  factionId: CampaignFactionId;
+  factionId: ParticipantId;
   turn: number;
   population: number;
   populationIncome: Treasury;
@@ -60,7 +63,7 @@ export interface ConquestTurnReceipt {
   creditsPaid: number;
   creditsShortfall: number;
   productionPoints: number;
-  reserves: ColonyOutputForecast['reserves'];
+  reserves: ConquestColonyOutputForecast['reserves'];
   research: ResearchTurnReceipt;
   completedProductionIds: number[];
   workforceAdjustments: WorkforceAdjustment[];
@@ -68,33 +71,49 @@ export interface ConquestTurnReceipt {
 }
 const battleReportSchema = z.object({ id: z.number().int().positive().max(MAX_TURN), turn: z.number().int().positive().max(MAX_TURN),
   tacticalRules: z.literal('design-combat-v1'),
-  systemId: systemIdSchema, winner: factionIdSchema.nullable(), timedOut: z.boolean(),
-  participants: z.array(z.object({ id: z.number().int().positive(), factionId: factionIdSchema }).strict()).max(200),
+  systemId: systemIdSchema, winner: participantIdSchema.nullable(), timedOut: z.boolean(),
+  participants: z.array(z.object({ id: z.number().int().positive(), factionId: participantIdSchema }).strict()).max(200),
   destroyed: z.array(z.number().int().positive()).max(200) }).strict();
+export const participantMetadataSchema = z.object({
+  id: participantIdSchema,
+  name: z.string().min(1).max(80),
+  color: z.number().int().min(0).max(0xffffff)
+}).strict();
+export type ParticipantMetadata = z.infer<typeof participantMetadataSchema>;
+
 export const conquestSchema = z.object({
   scenario: z.literal('conquest-v1'), victory: conquestVictorySchema, control: conquestControlSchema,
   battlePolicy: conquestBattlePolicySchema,
   tacticalRules: z.literal('design-combat-v1'),
-  session: conquestSessionSchema, projects: campaignProjectsSchema, researchTree: researchTreeSchema,
+  participants: z.array(participantMetadataSchema).min(2).max(MAX_PARTICIPANTS),
+  session: conquestSessionSchema, projects: conquestProjectsSchema, researchTree: researchTreeSchema,
   rules: rulesSnapshotSchema.refine(rules => rules.effects.every(isColonyEffect), 'Нет игрового исполнителя эффекта'),
   population: populationStateSchema,
   environment: environmentStateSchema,
-  surveys: z.object({ blue: environmentStateSchema, red: environmentStateSchema }).strict(),
-  colonyOutput: colonyOutputStateSchema,
-  research: z.object({ blue: researchStateSchema, red: researchStateSchema }).strict(),
-  researchJournal: z.object({
-    blue: z.record(researchIdSchema, z.number().int().min(1).max(MAX_TURN)),
-    red: z.record(researchIdSchema, z.number().int().min(1).max(MAX_TURN))
-  }).strict(),
+  surveys: z.record(participantIdSchema, environmentStateSchema),
+  colonyOutput: conquestColonyOutputStateSchema,
+  research: z.record(participantIdSchema, researchStateSchema),
+  researchJournal: z.record(participantIdSchema,
+    z.record(researchIdSchema, z.number().int().min(1).max(MAX_TURN))),
   operations: z.record(operationalStateSchema), seed: z.number().int().min(1).max(0xffffffff),
   lastBattleId: z.number().int().min(0).max(MAX_TURN), battles: z.array(battleReportSchema).max(12),
   diplomacy: diplomacyStateSchema,
 }).strict().superRefine((state, context) => {
   const fail = () => context.addIssue({ code: z.ZodIssueCode.custom, message: 'Нарушена целостность военной кампании' });
   const worlds = state.session.galaxy.systems;
+  const refs = getCampaignParticipants(state.session.galaxy);
+  const participants = refs.map(participant => participant.id);
+  const sameKeys = (record: Record<string, unknown>) =>
+    Object.keys(record).sort().join('\n') === [...participants].sort().join('\n');
+  // Ровно участники кампании: никаких чужих или недостающих ключей в любом record.
+  if (!sameKeys(state.surveys) || !sameKeys(state.research) || !sameKeys(state.researchJournal) ||
+    !sameKeys(state.projects) || !sameKeys(state.colonyOutput.reserves)) { fail(); return; }
+  if (state.participants.length !== refs.length || state.participants.some((metadata, index) =>
+    metadata.id !== participants[index] || metadata.name !== refs[index].name ||
+    metadata.color !== getParticipantColor(index))) { fail(); return; }
   if (Object.keys(state.environment).length !== worlds.length ||
     worlds.some(world => !Object.prototype.hasOwnProperty.call(state.environment, world.id))) { fail(); return; }
-  for (const faction of factionIdSchema.options) {
+  for (const faction of participants) {
     if (Object.keys(state.surveys[faction]).some(id => !worlds.some(world => world.id === id))) fail();
   }
   if (worlds.some(world => world.ownerId !== null && (getEnvironmentType(state.environment, world.id) === 'barren' ||
@@ -114,18 +133,18 @@ export const conquestSchema = z.object({
       buildingUnlocks.set(effect.buildingId, node.id);
     }
   if (state.rules.buildings.some(def => buildingUnlocks.get(def.id) !== def.unlockResearchId)) fail();
-  if (factionIdSchema.options.some(faction => !isResearchStateValid(state.research[faction], state.researchTree))) { fail(); return; }
-  for (const faction of factionIdSchema.options) {
+  if (participants.some(faction => !isResearchStateValid(state.research[faction], state.researchTree))) { fail(); return; }
+  for (const faction of participants) {
     const journal = state.researchJournal[faction];
     if (Object.keys(journal).length !== state.research[faction].completed.length ||
       state.research[faction].completed.some(id => !Object.prototype.hasOwnProperty.call(journal, id)) ||
-      Object.values(journal).some(turn => turn > state.session.turn)) fail();
+      Object.values(journal).some(turn => turn > state.session.schedule.turn)) fail();
   }
   if (Object.keys(state.operations).length !== state.session.ships.length) fail();
   if (state.session.production.orders.length || state.session.production.completed.length) fail();
   try {
-    validateColonyOutputState(state.colonyOutput, state.session.galaxy, state.population,
-      state.session.production.lastOrderId, state.rules.colonyOutput, state.rules.buildings);
+    validateConquestColonyOutputState(state.colonyOutput, state.session.galaxy, state.population,
+      state.session.production.lastOrderId, state.rules.colonyOutput, state.rules.buildings, participants);
   } catch { fail(); }
   const outputRecordIds = new Set([...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed, ...state.colonyOutput.projects]
     .map(record => record.id));
@@ -172,12 +191,16 @@ export const conquestSchema = z.object({
   for (const record of [...state.colonyOutput.production.orders, ...state.colonyOutput.production.completed]) {
     if (!isCampaignDesignAvailable(record.design, state.research[record.factionId], state.researchTree)) fail();
   }
-  for (const faction of factionIdSchema.options) for (const project of state.projects[faction].items) {
-    if (!isCampaignDraftAvailable(project.design, state.research[faction], state.researchTree)) fail();
+  for (const faction of participants) {
+    // Каталог Н05а содержит только собственные проекты участника-ключа.
+    if (state.projects[faction].items.some(project => project.factionId !== faction)) fail();
+    for (const project of state.projects[faction].items) {
+      if (!isCampaignDraftAvailable(project.design, state.research[faction], state.researchTree)) fail();
+    }
   }
   if (new Set(state.battles.map(battle => battle.id)).size !== state.battles.length || state.battles.some(battle =>
     !state.session.galaxy.systems.some(system => system.id === battle.systemId) ||
-    battle.id > state.lastBattleId || battle.turn >= state.session.turn ||
+    battle.id > state.lastBattleId || battle.turn >= state.session.schedule.turn ||
     new Set(battle.participants.map(ship => ship.id)).size !== battle.participants.length ||
     new Set(battle.destroyed).size !== battle.destroyed.length ||
     battle.destroyed.some(id => !battle.participants.some(ship => ship.id === id)))) fail();
@@ -204,11 +227,11 @@ const diplomacyCommandErrors: Record<string, ConquestErrorCode> = {
   'not-pending': 'DIPLOMACY_NOT_PENDING',
   'expired': 'DIPLOMACY_PROPOSAL_EXPIRED',
 };
-export type FoundingNotice = { factionId: CampaignFactionId; systemId: SystemId; code: FoundingErrorCode };
+export type FoundingNotice = { factionId: ParticipantId; systemId: SystemId; code: FoundingErrorCode };
 export type ConquestResult = { ok: true; state: Conquest; frames?: BattleFrame[]; notices?: FoundingNotice[];
   workforceAdjustments?: WorkforceAdjustment[]; turnReceipt?: ConquestTurnReceipt } |
   { ok: false; code: ConquestErrorCode; message: string };
-const fields = { factionId: factionIdSchema, expectedTurn: z.number().int().min(1).max(MAX_TURN) };
+const fields = { factionId: participantIdSchema, expectedTurn: z.number().int().min(1).max(MAX_TURN) };
 export const conquestCommandSchema = z.union([
   z.object({ ...fields, kind: z.literal('startRefit'), systemId: systemIdSchema,
     shipId: z.number().int().positive().max(MAX_ORDER_ID), design: designSchema }).strict(),
@@ -222,8 +245,8 @@ export const conquestCommandSchema = z.union([
   z.object({ ...fields, kind: z.literal('survey'), systemId: systemIdSchema }).strict(),
   z.object({ ...fields, kind: z.literal('colonize'), systemId: systemIdSchema,
     shipId: z.number().int().positive().max(MAX_ORDER_ID) }).strict(),
-  projectCommandSchema,
-  ...sessionCommandSchema.options.filter(command => command.shape.kind.value !== 'colonize'),
+  conquestProjectCommandSchema,
+  ...conquestSessionCommandSchema.options.filter(command => command.shape.kind.value !== 'colonize'),
   z.object({ ...fields, kind: z.literal('assignWorkers'), systemId: systemIdSchema, workers: workforceSchema }).strict(),
   z.object({ ...fields, kind: z.literal('research'), technologyId: researchIdSchema }).strict(),
   z.object({ ...fields, kind: z.literal('pauseResearch') }).strict(),
@@ -240,13 +263,13 @@ export const conquestCommandSchema = z.union([
 ]);
 export type ConquestCommand = z.infer<typeof conquestCommandSchema>;
 
-function terraformUnlocked(state: { research: Record<CampaignFactionId, { completed: string[] }>;
-  researchTree: { nodes: { id: string; effects: { kind: string }[] }[] } }, faction: CampaignFactionId): boolean {
+function terraformUnlocked(state: { research: Record<string, { completed: string[] }>;
+  researchTree: { nodes: { id: string; effects: { kind: string }[] }[] } }, faction: ParticipantId): boolean {
   return state.researchTree.nodes.some(node => state.research[faction].completed.includes(node.id) &&
     node.effects.some(effect => effect.kind === 'terraform-unlock'));
 }
 
-function terraformAvailability(state: Conquest, faction: CampaignFactionId, systemId: SystemId) {
+function terraformAvailability(state: Conquest, faction: ParticipantId, systemId: SystemId) {
   if (state.session.galaxy.systems.find(world => world.id === systemId)?.ownerId !== faction) {
     return { ok: false as const, reason: 'Нужна собственная колония' };
   }
@@ -259,7 +282,7 @@ function terraformAvailability(state: Conquest, faction: CampaignFactionId, syst
   return { ok: true as const, ...structuredClone(state.rules.terraforming) };
 }
 
-function buildingAvailability(state: Conquest, faction: CampaignFactionId, systemId: SystemId, buildingId: string) {
+function buildingAvailability(state: Conquest, faction: ParticipantId, systemId: SystemId, buildingId: string) {
   const fail = (reason: string) => ({ ok: false as const, reason });
   if (state.session.galaxy.systems.find(world => world.id === systemId)?.ownerId !== faction) {
     return fail('Нужна собственная колония');
@@ -291,19 +314,21 @@ class ConquestRuleError extends Error {
   constructor(message: string, readonly code: ConquestErrorCode = 'RULE_REJECTED') { super(message); }
 }
 
+/** Н17.2: `createConquest` создаёт казны, знания, исследования, каталоги и стартовые корабли для всех участников карты. */
 export function createConquest(control: unknown = { mode: 'local' }, tree: unknown = getDefaultResearchTree(), seed = 1, map?: GalaxyMap): Conquest {
-  const session = createCampaignSession(map), rules = createDefaultRulesSnapshot(), researchTree = researchTreeSchema.parse(tree);
+  const session = createConquestSession(map), rules = createDefaultRulesSnapshot(), researchTree = researchTreeSchema.parse(tree);
+  const participants = getCampaignParticipants(session.galaxy);
   const population = createPopulation(session.galaxy, rules.population);
   const snapshot = session.galaxy.map;
   const environment: EnvironmentState = Object.fromEntries(getGalaxyDefinition(session.galaxy).systems.map(world => [
     world.id, snapshot ? snapshot.worlds.find(item => item.id === world.id)!.type : world.habitable ? 'habitable' : 'barren'
   ]));
-  const surveys: Record<CampaignFactionId, EnvironmentState> = { blue: {}, red: {} };
+  const surveys: Record<string, EnvironmentState> = Object.fromEntries(participants.map(p => [p.id, {}]));
   for (const world of session.galaxy.systems) if (world.ownerId) surveys[world.ownerId][world.id] = environment[world.id];
   const operations: Record<string, ReturnType<typeof createOperationalState>> = {};
-  for (const faction of getGalaxyDefinition(session.galaxy).factions) {
+  for (const participant of participants) {
     const id = ++session.production.lastOrderId, design = createColonizerDesign();
-    session.ships.push({ id, factionId: faction.id, systemId: faction.homeSystemId, design, fuel: getTravelCapabilities(design.strategicEquipment).fuelCapacity });
+    session.ships.push({ id, factionId: participant.id, systemId: participant.homeSystemId, design, fuel: getTravelCapabilities(design.strategicEquipment).fuelCapacity });
     operations[String(id)] = createOperationalState(design);
   }
   const references = new Set(researchTree.nodes.flatMap(node => node.effects.flatMap(effect =>
@@ -312,23 +337,26 @@ export function createConquest(control: unknown = { mode: 'local' }, tree: unkno
   rules.treeId = researchTree.id;
   return conquestSchema.parse({ scenario: 'conquest-v1', victory: { kind: 'all-planets-v1' }, control,
     battlePolicy: 'campaign-v2', tacticalRules: 'design-combat-v1',
-    session, rules, population, environment, surveys, colonyOutput: createColonyOutputState(session.galaxy, population),
-    projects: createCampaignProjects(), researchTree, research: { blue: createResearchState(), red: createResearchState() },
-    researchJournal: { blue: {}, red: {} },
+    participants: participants.map((participant, index) => ({ id: participant.id, name: participant.name, color: getParticipantColor(index) })),
+    session, rules, population, environment, surveys,
+    colonyOutput: createConquestColonyOutputState(session.galaxy, population, participants.map(p => p.id)),
+    projects: createConquestProjects(participants.map(p => p.id)), researchTree,
+    research: Object.fromEntries(participants.map(p => [p.id, createResearchState()])),
+    researchJournal: Object.fromEntries(participants.map(p => [p.id, {}])),
     operations, seed, lastBattleId: 0, battles: [],
     diplomacy: createInitialDiplomacyState() });
 }
 
 export function getConquestOutcome(state: Conquest): ConquestOutcome {
   const planets = getGalaxyDefinition(state.session.galaxy).systems.filter(system => system.habitable);
-  for (const winner of factionIdSchema.options) if (planets.every(planet =>
+  for (const { id: winner } of getCampaignParticipants(state.session.galaxy)) if (planets.every(planet =>
     state.session.galaxy.systems.find(system => system.id === planet.id)?.ownerId === winner)) {
     return { status: 'completed', winner, reason: 'all-planets' };
   }
   return { status: 'ongoing' };
 }
 
-export function visibleConquestSystems(state: Conquest, faction: CampaignFactionId): Set<SystemId> {
+export function visibleConquestSystems(state: Conquest, faction: ParticipantId): Set<SystemId> {
   const visible = new Set(state.session.galaxy.systems.filter(system => system.ownerId === faction).map(system => system.id));
   for (const ship of state.session.ships) {
     if (ship.factionId !== faction || ship.transit) continue;
@@ -343,7 +371,7 @@ export function visibleConquestSystems(state: Conquest, faction: CampaignFaction
   return visible;
 }
 
-function colonizationAvailability(state: Conquest, faction: CampaignFactionId, systemId: SystemId,
+function colonizationAvailability(state: Conquest, faction: ParticipantId, systemId: SystemId,
   visible: ReadonlySet<SystemId>, shipId?: number) {
   const fail = (code: ConquestErrorCode, message: string) => ({ ok: false as const, code, message });
   if (!visible.has(systemId)) return fail('OUT_OF_REACH', 'Нет текущего наблюдения: нужен корабль или разрешённый сканер');
@@ -369,18 +397,18 @@ function colonizationAvailability(state: Conquest, faction: CampaignFactionId, s
   return { ...quote, shipId: colonizer.id };
 }
 
-export function getConquestView(input: unknown, faction: CampaignFactionId) {
+export function getConquestView(input: unknown, faction: ParticipantId) {
   const state = conquestSchema.parse(input);
-  const side = factionIdSchema.parse(faction);
-  const view: CampaignSessionView = getConquestSessionView(state.session, side);
+  const side = participantIdSchema.parse(faction);
+  const view: ConquestSessionView = getConquestSessionView(state.session, side);
   const mined = miningYield(state, side, true);
   const effects = getCompletedColonyEffects(state.researchTree, state.research[side], state.rules);
-  const outputForecast = getColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, side,
+  const outputForecast = getConquestColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, side,
     state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === side).length, effects, state.environment,
     state.rules.buildings, state.session.treasuries[side]);
   const researchForecast = forecastResearch(state, side, outputForecast);
   view.income = { credits: outputForecast.income.credits, minerals: outputForecast.income.minerals + mined };
-  const baseBudget = state.session.turn === MAX_TURN ? { ok: false as const, code: 'TURN_LIMIT' as const }
+  const baseBudget = state.session.schedule.turn === MAX_TURN ? { ok: false as const, code: 'TURN_LIMIT' as const }
     : calculateColonyEndTurnBudget(state.session.treasuries[side], outputForecast);
   if (baseBudget.ok) {
     baseBudget.treasuryAfter.minerals += mined;
@@ -436,17 +464,17 @@ export function getConquestView(input: unknown, faction: CampaignFactionId) {
     enemies: state.session.ships.filter(ship => ship.factionId !== side && !ship.transit && visible.has(ship.systemId))
       .map(ship => ({ id: ship.id, systemId: ship.systemId, factionId: ship.factionId, hullId: ship.design.hullId })),
     battles: state.battles.filter(battle => battle.participants.some(ship => ship.factionId === side)),
-    diplomacy: getDiplomacyOwnView(state.diplomacy, side, state.rules.diplomacy),
+    diplomacy: getDiplomacyOwnView(state.diplomacy, diplomacySideOf(side, state), state.rules.diplomacy),
     totalHabitableWorlds: getGalaxyDefinition(state.session.galaxy).systems.filter(system => system.habitable).length,
     outcome: getConquestOutcome(state) };
 }
 export type ConquestView = ReturnType<typeof getConquestView>;
 
-function forecastResearch(state: Conquest, faction: CampaignFactionId, output: ColonyOutputForecast, coopBonus = 0) {
+function forecastResearch(state: Conquest, faction: ParticipantId, output: ConquestColonyOutputForecast, coopBonus = 0) {
   const science = output.reserves.research;
   const result = calculateResearchTurn(state.research[faction], state.researchTree, science.current,
     science.produced + coopBonus, science.cap, output.production.length > 0);
-  if (state.session.turn === MAX_TURN) result.timing = { status: 'unavailable', reason: 'turn-limit' };
+  if (state.session.schedule.turn === MAX_TURN) result.timing = { status: 'unavailable', reason: 'turn-limit' };
   else if (getConquestOutcome(state).status === 'completed') result.timing = { status: 'unavailable', reason: 'campaign-completed' };
   Object.assign(science, { accepted: result.receipt.accepted, spent: result.receipt.spent,
     overflow: result.receipt.overflow, after: result.receipt.reserveAfter });
@@ -457,7 +485,7 @@ function armed(ship: CampaignShip): boolean {
   return ship.design.slots.some(slot => slot.component?.kind === 'beam' || slot.component?.kind === 'projectile');
 }
 function reveal(state: Conquest): void {
-  for (const faction of factionIdSchema.options) {
+  for (const faction of getCampaignParticipants(state.session.galaxy).map(participant => participant.id)) {
     const visible = visibleConquestSystems(state, faction);
     for (const id of visible) {
       const system = state.session.galaxy.systems.find(item => item.id === id)!;
@@ -465,20 +493,20 @@ function reveal(state: Conquest): void {
       if (Object.prototype.hasOwnProperty.call(state.surveys[faction], id)) {
         state.surveys[faction][id] = getEnvironmentType(state.environment, id);
       }
-      if (system.ownerId !== null && system.ownerId !== faction) recordDiplomacyContact(state.diplomacy, faction);
+      if (system.ownerId !== null && system.ownerId !== faction) recordDiplomacyContact(state.diplomacy, diplomacySideOf(faction, state));
     }
     if (state.session.ships.some(ship => ship.factionId !== faction && !ship.transit && visible.has(ship.systemId))) {
-      recordDiplomacyContact(state.diplomacy, faction);
+      recordDiplomacyContact(state.diplomacy, diplomacySideOf(faction, state));
     }
   }
 }
-function debit(state: Conquest, faction: CampaignFactionId, credits: number, minerals: number,
+function debit(state: Conquest, faction: ParticipantId, credits: number, minerals: number,
   code: ConquestErrorCode = 'RULE_REJECTED'): void {
   const treasury = state.session.treasuries[faction];
   if (treasury.credits < credits || treasury.minerals < minerals) throw new ConquestRuleError('Недостаточно ресурсов', code);
   treasury.credits -= credits; treasury.minerals -= minerals;
 }
-function miningYield(state: Conquest, faction: CampaignFactionId, forecast = false): number {
+function miningYield(state: Conquest, faction: ParticipantId, forecast = false): number {
   return state.session.ships.filter(ship => ship.factionId === faction &&
     (!ship.transit || forecast && ship.transit.remainingTurns === 1) &&
     state.surveys[faction][ship.transit?.destinationId ?? ship.systemId] === 'barren' &&
@@ -486,7 +514,7 @@ function miningYield(state: Conquest, faction: CampaignFactionId, forecast = fal
       Math.floor(Math.min(10, ship.design.slots.reduce((sum, slot) => sum +
         (slot.component?.kind === 'mining' ? slot.component.miningSpeed * slot.component.efficiency : 0), 0))), 0);
 }
-function foundColony(state: Conquest, faction: CampaignFactionId, target: SystemId): {
+function foundColony(state: Conquest, faction: ParticipantId, target: SystemId): {
   quote: ReturnType<typeof quoteFounding>;
   workforceAdjustment?: WorkforceAdjustment;
 } {
@@ -507,6 +535,15 @@ function foundColony(state: Conquest, faction: CampaignFactionId, target: System
   }
   return { quote, ...(workforceAdjustment ? { workforceAdjustment } : {}) };
 }
+/**
+ * До Н17.4 дипломатия Н16 сохраняет принятую однопарную семантику: её состояние адресуется
+ * сторонам blue/red, а граница conquest отображает участников позиционно (индекс 0 → blue,
+ * остальные → red). Н17.4 переведёт дипломатию на пары участников.
+ */
+function diplomacySideOf(participant: ParticipantId, state: Conquest): DiplomacyFactionId {
+  return getCampaignParticipants(state.session.galaxy).findIndex(item => item.id === participant) === 0 ? 'blue' : 'red';
+}
+
 function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefined {
   let frames: BattleFrame[] | undefined;
   for (const definition of getGalaxyDefinition(state.session.galaxy).systems) {
@@ -517,7 +554,7 @@ function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefi
       const seed = ((state.seed ^ Math.imul(turn, 2654435761) ^ (state.lastBattleId + 1)) >>> 0) || 1;
       const result = resolveConquestBattle(present, state.operations, seed, state.battlePolicy);
       frames = result.frames;
-      if (!state.diplomacy.war) recordPeaceBattle(state.diplomacy, present[0].factionId);
+      if (!state.diplomacy.war) recordPeaceBattle(state.diplomacy, diplomacySideOf(present[0].factionId, state));
       state.battles.push({ id: ++state.lastBattleId, tacticalRules: 'design-combat-v1', turn, systemId: definition.id, winner: result.winner,
         timedOut: result.timedOut, participants: present.map(ship => ({ id: ship.id, factionId: ship.factionId })), destroyed: result.destroyed });
       state.battles = state.battles.slice(-12);
@@ -539,7 +576,7 @@ function settleEncounters(state: Conquest, turn: number): BattleFrame[] | undefi
       state.surveys[owner][system.id] = getEnvironmentType(state.environment, system.id);
       if (!system.exploredBy.includes(owner)) system.exploredBy.push(owner);
       if (previousOwner !== owner) {
-        if (!state.diplomacy.war) declareWarByCapture(state.diplomacy, owner, state.rules.diplomacy);
+        if (!state.diplomacy.war) declareWarByCapture(state.diplomacy, diplomacySideOf(owner, state), state.rules.diplomacy);
         state.colonyOutput.projects = state.colonyOutput.projects.filter(project => project.systemId !== system.id);
         state.colonyOutput.assignments[system.id] = emptyWorkforce();
         state.colonyOutput.production.orders = state.colonyOutput.production.orders
@@ -580,16 +617,16 @@ function runColonyProductionCommand(state: Conquest,
     treasury.credits -= quote.cost.credits;
     treasury.minerals -= quote.cost.minerals;
     const id = ++state.session.production.lastOrderId;
-    const order: ColonyProductionOrder = { id, factionId, systemId, design: structuredClone(command.design),
-      cost: quote.cost, productionCost: quote.productionCost, productionProgress: 0 };
-    production.orders.push(order);
+    production.orders.push({ id, factionId, systemId, design: structuredClone(command.design),
+      cost: quote.cost, productionCost: quote.productionCost, productionProgress: 0 });
     return;
   }
   if (command.kind === 'cancelProduction') {
     const index = production.orders.findIndex(order => order.id === command.orderId &&
       order.factionId === factionId && order.systemId === systemId);
     if (index < 0) throw new ConquestRuleError('Заказ не найден в очереди колонии', 'ORDER_NOT_FOUND');
-    const refund = getColonyProductionRefund(production.orders[index]);
+    // Возврат зависит только от цены/прогресса записи и не зависит от идентичности стороны.
+    const refund = getColonyProjectRefund(production.orders[index]);
     const next = { credits: state.session.treasuries[factionId].credits + refund.credits,
       minerals: state.session.treasuries[factionId].minerals + refund.minerals };
     if (!treasurySchema.safeParse(next).success) {
@@ -622,9 +659,12 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
     if (!parsedCommand.success) return { ok: false, code: 'INVALID_COMMAND', message: 'Недопустимая команда военной кампании' };
     const state = parsedState.data, command = parsedCommand.data;
     const faction = command.factionId;
-    if (command.expectedTurn !== state.session.turn) throw new ConquestRuleError('Номер хода изменился', 'STALE_TURN');
-    if (faction !== (state.session.turn % 2 ? 'blue' : 'red')) throw new ConquestRuleError('Сейчас ход другой стороны', 'NOT_ACTIVE_FACTION');
-    if (state.control.mode === 'human-vs-ai' && (automated ? faction !== 'red' : faction === 'red')) throw new ConquestRuleError('Команда недоступна этому контроллеру', 'CONTROLLER_FORBIDDEN');
+    if (command.expectedTurn !== state.session.schedule.turn) throw new ConquestRuleError('Номер хода изменился', 'STALE_TURN');
+    if (faction !== getActiveParticipant(state.session.schedule)) throw new ConquestRuleError('Сейчас ход другой стороны', 'NOT_ACTIVE_FACTION');
+    // Авторизация по контролю до действий: человек не командует AI-стороной, AI — человеческой.
+    if (state.control.mode === 'campaign' && (automated ? faction === state.control.human : faction !== state.control.human)) {
+      throw new ConquestRuleError('Команда недоступна этому контроллеру', 'CONTROLLER_FORBIDDEN');
+    }
     if (getConquestOutcome(state).status === 'completed') throw new ConquestRuleError('Партия завершена', 'CAMPAIGN_COMPLETED');
     if (('systemId' in command && !state.session.galaxy.systems.some(system => system.id === command.systemId)) ||
       ('destinationId' in command && !state.session.galaxy.systems.some(system => system.id === command.destinationId))) {
@@ -737,7 +777,7 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
         !isCampaignDraftAvailable(command.design, state.research[faction], state.researchTree)) {
         throw new ConquestRuleError('Черновик требует доступный корпус, семейства и параметры оборудования', 'INVALID_DESIGN');
       }
-      const result = editCampaignProject(state.projects, command);
+      const result = editConquestProject(state.projects, command);
       if (!result.ok) return result;
       state.projects = result.projects;
     } else if (command.kind === 'research') {
@@ -812,11 +852,11 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
       }
       runColonyProductionCommand(state, command);
     } else if (command.kind === 'proposeDiplomacy') {
-      const proposalResult = proposeDiplomacy({ state: state.diplomacy, author: faction, kind: command.offerKind,
+      const proposalResult = proposeDiplomacy({ state: state.diplomacy, author: diplomacySideOf(faction, state), kind: command.offerKind,
         payload: command.payload, authorTreasury: state.session.treasuries[faction], rules: state.rules.diplomacy });
       if (!proposalResult.ok) throw new ConquestRuleError(proposalResult.reason, diplomacyCommandErrors[proposalResult.code] ?? 'RULE_REJECTED');
     } else if (command.kind === 'acceptDiplomacy') {
-      const other: CampaignFactionId = faction === 'blue' ? 'red' : 'blue';
+      const other: DiplomacyFactionId = diplomacySideOf(faction, state) === 'blue' ? 'red' : 'blue';
       const proposal = state.diplomacy.proposals.find(item => item.id === command.proposalId);
       if (proposal && proposal.kind === 'exchange' && proposal.payload) {
         // Ёмкость казни получателя проверяется до любых мутаций — обмен атомарен.
@@ -827,7 +867,7 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
           throw new ConquestRuleError('Получение превысит предел ресурсов; обмен отклонён целиком', 'DIPLOMACY_TREASURY_LIMIT');
         }
       }
-      const acceptResult = acceptDiplomacyProposal({ state: state.diplomacy, actor: faction, proposalId: command.proposalId,
+      const acceptResult = acceptDiplomacyProposal({ state: state.diplomacy, actor: diplomacySideOf(faction, state), proposalId: command.proposalId,
         authorTreasury: state.session.treasuries[other], rules: state.rules.diplomacy });
       if (!acceptResult.ok) throw new ConquestRuleError(acceptResult.reason, diplomacyCommandErrors[acceptResult.code] ?? 'RULE_REJECTED');
       if (acceptResult.transfer) {
@@ -840,53 +880,55 @@ export function executeConquestAction(input: unknown, payload: unknown, automate
         treasurySchema.parse(treasury);
       }
     } else if (command.kind === 'declineDiplomacy') {
-      const declineResult = declineDiplomacyProposal(state.diplomacy, faction, command.proposalId);
+      const declineResult = declineDiplomacyProposal(state.diplomacy, diplomacySideOf(faction, state), command.proposalId);
       if (!declineResult.ok) throw new ConquestRuleError(declineResult.reason, diplomacyCommandErrors[declineResult.code] ?? 'RULE_REJECTED');
     } else if (command.kind === 'withdrawDiplomacy') {
-      const withdrawResult = withdrawDiplomacyProposal(state.diplomacy, faction, command.proposalId);
+      const withdrawResult = withdrawDiplomacyProposal(state.diplomacy, diplomacySideOf(faction, state), command.proposalId);
       if (!withdrawResult.ok) throw new ConquestRuleError(withdrawResult.reason, diplomacyCommandErrors[withdrawResult.code] ?? 'RULE_REJECTED');
     } else if (command.kind === 'declareWar') {
-      const warResult = declareDiplomacyWar(state.diplomacy, faction, state.rules.diplomacy);
+      const warResult = declareDiplomacyWar(state.diplomacy, diplomacySideOf(faction, state), state.rules.diplomacy);
       if (!warResult.ok) throw new ConquestRuleError(warResult.reason, diplomacyCommandErrors[warResult.code] ?? 'RULE_REJECTED');
     } else {
-      let turnForecast: ColonyOutputForecast | undefined;
+      let turnForecast: ConquestColonyOutputForecast | undefined;
       let endTurnBudget: ReturnType<typeof calculateColonyEndTurnBudget> | undefined;
       const effects = getCompletedColonyEffects(state.researchTree, state.research[faction], state.rules);
       let treasuryBefore: Treasury | undefined;
-      if (command.kind === 'endTurn' && state.session.turn !== MAX_TURN) {
+      if (command.kind === 'endTurn' && state.session.schedule.turn !== MAX_TURN) {
         treasuryBefore = structuredClone(state.session.treasuries[faction]);
-        turnForecast = getColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, faction,
+        turnForecast = getConquestColonyOutputForecast(state.session.galaxy, state.population, state.colonyOutput, faction,
           state.rules.colonyOutput, state.session.ships.filter(ship => ship.factionId === faction).length, effects,
           state.environment, state.rules.buildings, treasuryBefore);
         endTurnBudget = calculateColonyEndTurnBudget(state.session.treasuries[faction], turnForecast);
         if (!endTurnBudget.ok) throw new ConquestRuleError('Валовой доход превысит предел ресурсов; ход не завершён', 'RESOURCE_LIMIT');
       }
+      const roundBefore = state.session.schedule.round;
       const result = executeConquestSessionCommand(state.session, command,
         endTurnBudget?.ok ? endTurnBudget : undefined, STRATEGIC_TRAVEL_POLICY);
       if (!result.ok) return { ok: false, code: result.code, message: result.message };
       state.session = result.state;
       if (command.kind === 'endTurn') {
         const endingProjectIds = state.colonyOutput.projects.filter(project => project.factionId === faction).map(project => project.id);
-        const output = advanceColonyOutput(state.colonyOutput, parsedState.data.session.galaxy,
+        const output = advanceConquestColonyOutput(state.colonyOutput, parsedState.data.session.galaxy,
           parsedState.data.population, faction, state.rules.colonyOutput,
           parsedState.data.session.ships.filter(ship => ship.factionId === faction).length, effects, state.environment,
           state.rules.buildings, treasuryBefore);
-        const coop = grantCoopBonus(state.diplomacy, faction, state.rules.diplomacy);
+        const coop = grantCoopBonus(state.diplomacy, diplomacySideOf(faction, state), state.rules.diplomacy);
         const research = forecastResearch(parsedState.data, faction, output.forecast, coop.bonus);
         state.colonyOutput = output.state;
         state.colonyOutput.reserves[faction].research = research.receipt.reserveAfter;
         state.research[faction] = research.state;
         if (research.receipt.completedId) state.researchJournal[faction][research.receipt.completedId] = command.expectedTurn;
         const culturePoints = output.forecast.production.reduce((sum, item) => sum + item.culturePoints, 0);
-        const cultureTransfer = computeCultureTransfer(state.diplomacy.influence[faction],
+        const cultureTransfer = computeCultureTransfer(state.diplomacy.influence[diplomacySideOf(faction, state)],
           culturePoints, state.rules.diplomacy);
-        state.diplomacy.influence[faction] += cultureTransfer.influenceDelta;
+        state.diplomacy.influence[diplomacySideOf(faction, state)] += cultureTransfer.influenceDelta;
         state.population = advancePopulation(parsedState.data.session.galaxy, state.population, faction, state.rules.population, effects, state.environment);
         const miningMinerals = miningYield(state, faction);
         state.session.treasuries[faction].minerals += miningMinerals;
         treasurySchema.parse(state.session.treasuries[faction]);
         frames = settleEncounters(state, command.expectedTurn);
-        if (command.expectedTurn % 2 === 0) advanceDiplomacyRound(state.diplomacy);
+        // Единая точка дипломатического раунда: endTurn последнего участника круга расписания.
+        if (state.session.schedule.round > roundBefore) advanceDiplomacyRound(state.diplomacy);
         state.colonyOutput.projects = state.colonyOutput.projects.filter(project =>
           project.kind !== 'refit' || state.session.ships.some(ship => ship.id === project.shipId));
         const completedWorldProjectIds: number[] = [];

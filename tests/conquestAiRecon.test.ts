@@ -7,18 +7,20 @@ import { createColonizerDesign } from '../src/domain/civilianPresets';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { createStrategicEquipment, getTravelCapabilities, getTravelQuote, getWorldDistance } from '../src/domain/campaignTravel';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import type { CampaignFactionId } from '../src/domain/campaign';
+import type { ParticipantId } from '../src/domain/campaign';
 import { diagnosticTransit, workCommand as apply } from './fixtures/colonyWork';
 
-function diagnosticFrontier(side: CampaignFactionId, worldCount: 6 | 40 = 6) {
+function diagnosticFrontier(side: ParticipantId, worldCount: 6 | 40 = 6) {
   const state = createBaselineStart({ ...baselineMatrix()[0], worldCount }).state;
-  state.session.turn = side === 'blue' ? 1 : 2;
+  state.session.schedule = side === 'player-01'
+    ? { order: state.session.schedule.order, activeIndex: 0, turn: 1, revision: 0, round: 1 }
+    : { order: state.session.schedule.order, activeIndex: 1, turn: 2, revision: 1, round: 1 };
   state.research[side].completed = state.researchTree.nodes.map(node => node.id);
   state.researchJournal[side] = Object.fromEntries(state.research[side].completed.map(id => [id, 1]));
   state.session.treasuries[side] = { credits: 10000, minerals: 5000 };
   const map = state.session.galaxy.map!;
-  const home = map.participants[side === 'blue' ? 0 : 1].homeWorldId;
-  const target = map.participants[side === 'blue' ? 1 : 0].homeWorldId;
+  const home = map.participants[side === 'player-01' ? 0 : 1].homeWorldId;
+  const target = map.participants[side === 'player-01' ? 1 : 0].homeWorldId;
   for (const world of state.session.galaxy.systems) {
     if (state.environment[world.id] === 'barren') {
       state.surveys[side][world.id] = 'barren';
@@ -44,7 +46,7 @@ function diagnosticFrontier(side: CampaignFactionId, worldCount: 6 | 40 = 6) {
   return { state, side, home, target, id, map };
 }
 
-function checkedPlan(state: Conquest, side: CampaignFactionId) {
+function checkedPlan(state: Conquest, side: ParticipantId) {
   const view = getConquestView(state, side), snapshot = structuredClone(view);
   const command = planConquestAction(view);
   expect(view).toEqual(snapshot);
@@ -52,7 +54,7 @@ function checkedPlan(state: Conquest, side: CampaignFactionId) {
 }
 
 describe('AI reconnaissance distinguishes detection from environment survey', () => {
-  it.each(['blue', 'red'] as const)('sends %s to a previously detected, unsurveyed world using real capabilities and fuel', side => {
+  it.each(['player-01', 'player-02'] as const)('sends %s to a previously detected, unsurveyed world using real capabilities and fuel', side => {
     const { state, target, home, id } = diagnosticFrontier(side);
     const view = getConquestView(state, side), before = structuredClone(state);
     expect(view.knownSystems).toContain(target);
@@ -71,7 +73,7 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     expect(state).toEqual(before);
   });
 
-  it.each(['blue', 'red'] as const)('allows a %s military attack on a visible colony without a survey, not neutral founding', side => {
+  it.each(['player-01', 'player-02'] as const)('allows a %s military attack on a visible colony without a survey, not neutral founding', side => {
     const { state, target, id } = diagnosticFrontier(side);
     const observer = createColonizerDesign(), observerId = ++state.session.production.lastOrderId;
     state.session.ships.push({ id: observerId, factionId: side, systemId: target, design: observer, fuel: 3000 });
@@ -80,39 +82,39 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     const world = getConquestView(state, side).galaxy.systems.find(world => world.id === target);
     expect(world).toMatchObject({ visibility: 'explored', habitable: false });
     expect(checkedPlan(state, side)).toMatchObject({ kind: 'sendShip', shipId: id, destinationId: target });
-    const refused = executeConquestCommand(state, { kind: 'colonize', factionId: side, expectedTurn: state.session.turn,
+    const refused = executeConquestCommand(state, { kind: 'colonize', factionId: side, expectedTurn: state.session.schedule.turn,
       systemId: target, shipId: observerId });
     expect(refused.ok).toBe(false);
   });
 
   it('does not confuse a known barren world with an unsurveyed one', () => {
-    const { state, home } = diagnosticFrontier('blue', 40);
-    const ship = state.session.ships.find(ship => ship.factionId === 'blue')!;
+    const { state, home } = diagnosticFrontier('player-01', 40);
+    const ship = state.session.ships.find(ship => ship.factionId === 'player-01')!;
     ship.design.strategicEquipment = createStrategicEquipment();
     ship.fuel = 3000;
     conquestSchema.parse(state);
-    const view = getConquestView(state, 'blue');
+    const view = getConquestView(state, 'player-01');
     const barren = view.galaxy.systems.find(world => view.environmentKnowledge[world.id] === 'barren' &&
       getTravelQuote(getWorldDistance(view.galaxy.systems, home, world.id),
         getTravelCapabilities(ship.design.strategicEquipment), ship.fuel).ok);
     if (!barren) throw new Error('Нет достижимого barren в диагностической карте');
     expect(view.knownSystems).toContain(barren.id);
-    expect(checkedPlan(state, 'blue').kind).not.toBe('sendShip');
+    expect(checkedPlan(state, 'player-01').kind).not.toBe('sendShip');
   });
 
   it('keeps the complete plan identical for equal own observations with different hidden ownership', () => {
-    const { state, target } = diagnosticFrontier('blue'), other = structuredClone(state);
+    const { state, target } = diagnosticFrontier('player-01'), other = structuredClone(state);
     other.session.galaxy.systems.find(world => world.id === target)!.ownerId = null;
     other.population[target] = { population: 0, remainder: 0 };
     other.colonyOutput.assignments[target] = { industry: 0, research: 0, culture: 0 };
     conquestSchema.parse(other);
-    expect(getConquestView(other, 'blue')).toEqual(getConquestView(state, 'blue'));
-    expect(checkedPlan(other, 'blue')).toEqual(checkedPlan(state, 'blue'));
+    expect(getConquestView(other, 'player-01')).toEqual(getConquestView(state, 'player-01'));
+    expect(checkedPlan(other, 'player-01')).toEqual(checkedPlan(state, 'player-01'));
   });
 
   it('preserves the real return reserve for a detected unsurveyed target when departing from the field', () => {
-    const { state, target, home, map } = diagnosticFrontier('blue', 40);
-    const ship = state.session.ships.find(ship => ship.factionId === 'blue')!;
+    const { state, target, home, map } = diagnosticFrontier('player-01', 40);
+    const ship = state.session.ships.find(ship => ship.factionId === 'player-01')!;
     const field = map.worlds.find(world => world.type === 'barren' &&
       getWorldDistance(map.worlds, home, world.id) <= 200);
     if (!field) throw new Error('Нет диагностической полевой позиции');
@@ -120,35 +122,35 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     const caps = getTravelCapabilities(ship.design.strategicEquipment);
     const outgoing = getTravelQuote(getWorldDistance(map.worlds, field.id, target), caps, caps.fuelCapacity);
     if (!outgoing.ok) throw new Error(outgoing.message);
-    const reserve = Math.min(...state.session.galaxy.systems.filter(world => world.ownerId === 'blue')
+    const reserve = Math.min(...state.session.galaxy.systems.filter(world => world.ownerId === 'player-01')
       .map(world => Math.ceil(getWorldDistance(map.worlds, target, world.id) * caps.fuelConsumptionPerDistance)));
     ship.fuel = outgoing.fuelCost;
     conquestSchema.parse(state);
-    const withoutReserve = checkedPlan(state, 'blue');
+    const withoutReserve = checkedPlan(state, 'player-01');
     expect(withoutReserve.kind).toBe('sendShip');
     if (withoutReserve.kind !== 'sendShip') throw new Error('Нет возврата к своей колонии');
     expect(withoutReserve.destinationId).not.toBe(target);
-    expect(state.session.galaxy.systems.find(world => world.id === withoutReserve.destinationId)?.ownerId).toBe('blue');
+    expect(state.session.galaxy.systems.find(world => world.id === withoutReserve.destinationId)?.ownerId).toBe('player-01');
     ship.fuel += reserve;
     conquestSchema.parse(state);
-    expect(checkedPlan(state, 'blue')).toMatchObject({ kind: 'sendShip', shipId: ship.id, destinationId: target });
+    expect(checkedPlan(state, 'player-01')).toMatchObject({ kind: 'sendShip', shipId: ship.id, destinationId: target });
   });
 
   it('returns a bounded endTurn for a valid ongoing no-colony, no-fuel, no-income position', () => {
     const state = createBaselineStart(baselineMatrix()[0]).state;
-    const home = state.session.ships.find(ship => ship.factionId === 'blue')!.systemId;
+    const home = state.session.ships.find(ship => ship.factionId === 'player-01')!.systemId;
     state.session.galaxy.systems.find(world => world.id === home)!.ownerId = null;
     state.population[home] = { population: 0, remainder: 0 };
     state.colonyOutput.assignments[home] = { industry: 0, research: 0, culture: 0 };
-    state.session.treasuries.blue = { credits: 0, minerals: 0 };
-    state.session.ships.find(ship => ship.factionId === 'blue')!.fuel = 0;
+    state.session.treasuries['player-01'] = { credits: 0, minerals: 0 };
+    state.session.ships.find(ship => ship.factionId === 'player-01')!.fuel = 0;
     conquestSchema.parse(state);
     expect(getConquestOutcome(state)).toEqual({ status: 'ongoing' });
-    expect(checkedPlan(state, 'blue')).toMatchObject({ kind: 'endTurn' });
-    const result = executeConquestAiTurn(state, 'blue', 1);
+    expect(checkedPlan(state, 'player-01')).toMatchObject({ kind: 'endTurn' });
+    const result = executeConquestAiTurn(state, 'player-01', 1);
     if (!result.ok) throw new Error(result.message);
-    expect(result.state.session.turn).toBe(2);
-    expect(result.state.session.treasuries.blue).toEqual({ credits: 0, minerals: 0 });
+    expect(result.state.session.schedule.turn).toBe(2);
+    expect(result.state.session.treasuries['player-01']).toEqual({ credits: 0, minerals: 0 });
     expect(getConquestOutcome(result.state)).toEqual({ status: 'ongoing' });
   });
 
@@ -159,7 +161,7 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
       state.population[world.id] = { population: 0, remainder: 0 };
       state.colonyOutput.assignments[world.id] = { industry: 0, research: 0, culture: 0 };
     }
-    state.session.treasuries = { blue: { credits: 0, minerals: 0 }, red: { credits: 0, minerals: 0 } };
+    state.session.treasuries = { 'player-01': { credits: 0, minerals: 0 }, 'player-02': { credits: 0, minerals: 0 } };
     for (const ship of state.session.ships) ship.fuel = 0;
     conquestSchema.parse(state);
     const run = runBaseline(input, { state: decodeConquestSave(encodeConquestSave(state)), turnsExecuted: 0 });
@@ -171,26 +173,26 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
   });
 
   it('still requires a real paid survey before founding a neutral colony', () => {
-    const { state, target } = diagnosticFrontier('blue');
+    const { state, target } = diagnosticFrontier('player-01');
     state.session.galaxy.systems.find(world => world.id === target)!.ownerId = null;
     state.population[target] = { population: 0, remainder: 0 };
     state.colonyOutput.assignments[target] = { industry: 0, research: 0, culture: 0 };
-    const removed = state.session.ships.filter(ship => ship.factionId === 'red');
-    state.session.ships = state.session.ships.filter(ship => ship.factionId !== 'red');
+    const removed = state.session.ships.filter(ship => ship.factionId === 'player-02');
+    state.session.ships = state.session.ships.filter(ship => ship.factionId !== 'player-02');
     for (const ship of removed) delete state.operations[String(ship.id)];
     const id = ++state.session.production.lastOrderId, design = createColonizerDesign();
-    state.session.ships.push({ id, factionId: 'blue', systemId: target, design, fuel: 3000 });
+    state.session.ships.push({ id, factionId: 'player-01', systemId: target, design, fuel: 3000 });
     state.operations[String(id)] = createOperationalState(design);
     conquestSchema.parse(state);
-    expect(checkedPlan(state, 'blue')).toMatchObject({ kind: 'survey', systemId: target });
-    const surveyed = apply(state, checkedPlan(state, 'blue'));
-    expect(surveyed.session.treasuries.blue).toEqual({ credits: 9990, minerals: 4995 });
-    expect(checkedPlan(surveyed, 'blue')).toMatchObject({ kind: 'colonize', systemId: target, shipId: id });
-    const completed = executeConquestAiTurn(surveyed, 'blue', 1);
+    expect(checkedPlan(state, 'player-01')).toMatchObject({ kind: 'survey', systemId: target });
+    const surveyed = apply(state, checkedPlan(state, 'player-01'));
+    expect(surveyed.session.treasuries['player-01']).toEqual({ credits: 9990, minerals: 4995 });
+    expect(checkedPlan(surveyed, 'player-01')).toMatchObject({ kind: 'colonize', systemId: target, shipId: id });
+    const completed = executeConquestAiTurn(surveyed, 'player-01', 1);
     if (!completed.ok) throw new Error(completed.message);
-    expect(getConquestOutcome(completed.state)).toMatchObject({ status: 'completed', winner: 'blue' });
-    expect(completed.state.session.turn).toBe(1);
-    expect(completed.state.session.treasuries.blue).toEqual({ credits: 9970, minerals: 4985 });
+    expect(getConquestOutcome(completed.state)).toMatchObject({ status: 'completed', winner: 'player-01' });
+    expect(completed.state.session.schedule.turn).toBe(1);
+    expect(completed.state.session.treasuries['player-01']).toEqual({ credits: 9970, minerals: 4985 });
     const traced = runBaseline(baselineMatrix()[0], { state: surveyed, turnsExecuted: 0 });
     expect(traced.status).toBe('completed');
     expect(traced.turnsExecuted).toBe(0);
@@ -198,10 +200,10 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
   });
 
   it('counts a queued colonizer for a detected unsurveyed target rather than repeatedly ordering it', () => {
-    const { state, home } = diagnosticFrontier('blue');
-    const destination = state.session.galaxy.systems.find(world => world.ownerId === 'blue' &&
+    const { state, home } = diagnosticFrontier('player-01');
+    const destination = state.session.galaxy.systems.find(world => world.ownerId === 'player-01' &&
       getWorldDistance(state.session.galaxy.map!.worlds, home, world.id) > 200)!.id;
-    const source = state.session.ships.find(ship => ship.factionId === 'blue')!;
+    const source = state.session.ships.find(ship => ship.factionId === 'player-01')!;
     source.transit = diagnosticTransit(home, destination, source.design, state.session.galaxy);
     source.fuel -= source.transit.fuelCost;
     for (let index = 0; index < 3; index++) {
@@ -213,7 +215,7 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     const design = createColonizerDesign();
     design.strategicEquipment = { ...source.design.strategicEquipment };
     const queued = apply(state, { kind: 'enqueueProduction', systemId: home, design });
-    const command = checkedPlan(queued, 'blue');
+    const command = checkedPlan(queued, 'player-01');
     // Н15: законный startBuilding заменяет прежний бездействующий endTurn; повторный заказ колонизатора по-прежнему запрещён.
     expect(command.kind !== 'enqueueProduction' || command.design.hullId !== 'colonizer').toBe(true);
   });
@@ -234,11 +236,11 @@ describe('AI reconnaissance distinguishes detection from environment survey', ()
     if (!pre.finalState) throw new Error('Expected pre-completion state');
     const state = pre.finalState;
     const before = structuredClone(state);
-    const result = executeConquestAiTurn(state, side, state.session.turn);
+    const result = executeConquestAiTurn(state, side, state.session.schedule.turn);
     if (!result.ok) throw new Error(result.message);
     expect(getConquestOutcome(result.state)).toMatchObject({ status: 'completed', winner: side });
-    expect(result.state.session.turn).toBe(state.session.turn + 1);
+    expect(result.state.session.schedule.turn).toBe(state.session.schedule.turn + 1);
     expect(state).toEqual(before);
-    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), side, state.session.turn)).toEqual(result);
+    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), side, state.session.schedule.turn)).toEqual(result);
   }, 120000);
 });

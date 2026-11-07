@@ -7,17 +7,18 @@ import { resolveConquestBattle } from '../src/domain/conquestBattle';
 import type { CampaignShip } from '../src/domain/campaignShips';
 import { getDefaultResearchTree, isCampaignDesignAvailable, researchTreeSchema } from '../src/domain/campaignResearch';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
+import { activeOf } from './fixtures/conquestSides';
 
 function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
-  const score = (winner: string | null, firstFaction: 'blue' | 'red') =>
+  const score = (winner: string | null, firstFaction: 'player-01' | 'player-02') =>
     winner === null ? 0.5 : winner === firstFaction ? 1 : 0;
   const seeds = Array.from({ length: 30 }, (_, index) => (((index + 1) * 2654435761) >>> 0) || 1);
   let total = 0;
   for (const seed of seeds) {
-    const run = (firstFaction: 'blue' | 'red') => {
-      const firstId = firstFaction === 'blue' ? 1 : 2;
-      const secondFaction = firstFaction === 'blue' ? 'red' : 'blue';
-      const secondId = secondFaction === 'blue' ? 1 : 2;
+    const run = (firstFaction: 'player-01' | 'player-02') => {
+      const firstId = firstFaction === 'player-01' ? 1 : 2;
+      const secondFaction = firstFaction === 'player-01' ? 'player-02' : 'player-01';
+      const secondId = secondFaction === 'player-01' ? 1 : 2;
       const ships: CampaignShip[] = [
         { id: firstId, factionId: firstFaction, systemId: 'eden', design: first, fuel: 3000 },
         { id: secondId, factionId: secondFaction, systemId: 'eden', design: second, fuel: 3000 }
@@ -25,7 +26,7 @@ function pairedDesignMean(first: ShipDesign, second: ShipDesign): number {
       const operations = Object.fromEntries(ships.map(ship => [String(ship.id), createOperationalState(ship.design)]));
       return resolveConquestBattle(ships, operations, seed, 'campaign-v2').winner;
     };
-    total += (score(run('blue'), 'blue') + score(run('red'), 'red')) / 2;
+    total += (score(run('player-01'), 'player-01') + score(run('player-02'), 'player-02')) / 2;
   }
   return total / seeds.length;
 }
@@ -34,11 +35,11 @@ it('constructs legal deterministic candidates without clocks or random factories
   const state = createConquest();
   const clock = vi.spyOn(Date, 'now').mockImplementation(() => { throw new Error('clock'); });
   try {
-    const designs = buildConquestDesigns(state.research.blue, state.researchTree);
+    const designs = buildConquestDesigns(state.research['player-01'], state.researchTree);
     expect(designs.length).toBeGreaterThan(1);
     expect(designs.every(design => validateDesign(design, 'battle').length === 0)).toBe(true);
-    expect(designs.every(design => isCampaignDesignAvailable(design, state.research.blue, state.researchTree))).toBe(true);
-    expect(buildConquestDesigns(state.research.blue, state.researchTree)).toEqual(designs);
+    expect(designs.every(design => isCampaignDesignAvailable(design, state.research['player-01'], state.researchTree))).toBe(true);
+    expect(buildConquestDesigns(state.research['player-01'], state.researchTree)).toEqual(designs);
   } finally { clock.mockRestore(); }
 });
 
@@ -92,8 +93,8 @@ it('caps projectile output by ammo, reflects resource scarcity, defense and enga
 
 it('ranks twin-beam above single-beam on mirrored dispersed seeds with campaign-v2 policy', () => {
   const state = createConquest();
-  state.research.blue.completed = ['engineering', 'miniaturization'];
-  const candidates = buildConquestDesigns(state.research.blue, state.researchTree).filter(design => design.hullId === 'fighter');
+  state.research['player-01'].completed = ['engineering', 'miniaturization'];
+  const candidates = buildConquestDesigns(state.research['player-01'], state.researchTree).filter(design => design.hullId === 'fighter');
   const singleBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component === null)!;
   const twinBeam = candidates.find(design => design.slots.find(slot => slot.id === 'beam_2')?.component?.kind === 'beam')!;
   const treasury = { credits: 10000, minerals: 10000 };
@@ -107,10 +108,10 @@ it('ranks twin-beam above single-beam on mirrored dispersed seeds with campaign-
 
 it('does not change its plan when only hidden enemy resources and research differ', () => {
   const first = createConquest(), second = structuredClone(first);
-  second.session.treasuries.red = { credits: 999, minerals: 888 };
-  second.research.red.completed = second.researchTree.nodes.map(node => node.id);
-  second.researchJournal.red = Object.fromEntries(second.research.red.completed.map(id => [id, 1]));
-  const firstView = getConquestView(first, 'blue'), secondView = getConquestView(second, 'blue');
+  second.session.treasuries['player-02'] = { credits: 999, minerals: 888 };
+  second.research['player-02'].completed = second.researchTree.nodes.map(node => node.id);
+  second.researchJournal['player-02'] = Object.fromEntries(second.research['player-02'].completed.map(id => [id, 1]));
+  const firstView = getConquestView(first, 'player-01'), secondView = getConquestView(second, 'player-01');
   expect(firstView).toEqual(secondView);
   expect(planConquestAction(firstView)).toEqual(planConquestAction(secondView));
 });
@@ -119,36 +120,36 @@ it('assigns a newly founded colony legally before AI production', () => {
   const state = createConquest();
   state.colonyOutput.assignments.sol = { industry: 4000, research: 1000, culture: 0 };
   const eden = state.session.galaxy.systems.find(system => system.id === 'eden')!;
-  eden.ownerId = 'blue'; eden.exploredBy.push('blue');
-  state.surveys.blue.eden = state.environment.eden;
+  eden.ownerId = 'player-01'; eden.exploredBy.push('player-01');
+  state.surveys['player-01'].eden = state.environment.eden;
   state.population.eden = { population: 1000, remainder: 0 };
   state.colonyOutput.assignments.eden = { industry: 0, research: 0, culture: 0 };
   const checked = conquestSchema.parse(state);
-  const action = planConquestAction(getConquestView(checked, 'blue'));
+  const action = planConquestAction(getConquestView(checked, 'player-01'));
   expect(action).toMatchObject({ kind: 'assignWorkers', systemId: 'eden',
     workers: { industry: 800, research: 200, culture: 0 } });
   const result = executeConquestCommand(checked, action);
   expect(result.ok).toBe(true);
-  expect(result.ok && getConquestView(result.state, 'blue').colonyOutput.assignments.eden)
+  expect(result.ok && getConquestView(result.state, 'player-01').colonyOutput.assignments.eden)
     .toMatchObject({ industry: 800, research: 200, unassigned: 0 });
 });
 
 it('plans from own observation and preserves paid production through save/load', () => {
   let state = createConquest();
   const source = structuredClone(state);
-  expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({ kind: 'assignWorkers',
+  expect(planConquestAction(getConquestView(state, 'player-01'))).toMatchObject({ kind: 'assignWorkers',
     workers: { industry: 4000, research: 1000, culture: 0 } });
   let produced = false, deployed = false, travelled = false, battles = false;
     for (let turn = 0; turn < 160 && getConquestOutcome(state).status === 'ongoing'; turn++) {
-    const faction = state.session.turn % 2 ? 'blue' : 'red';
-    const result = executeConquestAiTurn(state, faction, state.session.turn);
-    if (!result.ok) throw new Error(`${state.session.turn}: ${result.message}`);
-    expect(result.state.session.turn).toBe(state.session.turn + Number(result.turnReceipt !== undefined));
-    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), faction, state.session.turn)).toEqual(result);
+    const faction = activeOf(state);
+    const result = executeConquestAiTurn(state, faction, state.session.schedule.turn);
+    if (!result.ok) throw new Error(`${state.session.schedule.turn}: ${result.message}`);
+    expect(result.state.session.schedule.turn).toBe(state.session.schedule.turn + Number(result.turnReceipt !== undefined));
+    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), faction, state.session.schedule.turn)).toEqual(result);
     state = result.state;
     produced ||= state.session.production.lastOrderId > 2;
     deployed ||= state.session.ships.some(ship => ship.id > 2);
-    travelled ||= state.session.ships.some(ship => ship.systemId !== (ship.factionId === 'blue' ? 'sol' : 'vega'));
+    travelled ||= state.session.ships.some(ship => ship.systemId !== (ship.factionId === 'player-01' ? 'sol' : 'vega'));
     battles ||= state.battles.length > 0;
   }
   expect({ produced, deployed, travelled, battles }).toEqual({ produced: true, deployed: true, travelled: true, battles: true });
@@ -156,12 +157,12 @@ it('plans from own observation and preserves paid production through save/load',
   expect(source.session.production.lastOrderId).toBe(2);
 }, 20000);
 
-it.each(['blue', 'red'] as const)('the real policy can win as %s against a passive opponent from a new start', winner => {
-  let state = createConquest(winner === 'red' ? { mode: 'human-vs-ai', aiPolicy: 'conquest-v1' } : { mode: 'local' });
+it.each(['player-01', 'player-02'] as const)('the real policy can win as %s against a passive opponent from a new start', winner => {
+  let state = createConquest(winner === 'player-02' ? { mode: 'campaign', human: 'player-01', aiPolicy: 'conquest-v1' } : { mode: 'local' });
   for (let action = 0; action < 160 && getConquestOutcome(state).status === 'ongoing'; action++) {
-    const faction = state.session.turn % 2 ? 'blue' : 'red';
-    const result = faction === winner ? executeConquestAiTurn(state, faction, state.session.turn) :
-      executeConquestCommand(state, { kind: 'endTurn', factionId: faction, expectedTurn: state.session.turn });
+    const faction = activeOf(state);
+    const result = faction === winner ? executeConquestAiTurn(state, faction, state.session.schedule.turn) :
+      executeConquestCommand(state, { kind: 'endTurn', factionId: faction, expectedTurn: state.session.schedule.turn });
     if (!result.ok) throw new Error(result.message);
     state = result.state;
   }

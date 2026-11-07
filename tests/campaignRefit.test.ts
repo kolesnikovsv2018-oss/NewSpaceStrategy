@@ -25,7 +25,7 @@ function paidShip() {
 }
 function reject(state: Conquest, payload: Record<string, unknown>, code?: string) {
   const before = structuredClone(state);
-  const result = executeConquestCommand(state, { factionId: 'blue', expectedTurn: state.session.turn, ...payload });
+  const result = executeConquestCommand(state, { factionId: 'player-01', expectedTurn: state.session.schedule.turn, ...payload });
   expect(result).toMatchObject({ ok: false, ...(code ? { code } : {}) });
   expect(state).toEqual(before);
 }
@@ -40,10 +40,10 @@ describe('effective equipment and paid refit', () => {
     project.productionProgress = project.productionCost - 1;
     state.session.ships = state.session.ships.filter(ship => ship.id !== 1);
     delete state.operations['1'];
-    const attacker = { id: ++state.session.production.lastOrderId, factionId: 'red' as const, systemId: 'sol' as const,
+    const attacker = { id: ++state.session.production.lastOrderId, factionId: 'player-02' as const, systemId: 'sol' as const,
       design: createDesign('fighter', true), fuel: 3000 };
     state.session.ships.push(attacker); state.operations[String(attacker.id)] = createOperationalState(attacker.design);
-    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: state.session.turn });
+    const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: state.session.schedule.turn });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.message);
     expect(result.state.battles.at(-1)?.destroyed).toContain(setup.id);
@@ -60,9 +60,9 @@ describe('effective equipment and paid refit', () => {
     const project = state.colonyOutput.projects[0];
     project.productionProgress = phase === 'zero' ? 0 : phase === 'partial' ? 1 : project.productionCost - 1;
     const refund = getColonyProjectRefund(project), operations = structuredClone(state.operations);
-    const treasury = { ...state.session.treasuries.blue };
+    const treasury = { ...state.session.treasuries['player-01'] };
     state = apply(state, { kind: 'cancelColonyProject', systemId: 'sol', projectId: project.id });
-    expect(state.session.treasuries.blue).toEqual({ credits: treasury.credits + refund.credits, minerals: treasury.minerals + refund.minerals });
+    expect(state.session.treasuries['player-01']).toEqual({ credits: treasury.credits + refund.credits, minerals: treasury.minerals + refund.minerals });
     expect(state.operations).toEqual(operations);
     expect(state.session.ships.find(ship => ship.id === setup.id)!.design).toEqual(setup.design);
   });
@@ -97,7 +97,7 @@ describe('effective equipment and paid refit', () => {
     const setup = paidShip();
     let state = setup.state;
     const next = compact(setup.design);
-    expect(isCampaignDesignAvailable(next, state.research.blue, state.researchTree)).toBe(false);
+    expect(isCampaignDesignAvailable(next, state.research['player-01'], state.researchTree)).toBe(false);
     reject(state, { kind: 'enqueueProduction', systemId: 'sol', design: next }, 'INVALID_DESIGN');
     state = apply(state, { kind: 'enqueueProduction', systemId: 'sol', design: setup.design });
     state = round(state);
@@ -106,15 +106,15 @@ describe('effective equipment and paid refit', () => {
     state = apply(state, { kind: 'sendShip', systemId: 'sol', shipId: setup.id, destinationId: 'eden' });
     const bytes = JSON.stringify(state.session.ships.find(ship => ship.id === setup.id)!.design);
     state = earn(state, 'miniaturization');
-    expect(hasCompactEquipment(state.research.blue, state.researchTree)).toBe(true);
+    expect(hasCompactEquipment(state.research['player-01'], state.researchTree)).toBe(true);
     expect(JSON.stringify(state.session.ships.find(ship => ship.id === setup.id)!.design)).toBe(bytes);
     expect(JSON.stringify(state.colonyOutput.production.orders[0].design)).toBe(bytes);
     expect(JSON.stringify(state.colonyOutput.production.completed[0].design)).toBe(bytes);
-    expect(isCampaignDesignAvailable(next, state.research.blue, state.researchTree)).toBe(true);
-    const candidates = buildConquestDesigns(state.research.blue, state.researchTree);
+    expect(isCampaignDesignAvailable(next, state.research['player-01'], state.researchTree)).toBe(true);
+    const candidates = buildConquestDesigns(state.research['player-01'], state.researchTree);
     expect(candidates.length).toBeLessThanOrEqual(48);
     expect(candidates.some(design => design.slots.some(slot => slot.component?.technologyVariant === 'compact'))).toBe(true);
-    expect(candidates.every(design => isCampaignDesignAvailable(design, state.research.blue, state.researchTree))).toBe(true);
+    expect(candidates.every(design => isCampaignDesignAvailable(design, state.research['player-01'], state.researchTree))).toBe(true);
   });
 
   it('pays/refits through the shared FIFO and restores progress without free HP, ammo or fuel', () => {
@@ -125,11 +125,11 @@ describe('effective equipment and paid refit', () => {
     state.session.ships.find(ship => ship.id === setup.id)!.fuel = 1;
     state = conquestSchema.parse(state);
     const target = compact(setup.design), quote = getRefitQuote(setup.design, target, state.rules.colonyOutput.productionCreditsPerPoint);
-    const treasury = { ...state.session.treasuries.blue };
+    const treasury = { ...state.session.treasuries['player-01'] };
     state = apply(state, { kind: 'createProject', name: target.name, design: target });
     state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 1, research: 4000, culture: 0 } });
-    state = apply(state, { kind: 'startRefit', systemId: 'sol', shipId: setup.id, design: state.projects.blue.items[0].design });
-    expect(state.session.treasuries.blue).toEqual({ credits: treasury.credits - quote.cost.credits, minerals: treasury.minerals - quote.cost.minerals });
+    state = apply(state, { kind: 'startRefit', systemId: 'sol', shipId: setup.id, design: state.projects['player-01'].items[0].design });
+    expect(state.session.treasuries['player-01']).toEqual({ credits: treasury.credits - quote.cost.credits, minerals: treasury.minerals - quote.cost.minerals });
     reject(state, { kind: 'sendShip', systemId: 'sol', shipId: setup.id, destinationId: 'eden' });
     reject(state, { kind: 'createFleet', systemId: 'sol', shipIds: [1, setup.id] });
     reject(state, { kind: 'startRefit', systemId: 'sol', shipId: setup.id, design: target });
@@ -143,7 +143,7 @@ describe('effective equipment and paid refit', () => {
     expect(state.session.ships.find(ship => ship.id === setup.id)!).toMatchObject({ design: target, fuel: 1 });
     expect(state.operations[String(setup.id)]).toEqual({ hull: 123, ammunition: [{ slotId: 'projectile_1', amount: 7 }] });
     expect(state.colonyOutput.projects).toEqual([]);
-    expect(getConquestView(state, 'red').workProjects).toEqual([]);
+    expect(getConquestView(state, 'player-02').workProjects).toEqual([]);
   });
 
   it('leaves new or changed projectile slots empty and rejects reducing max HP', () => {
@@ -161,7 +161,7 @@ describe('effective equipment and paid refit', () => {
     const setup = paidShip();
     const state = earn(setup.state, 'miniaturization'), target = compact(setup.design);
     const quote = getRefitQuote(setup.design, target, state.rules.colonyOutput.productionCreditsPerPoint);
-    state.session.treasuries.blue[currency] = quote.cost[currency] - 1;
+    state.session.treasuries['player-01'][currency] = quote.cost[currency] - 1;
     reject(state, { kind: 'startRefit', systemId: 'sol', shipId: setup.id, design: target }, 'INSUFFICIENT_RESOURCES');
   });
 

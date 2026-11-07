@@ -10,16 +10,17 @@ import { createCombatDesign } from '../src/domain/combatPresets';
 import { createDesign } from '../src/domain/shipDesign';
 import { createOperationalState } from '../src/domain/campaignOperations';
 import { MAX_TURN } from '../src/domain/campaignSession';
+import { activeOf } from './fixtures/conquestSides';
 
 function apply(state: Conquest, payload: Record<string, unknown>): Conquest {
-  const result = executeConquestCommand(state, { factionId: state.session.turn % 2 ? 'blue' : 'red',
-    expectedTurn: state.session.turn, ...payload });
+  const result = executeConquestCommand(state, { factionId: activeOf(state),
+    expectedTurn: state.session.schedule.turn, ...payload });
   if (!result.ok) throw new Error(`${result.code}: ${result.message}`);
   return result.state;
 }
 function complete(state: Conquest, ids: string[]): void {
-  state.research.blue.completed = ids;
-  state.researchJournal.blue = Object.fromEntries(ids.map(id => [id, 1]));
+  state.research['player-01'].completed = ids;
+  state.researchJournal['player-01'] = Object.fromEntries(ids.map(id => [id, 1]));
 }
 function effect(overrides: Partial<NumericModifierEffect> = {}): NumericModifierEffect {
   return { kind: 'modifier', id: 'test-output', target: 'science-output', scope: 'own-colonies',
@@ -86,13 +87,13 @@ it.each(['biology', 'biosphere', 'automation', 'scientific-method', 'cultural-pr
     const target = state.researchTree.nodes.find(node => node.id === id)!;
     for (const technologyId of [...target.prerequisites, id]) {
       state = apply(state, { kind: 'research', technologyId });
-      for (let ends = 0; !state.research.blue.completed.includes(technologyId); ends++) {
+      for (let ends = 0; !state.research['player-01'].completed.includes(technologyId); ends++) {
         if (ends > 8) throw new Error('Research did not finish within the bound');
         state = apply(apply(state, { kind: 'endTurn' }), { kind: 'endTurn' });
       }
     }
-    expect(state.researchJournal.blue[id]).toBeGreaterThan(0);
-    const effects = getCompletedColonyEffects(state.researchTree, state.research.blue, state.rules);
+    expect(state.researchJournal['player-01'][id]).toBeGreaterThan(0);
+    const effects = getCompletedColonyEffects(state.researchTree, state.research['player-01'], state.rules);
     expect(effects.some(item => item.id === target.effects.find(item => item.kind === 'colony-effect')?.effectId)).toBe(true);
     const restored = decodeConquestSave(encodeConquestSave(state));
     expect(apply(restored, { kind: 'endTurn' })).toEqual(apply(state, { kind: 'endTurn' }));
@@ -102,12 +103,12 @@ it('uses S0 for growth: a biology completion changes neither current delta nor P
   let state = createConquest();
   state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 4000, research: 1000, culture: 0 } });
   state = apply(state, { kind: 'research', technologyId: 'biology' });
-  state.research.blue.progress.biology = 1000;
+  state.research['player-01'].progress.biology = 1000;
   const before = structuredClone(state);
   const first = apply(state, { kind: 'endTurn' });
   expect(first.population.sol.population).toBe(5100);
-  expect(first.researchJournal.blue).toEqual({ biology: 1 });
-  expect(getConquestView(first, 'blue').researchJournal).toEqual([{ technologyId: 'biology', turn: 1, activationTurn: 3 }]);
+  expect(first.researchJournal['player-01']).toEqual({ biology: 1 });
+  expect(getConquestView(first, 'player-01').researchJournal).toEqual([{ technologyId: 'biology', turn: 1, activationTurn: 3 }]);
   const enemy = apply(first, { kind: 'endTurn' });
   expect(enemy.population.sol).toEqual(first.population.sol);
   const next = apply(enemy, { kind: 'endTurn' });
@@ -119,27 +120,27 @@ it('uses old science to finish science-output, no cascade, and new output only a
   let state = createConquest(); complete(state, ['applied']);
   state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 3000, research: 1000, culture: 1000 } });
   state = apply(state, { kind: 'research', technologyId: 'scientific-method' });
-  state.research.blue.progress['scientific-method'] = 2000;
-  const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+  state.research['player-01'].progress['scientific-method'] = 2000;
+  const result = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 });
   if (!result.ok) throw new Error(result.message);
   expect(result.turnReceipt?.research).toMatchObject({ produced: 1000, spent: 1000, reserveAfter: 0 });
-  expect(result.state.research.blue.completed).toEqual(['applied', 'scientific-method']);
-  expect(result.state.research.blue.activeId).toBeNull();
-  const own = getConquestView(result.state, 'blue');
+  expect(result.state.research['player-01'].completed).toEqual(['applied', 'scientific-method']);
+  expect(result.state.research['player-01'].activeId).toBeNull();
+  const own = getConquestView(result.state, 'player-01');
   expect(own.colonyOutput.forecast.reserves.research.produced).toBe(1200);
   expect(own.colonyOutput.forecast.production[0].breakdown.science).toMatchObject({
     base: 1, workers: 1000, labor: 1000, technology: 200, limit: 2000, total: 1200
   });
   const next = executeConquestCommand(apply(result.state, { kind: 'endTurn' }),
-    { kind: 'endTurn', factionId: 'blue', expectedTurn: 3 });
+    { kind: 'endTurn', factionId: 'player-01', expectedTurn: 3 });
   expect(next.ok && next.turnReceipt?.research.produced).toBe(1200);
 });
 
 it('does not transfer enemy technology or journal and keeps equal own observations and plans', () => {
   const first = createConquest(), second = createConquest();
-  second.research.red.completed = ['biology']; second.researchJournal.red = { biology: 1 };
-  expect(getConquestView(first, 'blue')).toEqual(getConquestView(second, 'blue'));
-  expect(planConquestAction(getConquestView(first, 'blue'))).toEqual(planConquestAction(getConquestView(second, 'blue')));
+  second.research['player-02'].completed = ['biology']; second.researchJournal['player-02'] = { biology: 1 };
+  expect(getConquestView(first, 'player-01')).toEqual(getConquestView(second, 'player-01'));
+  expect(planConquestAction(getConquestView(first, 'player-01'))).toEqual(planConquestAction(getConquestView(second, 'player-01')));
 });
 
 it('applies industry/culture once to the real FIFO and reserve, not to a waiting head or enemy end', () => {
@@ -149,11 +150,11 @@ it('applies industry/culture once to the real FIFO and reserve, not to a waiting
   for (let index = 0; index < 2; index++) state = apply(state, {
     kind: 'enqueueProduction', systemId: 'sol', design: createDesign('fighter', true)
   });
-  const forecast = getConquestView(state, 'blue').colonyOutput.forecast;
+  const forecast = getConquestView(state, 'player-01').colonyOutput.forecast;
   const next = apply(state, { kind: 'endTurn' });
   expect(forecast.production[0]).toMatchObject({ productionPoints: 6, culturePoints: 6 });
   expect(next.colonyOutput.production.orders.map(order => order.productionProgress)).toEqual([6, 0]);
-  expect(next.colonyOutput.reserves.blue.culture).toBe(6);
+  expect(next.colonyOutput.reserves['player-01'].culture).toBe(6);
   expect(apply(next, { kind: 'endTurn' }).colonyOutput).toEqual(next.colonyOutput);
 });
 
@@ -162,10 +163,10 @@ it('defers a newly unlocked capacity until next own end and never grants free re
   state.population.sol = { population: 10000, remainder: 0 };
   state = apply(state, { kind: 'assignWorkers', systemId: 'sol', workers: { industry: 9000, research: 1000, culture: 0 } });
   state = apply(state, { kind: 'research', technologyId: 'biosphere' });
-  state.research.blue.progress.biosphere = 3000;
+  state.research['player-01'].progress.biosphere = 3000;
   const first = apply(state, { kind: 'endTurn' });
   expect(first.population.sol.population).toBe(10000);
-  expect(getConquestView(first, 'blue').population[0].capacity).toBe(12000);
+  expect(getConquestView(first, 'player-01').population[0].capacity).toBe(12000);
   expect(apply(apply(first, { kind: 'endTurn' }), { kind: 'endTurn' }).population.sol.population).toBe(10240);
 });
 
@@ -189,25 +190,25 @@ it('keeps saved coefficients independent of external defaults and repeats the en
   growth.value = 0.5;
   const saved = decodeConquestSave(encodeConquestSave(state));
   growth.value = 0;
-  expect(getConquestView(saved, 'blue').population[0].delta).toBe(150);
-  expect(getConquestView(createConquest(), 'blue').population[0].delta).toBe(100);
+  expect(getConquestView(saved, 'player-01').population[0].delta).toBe(150);
+  expect(getConquestView(createConquest(), 'player-01').population[0].delta).toBe(100);
   const oracle = structuredClone(saved);
   expect(apply(saved, { kind: 'endTurn' })).toEqual(apply(oracle, { kind: 'endTurn' }));
 });
 
 it('rolls back completed technology, journal, growth and output on a late real encounter failure', () => {
   const state = createConquest();
-  state.research.blue.activeId = 'biology'; state.research.blue.progress.biology = 1999;
-  state.colonyOutput.reserves.blue.research = 1;
+  state.research['player-01'].activeId = 'biology'; state.research['player-01'].progress.biology = 1999;
+  state.colonyOutput.reserves['player-01'].research = 1;
   state.lastBattleId = MAX_TURN;
   const design = createCombatDesign('fighter');
   state.session.production.lastOrderId = 2;
-  state.session.ships = ['blue', 'red'].map((side, index) => ({
+  state.session.ships = ['player-01', 'red'].map((side, index) => ({
     id: index + 1, factionId: side === 'blue' ? 'blue' : 'red', systemId: 'rift', fuel: 3, design
   }));
   state.operations = { '1': createOperationalState(design), '2': createOperationalState(design) };
   const before = structuredClone(state);
-  const failed = executeConquestCommand(state, { kind: 'endTurn', factionId: 'blue', expectedTurn: 1 });
+  const failed = executeConquestCommand(state, { kind: 'endTurn', factionId: 'player-01', expectedTurn: 1 });
   expect(failed.ok).toBe(false);
   expect(failed).not.toHaveProperty('state'); expect(failed).not.toHaveProperty('turnReceipt');
   expect(state).toEqual(before);
@@ -217,20 +218,20 @@ it('AI measures own marginal utility and gives no invented gain at capacity or r
   const state = createConquest();
   state.population.sol.population = 10000;
   state.colonyOutput.assignments.sol = { industry: 0, research: 5000, culture: 5000 };
-  state.colonyOutput.reserves.blue = { research: 100000, culture: 100000 };
-  let view = getConquestView(state, 'blue');
+  state.colonyOutput.reserves['player-01'] = { research: 100000, culture: 100000 };
+  let view = getConquestView(state, 'player-01');
   const find = (id: string) => state.researchTree.nodes.find(node => node.id === id)!;
   expect(getConquestResearchUtility(view, find('biology'))).toBe(0);
   expect(getConquestResearchUtility(view, find('scientific-method'))).toBe(0);
   expect(getConquestResearchUtility(view, find('cultural-practices'))).toBe(0);
-  state.colonyOutput.reserves.blue.research = 0;
-  view = getConquestView(state, 'blue');
+  state.colonyOutput.reserves['player-01'].research = 0;
+  view = getConquestView(state, 'player-01');
   expect(getConquestResearchUtility(view, find('scientific-method'))).toBeGreaterThan(0);
   expect(getConquestResearchUtility(view, find('biosphere'))).toBeGreaterThan(0);
   state.population.sol.population = 5000;
   state.colonyOutput.assignments.sol = { industry: 4000, research: 1000, culture: 0 };
   complete(state, ['engineering', 'applied', 'support', 'ordnance', 'capital']);
-  expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({
+  expect(planConquestAction(getConquestView(state, 'player-01'))).toMatchObject({
     kind: 'research', technologyId: 'tactical-propulsion'
   });
 });

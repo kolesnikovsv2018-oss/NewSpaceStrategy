@@ -26,7 +26,7 @@ function sidePosition(state: Conquest, factionId: ConquestCommand['factionId']) 
 export function summarizeDevelopmentWindow(before: Conquest, after: Conquest, steps: readonly DevelopmentStep[]) {
   if (!steps.length || steps.length > 24) throw new Error('Недопустимое число команд окна развития');
   const factionId = steps[0].command.factionId;
-  if (steps.some(step => step.command.factionId !== factionId || step.command.expectedTurn !== before.session.turn)) {
+  if (steps.some(step => step.command.factionId !== factionId || step.command.expectedTurn !== before.session.schedule.turn)) {
     throw new Error('Команды развития относятся к разным окнам');
   }
   const idleIndustryAssignments = steps.filter(({ before: state, command }) => {
@@ -39,7 +39,7 @@ export function summarizeDevelopmentWindow(before: Conquest, after: Conquest, st
   const commandKinds: Partial<Record<ConquestCommand['kind'], number>> = {};
   for (const { command } of steps) commandKinds[command.kind] = (commandKinds[command.kind] ?? 0) + 1;
   return {
-    turn: before.session.turn, factionId,
+    turn: before.session.schedule.turn, factionId,
     advanced: getBaselineWindowAdvance(before, after, 'development'),
     before: sidePosition(before, factionId), after: sidePosition(after, factionId),
     commandKinds, commandCount: steps.length, idleIndustryAssignments,
@@ -57,18 +57,18 @@ export type DevelopmentWindow = ReturnType<typeof summarizeDevelopmentWindow>;
 export function replayDevelopmentCommands(input: Conquest, commands: readonly ConquestCommand[], checkpointTurn: number) {
   let state = conquestSchema.parse(input), before = state;
   const windows: DevelopmentWindow[] = [], steps: DevelopmentStep[] = [];
-  let checkpoint: Conquest | undefined = state.session.turn === checkpointTurn ? structuredClone(state) : undefined;
+  let checkpoint: Conquest | undefined = state.session.schedule.turn === checkpointTurn ? structuredClone(state) : undefined;
   for (const command of commands) {
     if (steps.length === 24) throw new Error('Превышен бюджет24 при воспроизведении');
     const result = executeConquestAction(state, command, true);
-    if (!result.ok) throw new Error(`Воспроизведение окна${state.session.turn}: ${result.code}`);
+    if (!result.ok) throw new Error(`Воспроизведение окна${state.session.schedule.turn}: ${result.code}`);
     steps.push({ before: state, command });
     state = result.state;
     if (command.kind === 'endTurn' || getConquestOutcome(state).status === 'completed') {
       windows.push(summarizeDevelopmentWindow(before, state, steps));
       steps.length = 0;
       before = state;
-      if (state.session.turn === checkpointTurn) checkpoint = structuredClone(state);
+      if (state.session.schedule.turn === checkpointTurn) checkpoint = structuredClone(state);
     }
   }
   if (steps.length) throw new Error('Незавершённое окно воспроизведения');

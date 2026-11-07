@@ -39,7 +39,7 @@ async function sourceFingerprint() {
 function position(state: Conquest) {
   const goals = getGalaxyDefinition(state.session.galaxy).systems.filter(world => world.habitable);
   return {
-    turn: state.session.turn, outcome: getConquestOutcome(state), victory: state.victory.kind,
+    turn: state.session.schedule.turn, outcome: getConquestOutcome(state), victory: state.victory.kind,
     totalGoals: goals.length,
     neutralGoals: goals.filter(goal => state.session.galaxy.systems.find(world => world.id === goal.id)!.ownerId === null).length,
     sides: (['blue', 'red'] as const).map(side => ({
@@ -97,7 +97,7 @@ export async function main(args: string[]): Promise<number> {
   await mkdir(args[3]);
   const replayed = replayDevelopmentCommands(start, archive.commands.map(record => record.command), fromWindow + 1);
   if (!isDeepStrictEqual(replayed.finalState, archive.finalState) || !replayed.checkpoint ||
-    replayed.finalState.session.turn !== 201 || getConquestOutcome(replayed.finalState).status !== 'ongoing') {
+    replayed.finalState.session.schedule.turn !== 201 || getConquestOutcome(replayed.finalState).status !== 'ongoing') {
     throw new Error('Старые команды больше не воспроизводят исходный cutoff/checkpoint');
   }
   const checkpoint = encodeConquestSave(replayed.checkpoint);

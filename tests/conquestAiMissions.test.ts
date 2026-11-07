@@ -9,32 +9,35 @@ import { getFleetTravelQuotes, getTravelCapabilities, getTravelQuote, getWorldDi
 import { MAX_FLEET_ID } from '../src/domain/campaignFleets';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
 import { diagnosticTransit, workCommand as apply } from './fixtures/colonyWork';
-import type { CampaignFactionId } from '../src/domain/campaign';
+import type { ParticipantId } from '../src/domain/campaign';
+import { activeOf } from './fixtures/conquestSides';
 
 
 
-function diagnosticMission(side: CampaignFactionId = 'blue', oneObjective = false) {
+function diagnosticMission(side: ParticipantId = 'player-01', oneObjective = false) {
   const state = createBaselineStart(baselineMatrix()[0]).state;
-  state.session.turn = side === 'blue' ? 1 : 2;
+  state.session.schedule = side === 'player-01'
+    ? { order: state.session.schedule.order, activeIndex: 0, turn: 1, revision: 0, round: 1 }
+    : { order: state.session.schedule.order, activeIndex: 1, turn: 2, revision: 1, round: 1 };
   state.session.ships = [];
   state.operations = {};
   const worlds = state.session.galaxy.systems;
-  const home = worlds[side === 'blue' ? 0 : 3].id;
-  const rear = worlds[side === 'blue' ? 1 : 4].id;
-  const target = worlds[side === 'blue' ? 3 : 0].id;
-  for (const faction of ['blue', 'red'] as const) {
+  const home = worlds[side === 'player-01' ? 0 : 3].id;
+  const rear = worlds[side === 'player-01' ? 1 : 4].id;
+  const target = worlds[side === 'player-01' ? 3 : 0].id;
+  for (const faction of ['player-01', 'player-02'] as const) {
     state.research[faction] = { completed: state.researchTree.nodes.map(node => node.id), activeId: null, progress: {} };
     state.researchJournal[faction] = Object.fromEntries(state.research[faction].completed.map(id => [id, 1]));
     state.session.treasuries[faction] = { credits: 10000, minerals: 10000 };
   }
   for (const [index, world] of worlds.entries()) {
-    world.ownerId = oneObjective ? world.id === target ? side === 'blue' ? 'red' : 'blue' : side
-      : index < 3 ? 'blue' : 'red';
-    world.exploredBy = ['blue', 'red'];
+    world.ownerId = oneObjective ? world.id === target ? side === 'player-01' ? 'player-02' : 'player-01' : side
+      : index < 3 ? 'player-01' : 'player-02';
+    world.exploredBy = ['player-01', 'player-02'];
     state.population[world.id] = { population: 5000, remainder: 0 };
     state.colonyOutput.assignments[world.id] = { industry: 5000, research: 0, culture: 0 };
-    state.surveys.blue[world.id] = state.environment[world.id];
-    state.surveys.red[world.id] = state.environment[world.id];
+    state.surveys['player-01'][world.id] = state.environment[world.id];
+    state.surveys['player-02'][world.id] = state.environment[world.id];
   }
   for (let index = 0; index < 4; index++) {
     const design = createDesign('corvette', true);
@@ -48,8 +51,8 @@ function diagnosticMission(side: CampaignFactionId = 'blue', oneObjective = fals
 
 function packet(state: Conquest) {
   const commands: ConquestCommand[] = [];
-  const side: CampaignFactionId = state.session.turn % 2 ? 'blue' : 'red';
-  const expectedTurn = state.session.turn;
+  const side: ParticipantId = activeOf(state);
+  const expectedTurn = state.session.schedule.turn;
   for (let index = 0; index < 24; index++) {
     const command: ConquestCommand = index === 23 ? { kind: 'endTurn', factionId: side, expectedTurn }
       : planConquestAction(getConquestView(state, side));
@@ -75,12 +78,12 @@ describe('AI offensive missions', () => {
 
   it('makes identical immutable decisions from an identical own observation', () => {
     const state = createBaselineStart(baselineMatrix()[0]).state;
-    const view = getConquestView(state, 'blue'), snapshot = structuredClone(view);
+    const view = getConquestView(state, 'player-01'), snapshot = structuredClone(view);
     expect(planConquestAction(view)).toEqual(planConquestAction(structuredClone(view)));
     expect(view).toEqual(snapshot);
   });
 
-  it.each(['blue', 'red'] as const)('covers alternative known objectives instead of sending every %s ship after the nearest one', side => {
+  it.each(['player-01', 'player-02'] as const)('covers alternative known objectives instead of sending every %s ship after the nearest one', side => {
     const { state } = diagnosticMission(side);
     const next = packet(state);
     const destinations = next.commands.flatMap(command =>
@@ -90,7 +93,7 @@ describe('AI offensive missions', () => {
     expect(next.commands.length).toBeLessThanOrEqual(24);
   });
 
-  it.each(['blue', 'red'] as const)('rallies %s support before departure and releases the force after the real arrival', side => {
+  it.each(['player-01', 'player-02'] as const)('rallies %s support before departure and releases the force after the real arrival', side => {
     const { state, home, rear } = diagnosticMission(side);
     const support = state.session.ships.at(-1)!;
     support.systemId = rear;
@@ -110,7 +113,7 @@ describe('AI offensive missions', () => {
   });
 
   it('does not wait for merely queued ships or delay the last objective to rally', () => {
-    const { state, rear, target } = diagnosticMission('blue', true);
+    const { state, rear, target } = diagnosticMission('player-01', true);
     state.session.ships.at(-1)!.systemId = rear;
     const next = packet(state);
     const departures = next.commands.filter(command => command.kind === 'sendShip' || command.kind === 'sendFleet');
@@ -118,12 +121,12 @@ describe('AI offensive missions', () => {
     expect(departures.every(command => command.destinationId === target)).toBe(true);
   });
 
-  it.each(['blue', 'red'] as const)('defends an observed %s colony without inventing enemy equipment or departures', side => {
+  it.each(['player-01', 'player-02'] as const)('defends an observed %s colony without inventing enemy equipment or departures', side => {
     const { state, home, rear } = diagnosticMission(side);
     state.session.ships.at(-1)!.systemId = rear;
     const enemy = structuredClone(state.session.ships[0]);
     enemy.id = ++state.session.production.lastOrderId;
-    enemy.factionId = side === 'blue' ? 'red' : 'blue';
+    enemy.factionId = side === 'player-01' ? 'player-02' : 'player-01';
     state.session.ships.push(enemy);
     state.operations[String(enemy.id)] = createOperationalState(enemy.design);
     const next = packet(conquestSchema.parse(state));
@@ -135,12 +138,12 @@ describe('AI offensive missions', () => {
   });
 
   it('keeps a useful existing fleet and uses its slowest drive and each real fuel tank', () => {
-    const { state: source, home, target } = diagnosticMission('blue', true);
+    const { state: source, home, target } = diagnosticMission('player-01', true);
     source.session.ships[0].design.strategicEquipment.drive = 'standard';
     source.session.ships[0].design.strategicEquipment.jump = 'deep';
     const state = apply(source, { kind: 'createFleet', systemId: home, shipIds: source.session.ships.map(ship => ship.id) });
     const before = structuredClone(state);
-    const command = planConquestAction(getConquestView(state, 'blue'));
+    const command = planConquestAction(getConquestView(state, 'player-01'));
     expect(command).toMatchObject({ kind: 'sendFleet', destinationId: target });
     const quotes = getFleetTravelQuotes(getWorldDistance(state.session.galaxy.map!.worlds, home, target),
       state.session.ships.map(ship => ({ capabilities: getTravelCapabilities(ship.design.strategicEquipment), fuel: ship.fuel })));
@@ -154,21 +157,21 @@ describe('AI offensive missions', () => {
     expect(state).toEqual(before);
     expect(sent.session.fleets.items).toEqual(state.session.fleets.items);
     const restored = decodeConquestSave(encodeConquestSave(sent));
-    expect(executeConquestAiTurn(restored, 'blue', restored.session.turn)).toEqual(
-      executeConquestAiTurn(sent, 'blue', sent.session.turn));
+    expect(executeConquestAiTurn(restored, 'player-01', restored.session.schedule.turn)).toEqual(
+      executeConquestAiTurn(sent, 'player-01', sent.session.schedule.turn));
   });
 
   it('does not create a group when its global ID budget is exhausted', () => {
-    const { state } = diagnosticMission('blue', true);
+    const { state } = diagnosticMission('player-01', true);
     state.session.fleets.lastFleetId = MAX_FLEET_ID;
-    const view = getConquestView(state, 'blue');
+    const view = getConquestView(state, 'player-01');
     expect(view.canCreateFleet).toBe(false);
     expect(planConquestAction(view).kind).toBe('sendShip');
-    expect(executeConquestAiTurn(state, 'blue', state.session.turn).ok).toBe(true);
+    expect(executeConquestAiTurn(state, 'player-01', state.session.schedule.turn).ok).toBe(true);
   });
 
   it('does not create a twenty-first group or hide the exhausted fleet capability', () => {
-    const { state } = diagnosticMission('blue', true);
+    const { state } = diagnosticMission('player-01', true);
     while (state.session.ships.length < 42) {
       const ship = structuredClone(state.session.ships[0]);
       ship.id = ++state.session.production.lastOrderId;
@@ -176,10 +179,10 @@ describe('AI offensive missions', () => {
       state.operations[String(ship.id)] = createOperationalState(ship.design);
     }
     for (let index = 0; index < 20; index++) state.session.fleets.items.push({
-      id: ++state.session.fleets.lastFleetId, factionId: 'blue', systemId: state.session.ships[0].systemId,
+      id: ++state.session.fleets.lastFleetId, factionId: 'player-01', systemId: state.session.ships[0].systemId,
       shipIds: state.session.ships.slice(index * 2, index * 2 + 2).map(ship => ship.id)
     });
-    const view = getConquestView(state, 'blue');
+    const view = getConquestView(state, 'player-01');
     expect(view.canCreateFleet).toBe(false);
     const next = packet(state);
     expect(next.commands.some(command => command.kind === 'createFleet')).toBe(false);
@@ -187,18 +190,18 @@ describe('AI offensive missions', () => {
   });
 
   it('refuels a low member rather than sending a partially capable group', () => {
-    const { state: source, home } = diagnosticMission('blue', true);
+    const { state: source, home } = diagnosticMission('player-01', true);
     source.session.ships.at(-1)!.fuel = 0;
     const state = apply(source, { kind: 'createFleet', systemId: home, shipIds: source.session.ships.map(ship => ship.id) });
-    expect(planConquestAction(getConquestView(state, 'blue'))).toMatchObject({
+    expect(planConquestAction(getConquestView(state, 'player-01'))).toMatchObject({
       kind: 'refuelShip', shipId: source.session.ships.at(-1)!.id
     });
-    const result = executeConquestAiTurn(state, 'blue', state.session.turn);
+    const result = executeConquestAiTurn(state, 'player-01', state.session.schedule.turn);
     expect(result.ok).toBe(true);
   });
 
   it('excludes a refit-locked ship from movement and group membership', () => {
-    const { state: source, home } = diagnosticMission('blue', true);
+    const { state: source, home } = diagnosticMission('player-01', true);
     const locked = source.session.ships[0];
     const state = apply(source, { kind: 'startRefit', systemId: home, shipId: locked.id, design: locked.design });
     const next = packet(state);
@@ -207,15 +210,15 @@ describe('AI offensive missions', () => {
   });
 
   it('releases a usable member when a stranded leader prevents every common return route', () => {
-    const { state: source, home, target } = diagnosticMission('blue', true);
+    const { state: source, home, target } = diagnosticMission('player-01', true);
     const state = apply(source, { kind: 'createFleet', systemId: home, shipIds: source.session.ships.map(ship => ship.id) });
     state.session.fleets.items[0].systemId = target;
     for (const ship of state.session.ships) ship.systemId = target;
     state.session.ships[0].fuel = 0;
-    const command = planConquestAction(getConquestView(state, 'blue'));
+    const command = planConquestAction(getConquestView(state, 'player-01'));
     expect(command.kind).toBe('disbandFleet');
     const separated = apply(state, command);
-    const next = planConquestAction(getConquestView(separated, 'blue'));
+    const next = planConquestAction(getConquestView(separated, 'player-01'));
     expect(next.kind).toBe('sendShip');
     if (next.kind !== 'sendShip') throw new Error('Expected usable return');
     expect(next.shipId).not.toBe(state.session.ships[0].id);
@@ -223,17 +226,17 @@ describe('AI offensive missions', () => {
   });
 
   it.each([0, -1])('uses the exact return-fuel boundary (%i) without a free refuel', offset => {
-    const { state, target } = diagnosticMission('blue', true);
+    const { state, target } = diagnosticMission('player-01', true);
     const ship = state.session.ships[0];
     state.session.ships = [ship];
     state.operations = { [String(ship.id)]: state.operations[String(ship.id)] };
     ship.systemId = target;
-    const colonies = getConquestView(state, 'blue').galaxy.systems.filter(world =>
-      world.visibility === 'explored' && world.ownerId === 'blue');
+    const colonies = getConquestView(state, 'player-01').galaxy.systems.filter(world =>
+      world.visibility === 'explored' && world.ownerId === 'player-01');
     const minimum = Math.min(...colonies.map(world => getWorldDistance(state.session.galaxy.map!.worlds, target, world.id)));
     ship.fuel = Math.ceil(minimum * 5) + offset;
-    state.session.treasuries.blue = { credits: 0, minerals: 0 };
-    const command = planConquestAction(getConquestView(state, 'blue'));
+    state.session.treasuries['player-01'] = { credits: 0, minerals: 0 };
+    const command = planConquestAction(getConquestView(state, 'player-01'));
     expect(command.kind).toBe(offset === 0 ? 'sendShip' : 'endTurn');
     if (command.kind === 'sendShip') {
       const sent = apply(state, command);
@@ -243,21 +246,21 @@ describe('AI offensive missions', () => {
   });
 
   it('does not attack with a projectile-only ship with no rounds and no affordable supply', () => {
-    const { state } = diagnosticMission('blue', true);
+    const { state } = diagnosticMission('player-01', true);
     const ship = state.session.ships[0];
     let design = installComponent(ship.design, 'beam_1', null);
     design = installComponent(design, 'projectile_1', createComponent('projectile'));
     ship.design = design;
     state.operations[String(ship.id)] = createOperationalState(design);
     state.operations[String(ship.id)].ammunition.forEach(weapon => { weapon.amount = 0; });
-    state.session.treasuries.blue = { credits: 0, minerals: 0 };
+    state.session.treasuries['player-01'] = { credits: 0, minerals: 0 };
     const next = packet(conquestSchema.parse(state));
     expect(next.commands.some(command => command.kind === 'sendShip' && command.shipId === ship.id)).toBe(false);
     expect(next.commands.some(command => command.kind === 'createFleet' && command.shipIds.includes(ship.id))).toBe(false);
   });
 
   it('enforces the exact 24-command bound while a hundred ships need fuel and movement', () => {
-    const { state } = diagnosticMission('blue', true);
+    const { state } = diagnosticMission('player-01', true);
     while (state.session.ships.length < 100) {
       const ship = structuredClone(state.session.ships[0]);
       ship.id = ++state.session.production.lastOrderId;
@@ -268,10 +271,10 @@ describe('AI offensive missions', () => {
     const before = structuredClone(state);
     const dispatch = vi.spyOn(conquest, 'executeConquestAction');
     try {
-      const result = executeConquestAiTurn(state, 'blue', state.session.turn);
+      const result = executeConquestAiTurn(state, 'player-01', state.session.schedule.turn);
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error(result.message);
-      expect(result.state.session.turn).toBe(state.session.turn + 1);
+      expect(result.state.session.schedule.turn).toBe(state.session.schedule.turn + 1);
       expect(dispatch.mock.calls).toHaveLength(24);
       expect(dispatch.mock.calls.filter(([, command]) =>
         typeof command === 'object' && command && 'kind' in command && command.kind === 'endTurn')).toHaveLength(1);
@@ -282,17 +285,17 @@ describe('AI offensive missions', () => {
   it('keeps decisions equal for different hidden enemy resources, operations and travel', () => {
     const { state, target } = diagnosticMission();
     const other = structuredClone(state);
-    other.session.treasuries.red = { credits: 1, minerals: 2 };
+    other.session.treasuries['player-02'] = { credits: 1, minerals: 2 };
     const enemy = structuredClone(other.session.ships[0]);
     enemy.id = ++other.session.production.lastOrderId;
-    enemy.factionId = 'red';
+    enemy.factionId = 'player-02';
     enemy.systemId = target;
     enemy.transit = diagnosticTransit(target, other.session.galaxy.systems.at(-1)!.id, enemy.design, other.session.galaxy);
     enemy.fuel -= enemy.transit.fuelCost;
     other.session.ships.push(enemy);
     other.operations[String(enemy.id)] = createOperationalState(enemy.design);
     other.operations[String(enemy.id)].hull = 1;
-    const first = getConquestView(state, 'blue'), second = getConquestView(other, 'blue');
+    const first = getConquestView(state, 'player-01'), second = getConquestView(other, 'player-01');
     expect(first).toEqual(second);
     const now = vi.spyOn(Date, 'now').mockImplementation(() => { throw new Error('clock'); });
     const random = vi.spyOn(Math, 'random').mockImplementation(() => { throw new Error('random'); });

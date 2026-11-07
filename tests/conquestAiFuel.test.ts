@@ -8,24 +8,26 @@ import { getTravelCapabilities, getTravelQuote, getWorldDistance } from '../src/
 import { generateBrowserGalaxy } from '../src/utils/BrowserGalaxyGenerator';
 import { validateGalaxyMap } from '../src/domain/galaxyMap';
 import { decodeConquestSave, encodeConquestSave } from '../src/utils/ConquestSaveManager';
-import type { CampaignFactionId } from '../src/domain/campaign';
+import type { ParticipantId } from '../src/domain/campaign';
 import { diagnosticTransit, finishWorkTravel, workCommand as apply, workRound as round } from './fixtures/colonyWork';
 
-function setup(faction: CampaignFactionId, count = 40, seed = 41) {
+function setup(faction: ParticipantId, count = 40, seed = 41) {
   const generated = generateBrowserGalaxy(count, seed);
   if (!generated.ok) throw new Error(generated.message);
   const state = createConquest(undefined, undefined, 101, generated.map);
-  state.session.turn = faction === 'blue' ? 1 : 2;
+  state.session.schedule = faction === 'player-01'
+    ? { order: state.session.schedule.order, activeIndex: 0, turn: 1, revision: 0, round: 1 }
+    : { order: state.session.schedule.order, activeIndex: 1, turn: 2, revision: 1, round: 1 };
   state.research[faction].completed = state.researchTree.nodes.map(node => node.id);
   state.researchJournal[faction] = Object.fromEntries(state.research[faction].completed.map(id => [id, 1]));
   const map = state.session.galaxy.map!;
-  const home = map.participants[faction === 'blue' ? 0 : 1].homeWorldId;
+  const home = map.participants[faction === 'player-01' ? 0 : 1].homeWorldId;
   state.colonyOutput.assignments[home] = { industry: 5000, research: 0, culture: 0 };
   state.session.treasuries[faction] = { credits: 10000, minerals: 5000 };
   return { state, map, home };
 }
 
-function busyCombat(state: Conquest, faction: CampaignFactionId, home: string, target: string) {
+function busyCombat(state: Conquest, faction: ParticipantId, home: string, target: string) {
   for (let index = 0; index < 4; index++) {
     const design = createDesign('corvette', true);
     design.strategicEquipment = { policy: 'project-travel-v1', drive: 'fast', jump: 'galactic', tank: 'extended' };
@@ -36,7 +38,7 @@ function busyCombat(state: Conquest, faction: CampaignFactionId, home: string, t
   }
 }
 
-function stranded(faction: CampaignFactionId, fuel: number) {
+function stranded(faction: ParticipantId, fuel: number) {
   const prepared = setup(faction);
   const { state, map, home } = prepared;
   const barren = map.worlds.find(world => world.type === 'barren' &&
@@ -54,7 +56,7 @@ function stranded(faction: CampaignFactionId, fuel: number) {
   return { ...prepared, barren, colonizer };
 }
 
-function plan(state: Conquest, faction: CampaignFactionId) {
+function plan(state: Conquest, faction: ParticipantId) {
   expect(conquestSchema.safeParse(state).success).toBe(true);
   const view = getConquestView(state, faction), before = structuredClone(view);
   const command = planConquestAction(view);
@@ -63,26 +65,26 @@ function plan(state: Conquest, faction: CampaignFactionId) {
 }
 
 function returnScenario(fuel: number) {
-  const prepared = setup('blue', 8, 8);
+  const prepared = setup('player-01', 8, 8);
   const { state, map } = prepared, from = map.worlds[1], colony = map.worlds[2], target = map.worlds[7];
   const own = state.session.galaxy.systems.find(world => world.id === colony.id)!;
-  own.ownerId = 'blue'; own.exploredBy = ['blue'];
-  state.surveys.blue[colony.id] = 'habitable';
+  own.ownerId = 'player-01'; own.exploredBy = ['player-01'];
+  state.surveys['player-01'][colony.id] = 'habitable';
   state.population[colony.id] = { population: 1000, remainder: 0 };
   state.colonyOutput.assignments[colony.id] = { industry: 1000, research: 0, culture: 0 };
-  state.session.ships = state.session.ships.filter(ship => ship.factionId !== 'blue');
+  state.session.ships = state.session.ships.filter(ship => ship.factionId !== 'player-01');
   delete state.operations['1'];
   const design = createDesign('corvette', true), id = ++state.session.production.lastOrderId;
-  state.session.ships.push({ id, factionId: 'blue', systemId: from.id, design, fuel });
+  state.session.ships.push({ id, factionId: 'player-01', systemId: from.id, design, fuel });
   state.operations[String(id)] = createOperationalState(design);
-  state.surveys.blue[from.id] = 'habitable';
-  state.session.galaxy.systems.find(world => world.id === from.id)!.exploredBy = ['blue'];
+  state.surveys['player-01'][from.id] = 'habitable';
+  state.session.galaxy.systems.find(world => world.id === from.id)!.exploredBy = ['player-01'];
   return { ...prepared, from, colony, target, id, caps: getTravelCapabilities(design.strategicEquipment) };
 }
 
 describe('AI fuel planning without imaginary refuelling', () => {
   it.each([
-    ['blue', 0], ['blue', 1], ['red', 0], ['red', 1]
+    ['player-01', 0], ['player-01', 1], ['player-02', 0], ['player-02', 1]
   ] as const)('orders one replacement for an immobile %s colonizer with fuel%i', (faction, fuel) => {
     const { state, colonizer, home } = stranded(faction, fuel);
     const view = getConquestView(state, faction), before = structuredClone(state);
@@ -91,18 +93,18 @@ describe('AI fuel planning without imaginary refuelling', () => {
       getTravelQuote(getWorldDistance(view.galaxy.systems, colonizer.systemId, world.id), caps, fuel).ok)).toBe(false);
     expect(plan(state, faction)).toMatchObject({ kind: 'enqueueProduction', systemId: home,
       design: { hullId: 'colonizer' } });
-    const result = executeConquestAiTurn(state, faction, state.session.turn);
+    const result = executeConquestAiTurn(state, faction, state.session.schedule.turn);
     if (!result.ok) throw new Error(result.message);
     expect(state).toEqual(before);
-    expect(result.state.session.turn).toBe(state.session.turn + 1);
+    expect(result.state.session.schedule.turn).toBe(state.session.schedule.turn + 1);
     expect(result.state.session.production.lastOrderId).toBeGreaterThan(state.session.production.lastOrderId);
     const records = [...result.state.colonyOutput.production.orders, ...result.state.colonyOutput.production.completed];
     expect(records.filter(record => record.factionId === faction && record.design.hullId === 'colonizer')).toHaveLength(1);
     expect(result.state.session.ships.find(ship => ship.id === colonizer.id)!.fuel).toBe(fuel);
-    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), faction, state.session.turn)).toEqual(result);
+    expect(executeConquestAiTurn(decodeConquestSave(encodeConquestSave(state)), faction, state.session.schedule.turn)).toEqual(result);
   });
 
-  it.each(['blue', 'red'] as const)('returns a recoverable %s colonizer for real paid refuelling', faction => {
+  it.each(['player-01', 'player-02'] as const)('returns a recoverable %s colonizer for real paid refuelling', faction => {
     const { state, colonizer, home, map } = stranded(faction, 0);
     const caps = getTravelCapabilities(colonizer.design.strategicEquipment);
     const quote = getTravelQuote(getWorldDistance(map.worlds, colonizer.systemId, home), caps, caps.fuelCapacity);
@@ -124,16 +126,16 @@ describe('AI fuel planning without imaginary refuelling', () => {
   });
 
   it('does not count an outbound-only colonizer whose unknown targets all fail the real return reserve', () => {
-    const { state, map, home, barren, colonizer } = stranded('blue', 0);
+    const { state, map, home, barren, colonizer } = stranded('player-01', 0);
     const distance = Math.min(...map.worlds.filter(world => world.id !== home && world.id !== barren.id)
       .map(world => getWorldDistance(map.worlds, barren.id, world.id)));
     colonizer.fuel = Math.ceil(distance * 5);
     expect(colonizer.fuel).toBeLessThan(Math.ceil(getWorldDistance(map.worlds, barren.id, home) * 5));
-    expect(plan(state, 'blue')).toMatchObject({ kind: 'enqueueProduction', design: { hullId: 'colonizer' } });
+    expect(plan(state, 'player-01')).toMatchObject({ kind: 'enqueueProduction', design: { hullId: 'colonizer' } });
   });
 
   it.each([
-    ['blue', false], ['red', false], ['blue', true], ['red', true]
+    ['player-01', false], ['player-02', false], ['player-01', true], ['player-02', true]
   ] as const)('keeps an incoming %s colonizer with fuel0, previously detected target=%s', (faction, detected) => {
     const { state, colonizer, home, map } = stranded(faction, 0);
     const destination = map.worlds.find(world => world.ownerId === null && world.type === 'habitable' &&
@@ -151,7 +153,7 @@ describe('AI fuel planning without imaginary refuelling', () => {
     expect(plan(next, faction).kind).not.toBe('enqueueProduction');
   });
 
-  it.each(['blue', 'red'] as const)('counts a fully fuelled future %s colonizer in queued and completed production', faction => {
+  it.each(['player-01', 'player-02'] as const)('counts a fully fuelled future %s colonizer in queued and completed production', faction => {
     let { state, colonizer, home } = stranded(faction, 0);
     state.session.ships = state.session.ships.filter(ship => ship.id !== colonizer.id);
     delete state.operations[String(colonizer.id)];
@@ -170,7 +172,7 @@ describe('AI fuel planning without imaginary refuelling', () => {
     expect(outgoing).toMatchObject({ ok: true, fuelCost: 563 });
     if (!outgoing.ok) throw new Error(outgoing.message);
     expect(Math.ceil(getWorldDistance(map.worlds, target.id, home) * 5)).toBe(568);
-    const action = plan(state, 'blue');
+    const action = plan(state, 'player-01');
     expect(action).toMatchObject({ kind: 'sendShip', shipId: id, destinationId: safe ? target.id : home });
     const sent = executeConquestCommand(state, action);
     if (!sent.ok) throw new Error(sent.message);
@@ -195,7 +197,7 @@ describe('AI fuel planning without imaginary refuelling', () => {
     expect(back).toBeLessThan(outward);
     state.session.ships.find(ship => ship.id === id)!.fuel = outward + back;
     expect(getTravelQuote(getWorldDistance(map.worlds, target.id, home), caps, back).ok).toBe(false);
-    const action = plan(state, 'blue');
+    const action = plan(state, 'player-01');
     expect(action).toMatchObject({ kind: 'sendShip', shipId: id, destinationId: target.id });
     let next = apply(state, action);
     next = finishWorkTravel(next, id);
@@ -217,6 +219,6 @@ describe('AI fuel planning without imaginary refuelling', () => {
     Object.assign(target, position);
     expect(validateGalaxyMap(map).ok).toBe(true);
     expect(getWorldDistance(map.worlds, target.id, home)).toBeCloseTo(201);
-    expect(plan(state, 'blue')).toMatchObject({ kind: 'sendShip', shipId: id, destinationId: home });
+    expect(plan(state, 'player-01')).toMatchObject({ kind: 'sendShip', shipId: id, destinationId: home });
   });
 });

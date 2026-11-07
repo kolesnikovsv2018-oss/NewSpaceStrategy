@@ -4,7 +4,8 @@ import { createConquest, conquestSchema, executeConquestAction, getConquestOutco
 import { buildConquestDesigns, planConquestAction } from '../domain/conquestAi';
 import { generateGalaxy } from '../domain/galaxyGenerator';
 import { GALAXY_GENERATOR_VERSION, GALAXY_PROFILE_ID, validateGalaxyMap, type GalaxyMap } from '../domain/galaxyMap';
-import { getGalaxyDefinition, type CampaignFactionId } from '../domain/campaign';
+import { getGalaxyDefinition, type ParticipantId } from '../domain/campaign';
+import { getActiveParticipant } from '../domain/campaignSchedule';
 import { createOperationalState } from '../domain/campaignOperations';
 import { getColonyProductionQuote } from '../domain/campaignOutput';
 import { decodeConquestSave, encodeConquestSave } from '../utils/ConquestSaveManager';
@@ -66,16 +67,16 @@ export interface BaselineRun {
   input: BaselineInput;
   versions: { baseline: 13; save: 17; rules: 14; battlePolicy: Conquest['battlePolicy']; tree: 11; tacticalRules: 'design-combat-v1' };
   map: GalaxyMap;
-  lineups: { first: CampaignFactionId; second: CampaignFactionId };
+  lineups: { first: ParticipantId; second: ParticipantId };
   controllers: 'diagnostic-all-ai-command-runner';
   status: 'completed' | 'timeout' | 'executor-error';
   outcome: ReturnType<typeof getConquestOutcome>;
   turnsExecuted: number;
   commands: CommandRecord[];
-  metrics: Record<CampaignFactionId, SideMetrics>;
+  metrics: Record<ParticipantId, SideMetrics>;
   battleTimeouts: number;
   battles: Conquest['battles'];
-  population: Record<CampaignFactionId, { total: number; capacity: number }>;
+  population: Record<ParticipantId, { total: number; capacity: number }>;
   finalState: Conquest;
   checkpoint: { turnsExecuted: number; json: string } | null;
 }
@@ -87,7 +88,7 @@ function tracePosition(state: Conquest) {
       population: state.population[world.id] ? { ...state.population[world.id] } : null,
       workers: state.colonyOutput.assignments[world.id] ? { ...state.colonyOutput.assignments[world.id] } : null
     })),
-    factions: (['blue', 'red'] as const).map(side => {
+    factions: state.session.schedule.order.map(side => {
       const view = getConquestView(state, side);
       return { side, treasury: { ...view.treasury }, budget: structuredClone(view.economyForecast),
         research: structuredClone(view.research), reserves: { ...view.colonyOutput.reserves },
@@ -125,7 +126,7 @@ function tracePosition(state: Conquest) {
 }
 
 function traceWindow(before: Conquest, after: Conquest, commands: CommandRecord[], turnsExecuted: number) {
-  return { turnsExecuted, turn: before.session.turn, commands: structuredClone(commands),
+  return { turnsExecuted, turn: before.session.schedule.turn, commands: structuredClone(commands),
     ownershipChanges: after.session.galaxy.systems.flatMap(world => {
       const previous = before.session.galaxy.systems.find(item => item.id === world.id)!;
       return previous.ownerId === world.ownerId ? [] : [{ systemId: world.id, from: previous.ownerId, to: world.ownerId }];
@@ -179,7 +180,7 @@ export function createBaselineStart(input: BaselineInput): { state: Conquest; ma
     const systemId = getGalaxyDefinition(state.session.galaxy).systems.find(system =>
       system.habitable && !state.session.galaxy.systems.find(item => item.id === system.id)?.ownerId)!.id;
     const count = options.kind === 'supply-boundary' ? 100 : 1;
-    for (const side of ['blue', 'red'] as const) {
+    for (const side of state.session.schedule.order) {
       state.research[side].completed = state.researchTree.nodes.map(node => node.id);
       state.researchJournal[side] = Object.fromEntries(state.research[side].completed.map(id => [id, 1]));
       const candidates = buildConquestDesigns(state.research[side], state.researchTree);
@@ -215,8 +216,8 @@ function sideMetrics(): SideMetrics {
     spent: {}, released: 0, losses: 0, ownEnds: 0 };
 }
 
-function commandFor(state: Conquest, input: BaselineInput, first: CampaignFactionId): ConquestCommand {
-  const side = state.session.turn % 2 ? 'blue' : 'red';
+function commandFor(state: Conquest, input: BaselineInput, first: ParticipantId): ConquestCommand {
+  const side = getActiveParticipant(state.session.schedule);
   const view = getConquestView(state, side);
   const normal = planConquestAction(view);
   if (input.kind !== 'paid') return { kind: 'endTurn', factionId: side, expectedTurn: view.turn };
@@ -243,7 +244,7 @@ function commandFor(state: Conquest, input: BaselineInput, first: CampaignFactio
   return normal;
 }
 
-function observations(state: Conquest, side: CampaignFactionId, input: BaselineInput): string[] {
+function observations(state: Conquest, side: ParticipantId, input: BaselineInput): string[] {
   const view = getConquestView(state, side), reasons = ['no-further-command-in-diagnostic-schedule'];
   if (input.kind !== 'paid') reasons.push('boundary-end-only');
   if (view.research.activeId) reasons.push('research-in-progress');
@@ -264,7 +265,7 @@ function observations(state: Conquest, side: CampaignFactionId, input: BaselineI
 
 function measure(before: Conquest, after: Conquest, command: ConquestCommand,
   turnReceipt: Extract<ReturnType<typeof executeConquestAction>, { ok: true }>['turnReceipt'],
-  metrics: Record<CampaignFactionId, SideMetrics>, battles: Conquest['battles']): void {
+  metrics: Record<string, SideMetrics>, battles: Conquest['battles']): void {
   const side = command.factionId, metric = metrics[side], turn = command.expectedTurn;
   const mark = (key: keyof Pick<SideMetrics, 'firstResearch' | 'firstResearchCompleted' | 'firstColony' |
     'firstOrder' | 'firstRelease' | 'firstShip' | 'firstEncounter'>) => {
@@ -274,7 +275,7 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
   if (command.kind === 'enqueueProduction') mark('firstOrder');
   if (command.kind === 'deployProduction') mark('firstShip');
   if (after.research[side].completed.length > before.research[side].completed.length) mark('firstResearchCompleted');
-  for (const faction of ['blue', 'red'] as const) {
+  for (const faction of after.session.schedule.order) {
     if (metrics[faction].firstColony.status !== 'measured' && after.session.galaxy.systems.some(system =>
       system.ownerId === faction && before.session.galaxy.systems.find(item => item.id === system.id)?.ownerId !== faction)) {
       metrics[faction].firstColony = { status: 'measured', turn };
@@ -288,7 +289,7 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
     if (!turnReceipt || turnReceipt.factionId !== side || turnReceipt.turn !== turn) {
       throw new Error('Нет квитанции выпуска для успешного конца хода');
     }
-    for (const faction of ['blue', 'red'] as const) {
+    for (const faction of after.session.schedule.order) {
       const count = after.session.galaxy.systems.filter(system => system.ownerId === faction &&
         !before.session.galaxy.systems.find(item => item.id === system.id)!.ownerId).length;
       const cost = { credits: count * after.rules.population.foundingCost.credits,
@@ -320,7 +321,7 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
   }
   for (const battle of after.battles.filter(report => report.id > before.lastBattleId)) {
     battles.push(battle);
-    for (const faction of ['blue', 'red'] as const) {
+    for (const faction of after.session.schedule.order) {
       const participant = battle.participants.some(ship => ship.factionId === faction);
       if (participant && metrics[faction].firstEncounter.status !== 'measured') {
         metrics[faction].firstEncounter = { status: 'measured', turn };
@@ -332,7 +333,7 @@ function measure(before: Conquest, after: Conquest, command: ConquestCommand,
 }
 
 export function getBaselineWindowAdvance(before: Conquest, after: Conquest, id: string): 0 | 1 {
-  const advanced = after.session.turn - before.session.turn;
+  const advanced = after.session.schedule.turn - before.session.schedule.turn;
   if (advanced === 1 || advanced === 0 && getConquestOutcome(after).status === 'completed') return advanced;
   throw new Error(`Принятое окно baseline не продвинуло ход: ${id}`);
 }
@@ -345,17 +346,20 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
     throw new Error('Недопустимые параметры трассы baseline');
   }
   let state = resume ? decodeConquestSave(encodeConquestSave(resume.state)) : start.state;
-  const first: CampaignFactionId = options.mirrored ? 'red' : 'blue';
+  // Первый в расстановке — участник на исходном первом доме (при зеркале это второй в массиве).
+  const first = start.map.participants[options.mirrored ? 1 : 0].id;
+  const sides = state.session.schedule.order;
   const result: BaselineRun = {
     input: options, versions: { baseline: 13, save: 17, rules: 14, battlePolicy: state.battlePolicy, tree: 11, tacticalRules: 'design-combat-v1' },
-    map: start.map, lineups: { first, second: first === 'blue' ? 'red' : 'blue' },
+    map: start.map, lineups: { first, second: sides.find(id => id !== first)! },
     controllers: 'diagnostic-all-ai-command-runner', status: 'timeout', outcome: getConquestOutcome(state),
-    turnsExecuted: resume?.turnsExecuted ?? 0, commands: [], metrics: { blue: sideMetrics(), red: sideMetrics() },
+    turnsExecuted: resume?.turnsExecuted ?? 0, commands: [],
+    metrics: Object.fromEntries(sides.map(id => [id, sideMetrics()])),
     battles: [], battleTimeouts: 0,
-    population: { blue: { total: 0, capacity: 0 }, red: { total: 0, capacity: 0 } }, finalState: state, checkpoint: null
+    population: Object.fromEntries(sides.map(id => [id, { total: 0, capacity: 0 }])), finalState: state, checkpoint: null
   };
   if (resume && (!Number.isInteger(resume.turnsExecuted) || resume.turnsExecuted < 0 ||
-    resume.turnsExecuted > options.maxTurns || state.session.turn !== start.state.session.turn + resume.turnsExecuted ||
+    resume.turnsExecuted > options.maxTurns || state.session.schedule.turn !== start.state.session.schedule.turn + resume.turnsExecuted ||
     JSON.stringify(state.session.galaxy.map) !== JSON.stringify(start.map) || state.seed !== options.campaignSeed)) {
     throw new Error('Checkpoint не соответствует входу baseline');
   }
@@ -365,7 +369,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
       turnReceipt?: Extract<ReturnType<typeof executeConquestAction>, { ok: true }>['turnReceipt'] }[] = [];
     for (let action = 0; action < 24; action++) {
       const command: ConquestCommand = action === 23
-        ? { kind: 'endTurn', factionId: candidate.session.turn % 2 ? 'blue' : 'red', expectedTurn: candidate.session.turn }
+        ? { kind: 'endTurn', factionId: getActiveParticipant(candidate.session.schedule), expectedTurn: candidate.session.schedule.turn }
         : commandFor(candidate, options, first);
       const record: CommandRecord = { command, result: 'accepted',
         ...(command.kind === 'endTurn' ? { endTurnObservations: observations(candidate, command.factionId, options) } : {}) };
@@ -388,7 +392,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
     for (const step of steps) measure(step.before, step.after, step.command, step.turnReceipt, result.metrics, result.battles);
     result.turnsExecuted += advanced;
     if (diagnostics) diagnostics.onWindow(traceWindow(state, candidate, records, result.turnsExecuted),
-      diagnostics.checkpointAt === result.turnsExecuted && candidate.session.turn > state.session.turn
+      diagnostics.checkpointAt === result.turnsExecuted && candidate.session.schedule.turn > state.session.schedule.turn
         ? encodeConquestSave(candidate) : undefined);
     state = candidate;
     if (!resume && result.turnsExecuted === Math.min(4, options.maxTurns)) {
@@ -398,7 +402,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   result.outcome = getConquestOutcome(state);
   if (result.outcome.status === 'completed') result.status = 'completed';
   result.finalState = state;
-  for (const faction of ['blue', 'red'] as const) {
+  for (const faction of state.session.schedule.order) {
     const colonies = state.session.galaxy.systems.filter(system => system.ownerId === faction);
     result.population[faction] = {
       total: colonies.reduce((sum, colony) => sum + state.population[colony.id].population, 0),
@@ -409,7 +413,7 @@ export function runBaseline(input: BaselineInput, resume?: { state: unknown; tur
   if (result.status === 'timeout') for (const metric of Object.values(result.metrics)) {
     for (const key of ['firstResearch', 'firstResearchCompleted', 'firstColony', 'firstOrder', 'firstRelease',
       'firstShip', 'firstEncounter'] as const) {
-      if (metric[key].status !== 'measured') metric[key] = { status: 'timeout', throughTurn: state.session.turn - 1 };
+      if (metric[key].status !== 'measured') metric[key] = { status: 'timeout', throughTurn: state.session.schedule.turn - 1 };
     }
   }
   return result;
@@ -423,7 +427,7 @@ export function verifyBaseline(run: BaselineRun): { repeat: 'passed'; roundTrip:
   const continuation = runBaseline(run.input, {
     state: decodeConquestSave(run.checkpoint.json), turnsExecuted: run.checkpoint.turnsExecuted
   });
-  const checkpointTurn = continuation.finalState.session.turn - (continuation.turnsExecuted - run.checkpoint.turnsExecuted);
+  const checkpointTurn = continuation.finalState.session.schedule.turn - (continuation.turnsExecuted - run.checkpoint.turnsExecuted);
   const suffix = run.commands.filter(record => record.command.expectedTurn >= checkpointTurn);
   if (JSON.stringify(continuation.finalState) !== JSON.stringify(run.finalState) ||
     JSON.stringify(continuation.commands) !== JSON.stringify(suffix) || continuation.status !== run.status) {
@@ -462,7 +466,8 @@ export function summarizeBaseline(runs: BaselineRun[]) {
       secondWins: values.filter(run => run.outcome.status === 'completed' && run.outcome.winner === run.lineups.second).length,
       completionTurns: distribution(values.filter(run => run.status === 'completed').map(run => run.turnsExecuted)),
       first: milestones('first'), second: milestones('second'),
-      losses: distribution(values.map(run => run.metrics.blue.losses + run.metrics.red.losses)),
+      losses: distribution(values.map(run =>
+        Object.values(run.metrics).reduce((sum, metric) => sum + metric.losses, 0))),
       battleTimeouts: values.reduce((sum, run) => sum + run.battleTimeouts, 0),
       endTurnObservations: values.flatMap(run => run.commands.flatMap(record =>
         record.result === 'accepted' ? record.endTurnObservations ?? [] : []))
